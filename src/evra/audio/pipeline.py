@@ -49,6 +49,7 @@ class _ChannelState:
         self.last_chunk_ns: int | None = None
         self.padding = False
         self.next_cause: str | None = None
+        self.next_seq = 0  # ring sequence expected next; a jump means chunks were lost
         self.sum_squares = 0.0
         self.measured = 0
         self.peak = 0
@@ -130,6 +131,10 @@ class CapturePipeline:
 
     def _drain(self, s: _ChannelState) -> None:
         for chunk in s.source.ring.drain():
+            if chunk.seq != s.next_seq:  # the ring overflowed: audio was really lost
+                s.clock = SourceClock(s.source.native_rate, latency_ns=s.source.latency_ns)
+                s.next_cause = s.next_cause or "dropout"
+            s.next_seq = chunk.seq + 1
             if s.padding:  # resuming after silence: re-anchor on this chunk
                 s.clock = SourceClock(s.source.native_rate, latency_ns=s.source.latency_ns)
                 s.next_cause = s.next_cause or "silence"
@@ -137,7 +142,7 @@ class CapturePipeline:
             t_first = s.clock.first_sample_ns(chunk.t_callback_ns, len(chunk.data))
             pcm = s.converter.process(chunk.data)
             self._measure(s, pcm)
-            placed = s.timeline.place(pcm, t_first, cause=s.next_cause or "dropout")
+            placed = s.timeline.place(pcm, t_first, cause=s.next_cause)
             s.next_cause = None
             s.buffer = np.concatenate([s.buffer, placed])
             s.last_chunk_ns = chunk.t_callback_ns

@@ -84,6 +84,7 @@ class CaptureSession:
 
     def start(self, on_frames: Callable[[Frames], None]) -> None:
         mic, system = self._sources[MIC], self._sources[SYSTEM]
+        start_ns = self._now()  # before opening devices, so early audio has a place (I3)
         mic.start()
         try:
             system.start()
@@ -91,7 +92,7 @@ class CaptureSession:
             mic.stop()
             raise
         self._pipeline = CapturePipeline(
-            self._sources, on_frames, start_ns=self._now(), now_ns=self._now
+            self._sources, on_frames, start_ns=start_ns, now_ns=self._now
         )
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="capture-pipeline", daemon=True)

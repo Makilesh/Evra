@@ -23,7 +23,7 @@ def test_on_time_chunks_pass_through_unchanged() -> None:
 def test_small_jitter_is_not_corrected() -> None:
     tl = ChannelTimeline(0)
     for i in range(500):
-        jitter = (5 if i % 2 else -5) * MS
+        jitter = ((5 if i % 2 else -5) if i else 0) * MS  # first chunk on time
         tl.place(_pcm(), i * 10 * MS + jitter)
     assert tl.stats.corrections == 0
     assert tl.emitted == 500 * CHUNK
@@ -75,3 +75,19 @@ def test_pad_until_keeps_the_timeline_moving() -> None:
     assert tl.stats.padded == 14_400
     assert len(tl.pad_until(1_050 * MS)) == 800
     assert len(tl.pad_until(1_052 * MS)) == 0  # less than one frame missing
+
+
+def test_audio_from_before_the_start_is_trimmed_not_corrected_later() -> None:
+    tl = ChannelTimeline(0)
+    out = tl.place(_pcm(1600), -50 * MS)  # a 100 ms chunk that began 50 ms before start
+    assert len(out) == 800
+    for i in range(300):
+        tl.place(_pcm(), 50 * MS + i * 10 * MS)
+    assert tl.stats.corrections == 0 and tl.stats.dropped == 0
+
+
+def test_a_late_starting_device_gets_leading_silence_not_a_gap() -> None:
+    tl = ChannelTimeline(0)
+    out = tl.place(_pcm(), 200 * MS)  # first audio 200 ms after start
+    assert len(out) == 3200 + CHUNK and not out[:3200].any()
+    assert tl.stats.gaps == [] and tl.stats.padded == 3200

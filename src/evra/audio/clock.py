@@ -88,13 +88,15 @@ class ChannelTimeline:
     def index_at(self, t_ns: int) -> int:
         return round((t_ns - self._start_ns) * SAMPLE_RATE / NS)
 
-    def place(self, samples: Int16Array, t_first_ns: int, cause: str = "dropout") -> Int16Array:
+    def place(self, samples: Int16Array, t_first_ns: int, cause: str | None = None) -> Int16Array:
         """What to append to this channel's timeline for a chunk whose first sample is at t."""
         delta = self.index_at(t_first_ns) - self.emitted  # > 0: timeline behind real time
         out = samples
+        if self.emitted == 0 and self.stats.padded == 0:  # first audio on this channel
+            return self._place_first(samples, t_first_ns, delta, cause)
         if delta >= GAP_SAMPLES:
             fill = delta // STEP * STEP
-            self.stats.gaps.append(Gap(self.emitted, fill, cause))
+            self.stats.gaps.append(Gap(self.emitted, fill, cause or "dropout"))
             self.stats.inserted += fill
             out = np.concatenate([np.zeros(fill, dtype=np.int16), out])
             self._since_check = 0
@@ -114,6 +116,26 @@ class ChannelTimeline:
             out = out[cut:]
             self._owed_drop -= cut
             self.stats.dropped += cut
+        self._since_check += len(samples)
+        self.emitted += len(out)
+        self.stats.drift = self.emitted - (self.index_at(t_first_ns) + len(samples))
+        return out
+
+    def _place_first(
+        self, samples: Int16Array, t_first_ns: int, delta: int, cause: str | None
+    ) -> Int16Array:
+        """Align the channel's first chunk: trim audio from before the start, or lead with
+        silence if the device started late (a gap only if audio was known to be lost)."""
+        if delta < 0:
+            out = samples[min(-delta, len(samples)) :]
+        else:
+            lead = delta // STEP * STEP
+            if cause is not None and lead >= GAP_SAMPLES:
+                self.stats.gaps.append(Gap(0, lead, cause))
+                self.stats.inserted += lead
+            else:
+                self.stats.padded += lead
+            out = np.concatenate([np.zeros(lead, dtype=np.int16), samples])
         self._since_check += len(samples)
         self.emitted += len(out)
         self.stats.drift = self.emitted - (self.index_at(t_first_ns) + len(samples))

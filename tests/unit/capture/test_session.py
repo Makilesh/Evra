@@ -114,3 +114,19 @@ def test_frame_consumer_failure_stops_capture_and_is_reported() -> None:
     health = session.stop()
     assert not health.ok
     assert any("OSError" in h for h in health.hints)
+
+
+def test_clean_start_needs_no_drift_corrections() -> None:
+    mic, system = _sources(2.5)
+
+    class SlowStart(FakeSource):
+        def start(self) -> None:
+            time.sleep(0.2)  # a real loopback open can take this long
+            super().start()
+
+    slow = SlowStart(system.audio, 48_000, name="slow out", pads_silence=True)
+    _frames, health = _run(CaptureSession(mic, slow), mic, slow)
+    for ch in ("mic", "system"):
+        assert health.channels[ch].corrections == 0  # type: ignore[attr-defined]
+        assert health.channels[ch].dropped_ms == 0  # type: ignore[attr-defined]
+        assert health.channels[ch].gaps == []  # type: ignore[attr-defined]
