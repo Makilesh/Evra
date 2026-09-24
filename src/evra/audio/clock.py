@@ -43,6 +43,8 @@ class SourceClock:
     - a jump: late chunks keep arriving at a normal pace for `confirm_ns` of audio (samples
       were lost, or loopback went idle) — released on the new anchor, placed at their true time.
     Holding costs at most ~`confirm_ns` of latency, only while a jump is suspected.
+    The first `warmup_ns` of audio is also held, so a slow first callback cannot skew the
+    anchor (it would otherwise be corrected later by dropping real audio).
     """
 
     def __init__(
@@ -54,6 +56,7 @@ class SourceClock:
         jump_ns: int = 50_000_000,
         confirm_ns: int = 150_000_000,
         max_hold_ns: int = 1_000_000_000,
+        warmup_ns: int = 200_000_000,
     ) -> None:
         self._rate = native_rate
         self._latency_ns = latency_ns
@@ -65,25 +68,26 @@ class SourceClock:
         self._jump_ns = jump_ns
         self._confirm_ns = confirm_ns
         self._max_hold_ns = max_hold_ns
+        self._warmup_ns = warmup_ns
 
     def push(self, key: int, t_callback_ns: int, frames: int) -> list[Timed]:
         """Add a chunk; returns every chunk whose time is now decided, in order."""
         before = self._samples
         self._samples += frames
         implied = t_callback_ns - self._latency_ns - self._samples * NS / self._rate
-        if self._anchor is None:
-            self._anchor = implied
-            self._recent.append(implied)
-            return [self._timed(key, before, jumped=False)]
+        if self._anchor is None:  # warm-up: anchor on the earliest of the first chunks
+            self._hold(key, implied, before, t_callback_ns, frames)
+            if self._held_ns >= self._warmup_ns:
+                return self._release(reanchor=True, jumped=False)
+            return []
         if implied - self._anchor > self._jump_ns:
-            self._held.append(_Held(key, implied, before, t_callback_ns))
-            self._held_ns += frames * NS / self._rate
+            self._hold(key, implied, before, t_callback_ns, frames)
             span = t_callback_ns - self._held[0].t_callback_ns
             confirmed = self._held_ns >= self._confirm_ns and span >= self._confirm_ns / 2
             if confirmed or self._held_ns >= self._max_hold_ns:
-                return self._release(jump=True)
+                return self._release(reanchor=True, jumped=True)
             return []
-        out = self._release(jump=False)
+        out = self._release(reanchor=False, jumped=False)
         self._recent.append(implied)
         self._anchor = min(self._recent)
         out.append(self._timed(key, before, jumped=False))
@@ -91,17 +95,21 @@ class SourceClock:
 
     def flush(self) -> list[Timed]:
         """Decide any held chunks now (end of capture, device swap): keep the old anchor."""
-        return self._release(jump=False)
+        return self._release(reanchor=False, jumped=False)
 
-    def _release(self, *, jump: bool) -> list[Timed]:
+    def _hold(self, key: int, implied: float, before: int, t_callback_ns: int, frames: int) -> None:
+        self._held.append(_Held(key, implied, before, t_callback_ns))
+        self._held_ns += frames * NS / self._rate
+
+    def _release(self, *, reanchor: bool, jumped: bool) -> list[Timed]:
         if not self._held:
             return []
-        if jump:
+        if reanchor or self._anchor is None:
             self._anchor = min(h.implied for h in self._held)
             self._recent.clear()
             self._recent.extend(h.implied for h in self._held)
         out = [
-            self._timed(h.key, h.samples_before, jumped=jump and i == 0)
+            self._timed(h.key, h.samples_before, jumped=jumped and i == 0)
             for i, h in enumerate(self._held)
         ]
         self._held.clear()

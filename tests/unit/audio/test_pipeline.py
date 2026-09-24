@@ -228,3 +228,16 @@ def test_callback_stall_with_burst_catch_up_loses_nothing(stall_ms: int) -> None
     stats = pipe.stats(MIC)
     assert stats.gaps == () and stats.dropped_ms == 0 and stats.corrections == 0
     assert len(_pcm_of(frames, MIC)) == 300 * 160
+
+
+def test_a_late_first_callback_needs_no_correction_later() -> None:
+    mic, system, clock, _frames, pipe = _passthrough_rig()
+    for i in range(300):
+        clock.t = (i + 1) * 10 * MS
+        late = 35 * MS if i == 0 else 0  # the first callback is often slow
+        mic.ring.put(_level(i), clock.t + late)
+        system.ring.put(_level(i), clock.t)
+        pipe.step()
+    pipe.flush()
+    stats = pipe.stats(MIC)
+    assert stats.corrections == 0 and stats.dropped_ms == 0

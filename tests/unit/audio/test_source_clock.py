@@ -89,3 +89,9 @@ def test_follows_a_slow_device_clock() -> None:
 
 def test_latency_is_subtracted() -> None:
     assert _times(SourceClock(RATE, latency_ns=20 * MS), [30 * MS])[0] == 0
+
+
+def test_warm_up_absorbs_a_late_first_callback() -> None:
+    callbacks = [(i + 1) * 10 * MS + (25 * MS if i == 0 else 0) for i in range(100)]
+    times = _times(SourceClock(RATE), callbacks)
+    assert all(abs(times[i] - i * 10 * MS) <= 1 * MS for i in range(100))
