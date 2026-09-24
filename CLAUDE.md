@@ -11,6 +11,8 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 - Python only: `uv run pytest` · `uv run ruff check .` · `uv run ruff format --check .` · `uv run mypy`
 - Frontend only: `npm --prefix frontend run lint|typecheck|test`
 - Licences: `uv run python tools/license_gate.py [--write-register]`
+- Capture check: `uv run evra capture-test 60` (list mics: `uv run evra capture-test 1 --list-devices`)
+- Hardware tests: `uv run pytest -m hardware`
 
 ## Rules (full list: BUILD.md §11)
 - Work milestone by milestone (BUILD.md §10); plans live in `docs/superpowers/plans/`.
