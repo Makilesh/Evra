@@ -53,8 +53,8 @@ def run_capture_test(
         health = session.stop()
         writer.close()
         out_dir.mkdir(parents=True, exist_ok=True)
-        write_wav(out_dir / "mic.wav", read_channel(spill_dir, key, MIC))
-        write_wav(out_dir / "system.wav", read_channel(spill_dir, key, SYSTEM))
+        write_wav(out_dir / "mic.wav", read_channel(spill_dir, key, MIC, meeting_id))
+        write_wav(out_dir / "system.wav", read_channel(spill_dir, key, SYSTEM, meeting_id))
         report = json.dumps(asdict(health), indent=2)
         (out_dir / "health.json").write_text(report, encoding="utf-8")
         return health

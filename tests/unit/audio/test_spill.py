@@ -78,3 +78,42 @@ def test_header_is_authenticated_metadata(tmp_path: Path) -> None:
     assert header["meeting_id"] == "m-42" and header["channel"] == SYSTEM
     assert header["start_ms"] == 100 and len(pcm) == 480
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def _three_mic_segments(tmp_path: Path) -> bytes:
+    key = new_meeting_key()
+    writer = SpillWriter(tmp_path, "m1", key, segment_samples=1_600)
+    for f in _frames(MIC, 30) + _frames(SYSTEM, 10):
+        writer.write(f)
+    writer.close()
+    return key
+
+
+def test_swapped_segments_fail(tmp_path: Path) -> None:
+    key = _three_mic_segments(tmp_path)
+    a, c = tmp_path / "0_00000.spill", tmp_path / "0_00002.spill"
+    a_bytes, c_bytes = a.read_bytes(), c.read_bytes()
+    a.write_bytes(c_bytes)
+    c.write_bytes(a_bytes)
+    with pytest.raises(SpillError, match="order"):
+        read_channel(tmp_path, key, MIC, meeting_id="m1")
+
+
+def test_a_segment_from_another_channel_fails(tmp_path: Path) -> None:
+    key = _three_mic_segments(tmp_path)
+    (tmp_path / "0_00003.spill").write_bytes((tmp_path / "1_00000.spill").read_bytes())
+    with pytest.raises(SpillError, match="channel"):
+        read_channel(tmp_path, key, MIC, meeting_id="m1")
+
+
+def test_a_missing_segment_fails(tmp_path: Path) -> None:
+    key = _three_mic_segments(tmp_path)
+    (tmp_path / "0_00001.spill").unlink()
+    with pytest.raises(SpillError, match="order"):
+        read_channel(tmp_path, key, MIC, meeting_id="m1")
+
+
+def test_a_segment_from_another_meeting_fails(tmp_path: Path) -> None:
+    key = _three_mic_segments(tmp_path)
+    with pytest.raises(SpillError, match="meeting"):
+        read_channel(tmp_path, key, MIC, meeting_id="m2")

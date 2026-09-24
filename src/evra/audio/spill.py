@@ -121,6 +121,22 @@ def read_segment(path: Path, key: bytes) -> tuple[dict[str, Any], Int16Array]:
     return header, np.frombuffer(plain, dtype="<i2").astype(np.int16)
 
 
-def read_channel(directory: Path, key: bytes, channel: int) -> Int16Array:
-    parts = [read_segment(p, key)[1] for p in sorted(directory.glob(f"{channel}_*.spill"))]
+def read_channel(
+    directory: Path, key: bytes, channel: int, meeting_id: str | None = None
+) -> Int16Array:
+    """One channel's audio. The authenticated headers must form an unbroken sequence for
+    this channel (and meeting): swapped, foreign or missing segments are rejected."""
+    parts: list[Int16Array] = []
+    previous_end: int | None = None
+    for expected, path in enumerate(sorted(directory.glob(f"{channel}_*.spill"))):
+        header, pcm = read_segment(path, key)
+        if header.get("channel") != channel:
+            raise SpillError(f"{path.name}: segment belongs to channel {header.get('channel')}")
+        if meeting_id is not None and header.get("meeting_id") != meeting_id:
+            raise SpillError(f"{path.name}: segment belongs to another meeting")
+        start = header.get("start_ms")
+        if header.get("index") != expected or (previous_end is not None and start != previous_end):
+            raise SpillError(f"{path.name}: segments are out of order or missing")
+        previous_end = header.get("end_ms")
+        parts.append(pcm)
     return np.concatenate(parts) if parts else np.zeros(0, dtype=np.int16)
