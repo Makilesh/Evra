@@ -24,7 +24,9 @@ log = structlog.get_logger(__name__)
 
 
 class WindowOpener(Protocol):
-    def __call__(self, *, url: str, api: BridgeApi, bus: EventBus, debug: bool) -> None: ...
+    def __call__(
+        self, *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+    ) -> None: ...
 
 
 @dataclass
@@ -65,5 +67,11 @@ def run_app(
         print(exc, file=sys.stderr)
         return 2
     app = build_app(paths or resolve_paths(), debug=debug or debug_enabled())
-    opener(url=url, api=app.api, bus=app.bus, debug=app.debug)
+    opener(
+        url=url,
+        api=app.api,
+        bus=app.bus,
+        debug=app.debug,
+        storage_dir=app.paths.data_dir / "webview",
+    )
     return 0

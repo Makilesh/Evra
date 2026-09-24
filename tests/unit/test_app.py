@@ -35,17 +35,16 @@ def test_run_app_opens_window_with_file_url(tmp_path: Path) -> None:
     web = tmp_path / "web"
     web.mkdir()
     (web / "index.html").write_text("<html></html>", encoding="utf-8")
-    calls: list[str] = []
+    calls: list[tuple[str, Path]] = []
 
-    def fake_opener(*, url: str, api: BridgeApi, bus: EventBus, debug: bool) -> None:
-        calls.append(url)
+    def fake_opener(
+        *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+    ) -> None:
+        calls.append((url, storage_dir))
 
-    code = run_app(
-        dev=False,
-        debug=False,
-        paths=AppPaths.under(tmp_path / "home"),
-        web_dir=web,
-        opener=fake_opener,
-    )
+    paths = AppPaths.under(tmp_path / "home")
+    code = run_app(dev=False, debug=False, paths=paths, web_dir=web, opener=fake_opener)
     assert code == 0
-    assert len(calls) == 1 and calls[0].startswith("file:///")
+    [(url, storage_dir)] = calls
+    assert url.startswith("file:///")
+    assert storage_dir == paths.data_dir / "webview"

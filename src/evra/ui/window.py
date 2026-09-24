@@ -28,7 +28,11 @@ def resolve_ui_url(*, dev: bool, web_dir: Path = WEB_DIR) -> str:
     return index.resolve().as_uri()
 
 
-def open_main_window(*, url: str, api: BridgeApi, bus: EventBus, debug: bool) -> None:
+def open_main_window(
+    *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+) -> None:
+    """Open the window. `storage_dir` holds the WebView2 profile (D23: never %TEMP%);
+    private mode still wipes it on close."""
     import webview  # imported here: loads pythonnet/WebView2 only when a window is needed
     from webview.util import is_local_url
 
@@ -46,4 +50,5 @@ def open_main_window(*, url: str, api: BridgeApi, bus: EventBus, debug: bool) ->
     if window is None:
         raise RuntimeError("pywebview did not create a window")
     bus.attach(window)
-    webview.start(debug=debug, private_mode=True)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    webview.start(debug=debug, private_mode=True, storage_path=str(storage_dir))
