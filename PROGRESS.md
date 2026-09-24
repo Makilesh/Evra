@@ -9,6 +9,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 3: structlog JSON rotating logs (10 × 5 MB) with content redaction above DEBUG.
 - Task 4: SQLite store (WAL, FKs, busy timeout) with forward-only atomic migrations; 0001 Phase 1 schema (16 tables).
 - Task 5: React 19 + TS 6 + Vite 8 + Tailwind v4 frontend with bridge client, theme, shadcn conventions; single-file build (227 kB) into src/evra/ui/web.
+- Task 6: pywebview window loads the single-file UI via file:// — verified 0 listening TCP/UDP sockets; bridge works both ways (built and dev modes); `evra run [--dev] [--debug] [--data-dir]`.
 
 ## 2026-09-24 — Planning session 1
 

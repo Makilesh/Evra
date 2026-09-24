@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import evra
@@ -25,3 +27,17 @@ def test_names_live_in_constants() -> None:
 def test_no_command_prints_help_and_returns_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     assert "usage:" in capsys.readouterr().out
+
+
+def test_run_subcommand_is_registered() -> None:
+    from evra.__main__ import build_parser
+
+    args = build_parser().parse_args(["run", "--dev", "--debug", "--data-dir", "D:/x y"])
+    assert args.command == "run" and args.dev is True and args.debug is True
+    assert str(args.data_dir) == str(Path("D:/x y"))
+
+
+def test_run_without_data_dir_defaults_to_none() -> None:
+    from evra.__main__ import build_parser
+
+    assert build_parser().parse_args(["run"]).data_dir is None
