@@ -6,6 +6,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 
 - Task 1: Frames + ToMono16k streaming converter (libsamplerate, D24).
 - Task 2: ChunkRing — non-blocking callback hand-off, drops counted.
+- Task 3: SourceClock — steady timestamps from jittery/bursty callbacks; follows drift; detects real jumps.
 
 ## 2026-09-24 — M0 Bootstrap
 
