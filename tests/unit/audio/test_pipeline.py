@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -19,10 +19,24 @@ class StubSource:
     name: str = "stub"
     latency_ns: int = 0
     ring: ChunkRing = field(default_factory=lambda: ChunkRing(200))
+    overflows: int = 0
+    on_start: Callable[[], None] | None = None
+    on_stop: Callable[[], None] | None = None
 
-    def start(self) -> None: ...
-    def stop(self) -> None: ...
-    def reopen(self) -> None: ...
+    def start(self) -> None:
+        if self.on_start:
+            self.on_start()
+
+    def stop(self) -> None:
+        if self.on_stop:
+            self.on_stop()
+
+    def reopen(self) -> None:
+        self.stop()
+        self.start()
+
+    def is_active(self) -> bool:
+        return True
 
 
 class FakeClock:
@@ -107,10 +121,11 @@ def test_swap_source_records_device_change_gap_and_new_rate(rig) -> None:  # typ
     for i in range(100):
         _tick(rig, i)
 
-    def reopen() -> None:
+    def new_device() -> None:
         system.native_rate, system.native_channels = 44_100, 1
 
-    pipe.swap_source(SYSTEM, reopen)
+    system.on_start = new_device
+    pipe.swap_source(SYSTEM)
     for i in range(130, 230):  # new device starts 300 ms later at 44.1 kHz mono
         clock.t = (i + 1) * 10 * MS
         mic.ring.put(_chunk(44_100, 1, i=i), clock.t)
@@ -136,3 +151,27 @@ def test_levels_are_measured_in_dbfs(rig) -> None:  # type: ignore[no-untyped-de
     assert -9.6 < stats.rms_dbfs < -8.5  # 0.5-amplitude sine ≈ -9.03 dBFS
     assert -6.5 < stats.peak_dbfs < -5.5
     assert stats.seconds == pytest.approx(len(_per_channel(rig[3], MIC)) / 100)
+
+
+def test_swap_handles_a_late_chunk_from_the_old_device(rig) -> None:  # type: ignore[no-untyped-def]
+    mic, system, clock, _frames, pipe = rig
+    for i in range(100):
+        _tick(rig, i)
+
+    def old_device_last_callback() -> None:  # PortAudio can deliver one more buffer on stop
+        system.ring.put(_chunk(48_000, 2, i=100), clock.t)
+
+    def new_device() -> None:  # 2-channel speakers -> 1-channel Bluetooth hands-free
+        system.native_rate, system.native_channels = 16_000, 1
+
+    system.on_stop = old_device_last_callback
+    system.on_start = new_device
+    pipe.swap_source(SYSTEM)
+    for i in range(130, 230):
+        clock.t = (i + 1) * 10 * MS
+        mic.ring.put(_chunk(44_100, 1, i=i), clock.t)
+        system.ring.put(_chunk(16_000, 1, i=i), clock.t)
+        pipe.step()
+    stats = pipe.stats(SYSTEM)
+    assert stats.native_channels == 1
+    assert [g.cause for g in stats.gaps] == ["device_change"]

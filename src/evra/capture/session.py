@@ -79,6 +79,7 @@ class CaptureSession:
         self._watcher: Any = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._failure: str | None = None  # exception type that stopped the pipeline thread
         self.device_changes = 0
 
     def start(self, on_frames: Callable[[Frames], None]) -> None:
@@ -110,8 +111,11 @@ class CaptureSession:
             self._thread = None
         for source in self._sources.values():
             source.stop()
-        if self._pipeline is not None:
-            self._pipeline.flush()
+        if self._pipeline is not None and self._failure is None:
+            try:
+                self._pipeline.flush()
+            except Exception as exc:  # the frame consumer failed while flushing
+                self._fail(exc)
         health = self.health()
         log.info("capture_stopped", ok=health.ok, drift_ms=health.inter_channel_drift_ms)
         return health
@@ -129,7 +133,9 @@ class CaptureSession:
             )
         if system.seconds > 0 and system.padded_ms >= system.seconds * 1000 * 0.95:
             hints.append("No system audio arrived: nothing playing, or a different output device?")
-        problems = (
+        if self._failure is not None:
+            hints.append(f"Capture stopped early ({self._failure}); details are in the log.")
+        problems = int(self._failure is not None) + (
             mic.dropped_chunks
             + system.dropped_chunks
             + sum(g["cause"] == "dropout" for c in (mic, system) for g in c.gaps)
@@ -145,7 +151,15 @@ class CaptureSession:
     def _run(self) -> None:
         assert self._pipeline is not None
         while not self._stop.wait(self._tick):
-            self._pipeline.step()
+            try:
+                self._pipeline.step()
+            except Exception as exc:  # never let the capture thread die silently
+                self._fail(exc)
+                return
+
+    def _fail(self, exc: BaseException) -> None:
+        self._failure = type(exc).__name__
+        log.error("capture_pipeline_failed", error=self._failure)
 
     def _on_output_changed(self, device_id: str | None) -> None:
         self.device_changes += 1
@@ -153,6 +167,6 @@ class CaptureSession:
         if self._pipeline is None:
             return
         try:
-            self._pipeline.swap_source(SYSTEM, self._sources[SYSTEM].reopen)
+            self._pipeline.swap_source(SYSTEM)
         except CaptureError as exc:
             log.warning("loopback_reopen_failed", hint=exc.hint)

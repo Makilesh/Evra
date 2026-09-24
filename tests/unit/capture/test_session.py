@@ -100,3 +100,17 @@ def test_start_failure_of_system_stops_the_mic() -> None:
     with pytest.raises(CaptureError):
         session.start(lambda f: None)
     assert mic._thread is None  # mic was stopped again
+
+
+def test_frame_consumer_failure_stops_capture_and_is_reported() -> None:
+    mic, system = _sources(1.0)
+    session = CaptureSession(mic, system)
+
+    def broken_writer(frames: Frames) -> None:
+        raise OSError("disk full")
+
+    session.start(broken_writer)
+    time.sleep(0.3)
+    health = session.stop()
+    assert not health.ok
+    assert any("OSError" in h for h in health.hints)

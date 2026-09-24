@@ -92,14 +92,17 @@ class CapturePipeline:
                     state.buffer = np.concatenate([state.buffer, pad])
                 self._emit(channel, state)
 
-    def swap_source(
-        self, channel: Channel, reopen: Callable[[], None], cause: str = "device_change"
-    ) -> None:
-        """Re-open a source (e.g. new default output) without losing the timeline."""
+    def swap_source(self, channel: Channel, cause: str = "device_change") -> None:
+        """Re-open a source (e.g. new default output) without losing the timeline.
+
+        Order matters: stop the old stream first (PortAudio may deliver one last buffer
+        while stopping), drain everything in the old format, then start the new stream.
+        """
         with self._lock:
             state = self._states[channel]
-            self._drain(state)  # finish the old device's audio with the old converter
-            reopen()
+            state.source.stop()
+            self._drain(state)
+            state.source.start()
             state.reset_format()
             state.next_cause = cause
             state.padding = False
