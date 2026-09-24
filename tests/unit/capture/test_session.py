@@ -206,3 +206,19 @@ def test_a_dead_stream_is_restarted() -> None:
     health = session.stop()
     assert session.stream_restarts >= 1
     assert health.stream_restarts >= 1
+
+
+def test_slow_device_close_does_not_stretch_the_padded_channel() -> None:
+    mic, system = _sources(1.0)
+
+    class SlowStop(FakeSource):
+        def stop(self) -> None:
+            super().stop()
+            time.sleep(0.8)  # real drivers can take this long to close
+
+    slow_mic = SlowStop(mic.audio, 44_100, name="slow close")
+    _frames, health = _run(CaptureSession(slow_mic, system), slow_mic, system)
+    mic_s = health.channels["mic"].seconds  # type: ignore[attr-defined]
+    sys_s = health.channels["system"].seconds  # type: ignore[attr-defined]
+    assert abs(mic_s - sys_s) < 0.2
+    assert health.ok  # type: ignore[attr-defined]

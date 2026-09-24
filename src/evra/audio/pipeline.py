@@ -76,16 +76,18 @@ class CapturePipeline:
         self._states = {ch: _ChannelState(src, start_ns) for ch, src in sources.items()}
         self._lock = threading.Lock()
 
-    def step(self) -> None:
+    def step(self, now_ns: int | None = None) -> None:
         with self._lock:
-            now = self._now()
+            now = self._now() if now_ns is None else now_ns
             for channel, state in self._states.items():
                 self._drain(state)
                 self._maybe_pad(state, now)
                 self._emit(channel, state)
 
-    def flush(self) -> None:
-        self.step()
+    def flush(self, end_ns: int | None = None) -> None:
+        """Place everything left. `end_ns` is when capture ended: silence padding never
+        extends past it, even if closing the devices took a while."""
+        self.step(end_ns)
         with self._lock:
             for channel, state in self._states.items():
                 self._release_held(state)

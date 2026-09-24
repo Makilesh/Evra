@@ -110,6 +110,7 @@ class CaptureSession:
         log.info("capture_started", mic=mic.name, system=system.name)
 
     def stop(self) -> CaptureHealth:
+        end_ns = self._now()  # capture ends now, however long closing the devices takes
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None
@@ -121,7 +122,7 @@ class CaptureSession:
             source.stop()
         if self._pipeline is not None and self._failure is None:
             try:
-                self._pipeline.flush()
+                self._pipeline.flush(end_ns)
             except Exception as exc:  # the frame consumer failed while flushing
                 self._fail(exc)
         health = self.health()
