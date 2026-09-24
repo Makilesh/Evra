@@ -24,6 +24,8 @@
 | §10 Phase 1 milestones and checkpoints | Agreed |
 | §11 Rules for the builder | Agreed |
 
+Build status: Phase 1 M0 done (tag `p1-m0-done`).
+
 Tracking files (kept current by whoever builds):
 
 - `PROGRESS.md` — dated log of what was built, decided and measured.

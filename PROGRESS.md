@@ -13,6 +13,9 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 7: licence gate (226 components: python + npm + models), policy file (MIT-0 allowed; clr-loader override verified MIT), models.yaml, generated THIRD_PARTY_LICENSES.md.
 - Task 8: tools/check.py runs ruff (lint + format), mypy, pytest, oxlint, tsc, vitest and the licence gate in one command — all PASS.
 - Task 9: GitHub Actions (Windows checks + gitleaks-action v3); local gitleaks 8.30.1 via tools/check.py — no leaks in history.
+- Commits: bf0a634 (T1) · 3f940ee (T2) · e81e1c6 (T3) · 6a1b44b (T4) · 78cff1b (T5) · 443edc1 (T6) · 19b6baf (T7) · b1a559f (T8) · 5c1a360 + 3de7053 (T9).
+- **M0 done:** CI green (run 35995915108); `tools/check.py` all PASS incl. gitleaks; window round-trips calls both ways; no network listener (0 TCP / 0 UDP, verified with Get-NetTCPConnection / Get-NetUDPEndpoint); 75 Python + 11 frontend tests.
+- Next: M1 Windows capture (plan to be written).
 
 ## 2026-09-24 — Planning session 1
 
