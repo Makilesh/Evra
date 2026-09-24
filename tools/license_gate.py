@@ -214,7 +214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     register = render_register(comps, policy)
     if args.write_register:
-        REGISTER.write_text(register, encoding="utf-8")
+        REGISTER.write_text(register, encoding="utf-8", newline="\n")
         print(f"wrote {REGISTER.name}")
     elif not REGISTER.exists() or REGISTER.read_text(encoding="utf-8") != register:
         print("FAIL THIRD_PARTY_LICENSES.md is stale: run tools/license_gate.py --write-register")
