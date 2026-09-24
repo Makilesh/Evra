@@ -6,6 +6,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 
 - Task 1: Python skeleton, uv-managed 3.12, `evra --version`, CLAUDE.md, README.
 - Task 2: AppPaths (platformdirs; `<repo>/.data` from source, D23) and TOML settings with safe reset on corrupt files.
+- Task 3: structlog JSON rotating logs (10 × 5 MB) with content redaction above DEBUG.
 
 ## 2026-09-24 — Planning session 1
 
