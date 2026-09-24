@@ -1,1 +1,12 @@
-.venv/*
+.venv/
+private/
+.remember/
+__pycache__/
+*.py[cod]
+node_modules/
+.env
+.env.*
+*.wav
+*.opus
+*.flac
+!tests/fixtures/**/*.wav
