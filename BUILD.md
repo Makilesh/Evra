@@ -96,6 +96,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D21 | Code licence | Evra's own code under **FSL-1.1-ALv2** (`LICENSE.md`): source-available, no competing commercial use, each release becomes Apache-2.0 after two years | 2026-09-24 |
 | D22 | Git workflow | After each completed feature/update: `tools/check.py` + gitleaks pass → Conventional Commit → push to `origin` on the working branch. No force-push, no history rewrite, no push to `main` unless asked | 2026-09-24 |
 | D23 | Dev data location | Running from the source checkout keeps all app data in `<repo>/.data/` (git-ignored); installed builds use per-user OS dirs; `evra run --data-dir` overrides | 2026-09-24 |
+| D24 | Resampling | libsamplerate via `samplerate` (stateful, seamless across chunks) | 2026-09-24 |
 
 ---
 
@@ -188,7 +189,7 @@ Evra/
 ### 5.1 Capture
 
 - **Channels:** 0 = microphone, 1 = system output. Both 16 kHz mono int16 after conversion, one monotonic clock.
-- **System audio:** PyAudioWPatch opens the WASAPI loopback twin of the default output device at its native rate/channels. Downmix and resample to 16 kHz in the pipeline with `scipy.signal.resample_poly` (never ask WASAPI to convert; avoid `soxr`, which is LGPL).
+- **System audio:** PyAudioWPatch opens the WASAPI loopback twin of the default output device at its native rate/channels. Downmix and resample to 16 kHz in the pipeline with a stateful libsamplerate resampler (`samplerate`, D24) (never ask WASAPI to convert; avoid `soxr`, which is LGPL).
 - **Microphone:** `sounddevice` on the default input (user-selectable); native rate, resampled.
 - **Silence padding:** loopback delivers nothing when nothing plays; if no loopback data arrives for 50 ms while capturing, synthesise zeros so the timeline keeps moving.
 - **Device changes:** poll the default output every 2 s; on change, reopen loopback on the new device and record a `gap` (cause `device_change`). Target < 500 ms lost.

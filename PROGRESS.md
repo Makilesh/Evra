@@ -2,6 +2,10 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
+
+- Task 1: Frames + ToMono16k streaming converter (libsamplerate, D24).
+
 ## 2026-09-24 — M0 Bootstrap
 
 - Task 1: Python skeleton, uv-managed 3.12, `evra --version`, CLAUDE.md, README.
