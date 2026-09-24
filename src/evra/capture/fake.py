@@ -47,6 +47,7 @@ class FakeSource:
         self.native_channels = int(self.audio.shape[1])
         self.latency_ns = latency_ns
         self.pads_silence = pads_silence
+        self.overflows = 0
         self.ring = ChunkRing.for_duration(2.0, 0.01)
         self.finished = threading.Event()
         self._events = tuple(events)

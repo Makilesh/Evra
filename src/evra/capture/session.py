@@ -12,18 +12,21 @@ import structlog
 
 from evra.audio.frames import MIC, SAMPLE_RATE, SYSTEM, Channel, Frames
 from evra.audio.pipeline import CapturePipeline, ChannelStats
-from evra.capture.sources import AudioSource
+from evra.capture.sources import MIC_PRIVACY_HINT, AudioSource
 
 log = structlog.get_logger(__name__)
 
 DRIFT_LIMIT_MS = 30.0
 SILENT_DBFS = -60.0
+SILENCE_FLOOR_DBFS = -120.0  # peak of pure digital zeros (what a privacy-blocked mic delivers)
+STALL_TOLERANCE_S = 0.5  # channels may differ this much in length before one counts as stalled
 WatcherFactory = Callable[[Callable[[str | None], None]], Any]
 
 
 @dataclass(frozen=True)
 class ChannelHealth:
     device: str
+    overflows: int
     native_rate: int
     native_channels: int
     seconds: float
@@ -47,7 +50,7 @@ class CaptureHealth:
     ok: bool
 
 
-def _channel_health(device: str, stats: ChannelStats) -> ChannelHealth:
+def _channel_health(source: AudioSource, stats: ChannelStats) -> ChannelHealth:
     fields = asdict(stats)
     fields.pop("channel")
     fields["gaps"] = [
@@ -58,7 +61,7 @@ def _channel_health(device: str, stats: ChannelStats) -> ChannelHealth:
         }
         for g in stats.gaps
     ]
-    return ChannelHealth(device=device, **fields)
+    return ChannelHealth(device=source.name, overflows=source.overflows, **fields)
 
 
 class CaptureSession:
@@ -124,22 +127,38 @@ class CaptureSession:
     def health(self) -> CaptureHealth:
         if self._pipeline is None:
             raise RuntimeError("capture has not started")
-        mic = _channel_health(self._sources[MIC].name, self._pipeline.stats(MIC))
-        system = _channel_health(self._sources[SYSTEM].name, self._pipeline.stats(SYSTEM))
+        mic = _channel_health(self._sources[MIC], self._pipeline.stats(MIC))
+        system = _channel_health(self._sources[SYSTEM], self._pipeline.stats(SYSTEM))
         drift = round(abs(mic.drift_ms - system.drift_ms), 2)
         hints: list[str] = []
-        if mic.seconds > 0 and mic.rms_dbfs < SILENT_DBFS:
+        problems = 0
+        if mic.seconds > 0 and mic.peak_dbfs <= SILENCE_FLOOR_DBFS:
+            hints.append(f"Microphone delivered pure digital silence. {MIC_PRIVACY_HINT}")
+            problems += 1
+        elif mic.seconds > 0 and mic.rms_dbfs < SILENT_DBFS:
             hints.append(
                 "Microphone looks silent: wrong device, muted, or blocked in privacy settings?"
             )
         if system.seconds > 0 and system.padded_ms >= system.seconds * 1000 * 0.95:
             hints.append("No system audio arrived: nothing playing, or a different output device?")
+        longest = max(mic.seconds, system.seconds)
+        for label, ch in (("microphone", mic), ("system", system)):
+            if longest - ch.seconds > STALL_TOLERANCE_S:
+                hints.append(f"The {label} channel stopped delivering audio at {ch.seconds:.1f} s.")
+                problems += 1
+        if mic.overflows + system.overflows:
+            hints.append("An audio device overflowed (input lost): the computer was too busy.")
         if self._failure is not None:
             hints.append(f"Capture stopped early ({self._failure}); details are in the log.")
-        problems = int(self._failure is not None) + (
-            mic.dropped_chunks
-            + system.dropped_chunks
-            + sum(g["cause"] == "dropout" for c in (mic, system) for g in c.gaps)
+        problems += (
+            int(self._failure is not None)
+            + mic.overflows
+            + system.overflows
+            + (
+                mic.dropped_chunks
+                + system.dropped_chunks
+                + sum(g["cause"] == "dropout" for c in (mic, system) for g in c.gaps)
+            )
         )
         return CaptureHealth(
             channels={"mic": mic, "system": system},

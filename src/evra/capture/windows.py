@@ -41,6 +41,7 @@ class LoopbackSource:
         self.native_rate = 0
         self.native_channels = 0
         self.latency_ns = 0
+        self.overflows = 0
         self._pa: Any = None
         self._stream: Any = None
         self._cb_channels = 1
@@ -80,6 +81,8 @@ class LoopbackSource:
     def _callback(
         self, in_data: bytes, frame_count: int, time_info: Any, status: int
     ) -> tuple[None, int]:
+        if status:  # paInputOverflow and friends: the device lost input
+            self.overflows += 1
         data = np.frombuffer(in_data, dtype=np.float32).reshape(-1, self._cb_channels).copy()
         self.ring.put(data, self._now())
         return (None, self._pam.paContinue)

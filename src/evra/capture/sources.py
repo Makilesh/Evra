@@ -38,6 +38,7 @@ class AudioSource(Protocol):
     native_channels: int
     latency_ns: int
     pads_silence: bool
+    overflows: int  # times the device reported lost input (overrun)
 
     def start(self) -> None: ...
 

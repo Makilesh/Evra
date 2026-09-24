@@ -168,3 +168,27 @@ def test_failed_reopen_does_not_escape_the_watcher_callback() -> None:
     callbacks[0]("new-device")  # must not raise
     assert mic.finished.wait(5)
     session.stop()
+
+
+def test_a_channel_that_stops_delivering_fails_the_report() -> None:
+    mic = FakeSource(_sine(44_100, 0.3, 1), 44_100, name="dies early")
+    _, system = _sources(1.5)
+    _, health = _run(CaptureSession(mic, system), mic, system)
+    assert not health.ok  # type: ignore[attr-defined]
+    assert any("stopped delivering" in h for h in health.hints)  # type: ignore[attr-defined]
+
+
+def test_digital_silence_on_the_mic_fails_with_the_privacy_fix() -> None:
+    mic = FakeSource(np.zeros((44_100, 1), dtype=np.float32), 44_100, name="blocked")
+    _, system = _sources(1.0)
+    _, health = _run(CaptureSession(mic, system), mic, system)
+    assert not health.ok  # type: ignore[attr-defined]
+    assert any("ms-settings:privacy-microphone" in h for h in health.hints)  # type: ignore[attr-defined]
+
+
+def test_device_overflows_are_reported_and_fail_the_report() -> None:
+    mic, system = _sources(1.0)
+    mic.overflows = 3
+    _, health = _run(CaptureSession(mic, system), mic, system)
+    assert health.channels["mic"].overflows == 3  # type: ignore[attr-defined]
+    assert not health.ok  # type: ignore[attr-defined]

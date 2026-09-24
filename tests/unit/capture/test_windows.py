@@ -162,3 +162,12 @@ def test_watcher_keeps_polling_after_errors() -> None:
     watcher.start()
     assert got.wait(2)
     watcher.stop()
+
+
+def test_loopback_counts_input_overflow_status() -> None:
+    pa = FakePaModule()
+    src = LoopbackSource(backend=pa)
+    src.start()
+    frames = np.zeros((2, 2), dtype=np.float32)
+    pa.stream.kwargs["stream_callback"](frames.tobytes(), 2, {}, 2)  # type: ignore[union-attr]
+    assert src.overflows == 1
