@@ -1,9 +1,9 @@
 # BUILD.md — Evra: local-first meeting notes with an in-meeting expert
 
-> **Version 4 · DRAFT · started 24 September 2026.**
+> **Version 4 · Phase 1 spec complete · 24 September 2026 · awaiting owner review.**
 > Rewritten collaboratively from the agent-written v3 (archived at `docs/archive/BUILD_PROMPT.v3.md`).
 > v3 is **reference material only** — nothing in it is binding unless it has been carried into this file.
-> Sections marked **PENDING** are still being designed; do not build from them.
+> Phases 2–4 are outlined in §3 and `BACKLOG.md`; each gets its own spec before it is built.
 > "Evra" and "Hey Evra" are placeholder names, defined once in `src/evra/constants.py`.
 
 ---
@@ -13,7 +13,7 @@
 | Part | State |
 | --- | --- |
 | §1 Product and goals | Agreed |
-| §2 Decisions | Agreed (items marked *proposed* are awaiting the section that settles them) |
+| §2 Decisions | Agreed |
 | §3 Phase roadmap | Agreed |
 | §4 Architecture: processes and components | Agreed |
 | §5 Audio pipeline | Agreed |
@@ -21,7 +21,8 @@
 | §7 Notepad, alignment and note generation | Agreed |
 | §8 Modes, storage, jobs and UI | Agreed |
 | §9 Errors, testing, public repo and quality targets | Agreed |
-| §10 Phase 1 milestones and checkpoints | PENDING |
+| §10 Phase 1 milestones and checkpoints | Agreed |
+| §11 Rules for the builder | Agreed |
 
 Tracking files (kept current by whoever builds):
 
@@ -47,7 +48,7 @@ Later phases add search across meetings and documents, and **Evra Live**: an in-
 2. **Portfolio centrepiece** — polish and a modern UI matter.
 3. **Distributable** — every shipped component must be licensed for commercial use (D11), and Evra's own code is under FSL-1.1-ALv2 (D21).
 
-### 1.3 Meeting situations (all first-class; hybrid is the everyday case)
+### 1.3 Meeting situations (all first-class; the main mode is 1:1 — §8.1)
 
 | Situation | Mic channel | System channel | Needs |
 | --- | --- | --- | --- |
@@ -91,6 +92,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D19 | Visual style | "Quiet paper": shadcn/ui + Tailwind, serif for content + Inter for UI, one teal accent, light/dark, Ctrl+K palette | 2026-09-24 |
 | D20 | Repository | Public GitHub repo; no private data, secrets or weights committed; gitleaks; Windows CI from the start (§9.3–9.4) | 2026-09-24 |
 | D21 | Code licence | Evra's own code under **FSL-1.1-ALv2** (`LICENSE.md`): source-available, no competing commercial use, each release becomes Apache-2.0 after two years | 2026-09-24 |
+| D22 | Git workflow | After each completed feature/update: `tools/check.py` + gitleaks pass → Conventional Commit → push to `origin` on the working branch. No force-push, no history rewrite, no push to `main` unless asked | 2026-09-24 |
 
 ---
 
@@ -98,7 +100,7 @@ Change none of these without a `DECISIONS.md` entry.
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| **1. Core notes (Windows)** | Two-channel capture, echo cancellation, voice activity detection, transcription, speaker separation + owner voice recognition, timestamped notepad, cited note from local LLM, edit and regenerate | Designing |
+| **1. Core notes (Windows)** | 1:1 and Meeting modes; two-channel capture, echo cancellation, voice activity detection, transcription, speaker separation + owner voice recognition, timestamped notepad, cited note from local LLM, edit and regenerate | Spec agreed |
 | 2. Knowledge | Hybrid search over meetings; document/PDF import | Later |
 | 3. Evra Live | **First: Solo mode** (voice conversation with Evra as a thinking partner — proves the speech → LLM → TTS loop). Then: wake phrase in meetings, answers from meetings + documents + web + LLM, high-quality TTS, on-screen overlay | Later |
 | 4. Meet bot | Joins when admitted, speaks answers into the call as an SME agent | Later |
@@ -120,9 +122,10 @@ Change none of these without a `DECISIONS.md` entry.
                │ multiprocessing pipes        │ localhost HTTP (Ollama's own server)
       ┌────────▼────────┐          ┌──────────▼─────────┐        ┌──────────────┐
       │  onnx worker    │          │   torch worker     │        │   Ollama     │
-      │ sherpa-onnx:    │          │ pyannote diarize   │        │ local LLM    │
-      │ Parakeet ASR,   │          │ (CUDA 13 on GPU,   │        │ (installed   │
-      │ speaker embed   │          │  CPU fallback)     │        │  separately) │
+      │ sherpa-onnx:    │          │ pyannote diarize,  │        │ local LLM    │
+      │ Parakeet ASR,   │          │ Qwen3-Embedding    │        │ (installed   │
+      │ speaker embed   │          │ (CUDA 13 on GPU,   │        │  separately) │
+      │ (CPU)           │          │  CPU fallback)     │        │              │
       │ (CPU)           │          │                    │        │              │
       └─────────────────┘          └────────────────────┘        └──────────────┘
 ```
@@ -133,6 +136,8 @@ Change none of these without a `DECISIONS.md` entry.
 - **Memory:** stopping a worker releases all its memory.
 - **Crash isolation:** a model crash or out-of-memory never stops a recording.
 - **Future:** the same worker boundary allows running workers on another machine later.
+
+- Silero VAD runs in the app process (sherpa-onnx CPU build, lightweight); only heavy models live in workers.
 
 ### 4.2 Worker rules
 
@@ -151,8 +156,8 @@ Change none of these without a `DECISIONS.md` entry.
 
 ```
 Evra/
-├── BUILD.md  PROGRESS.md  BACKLOG.md  DECISIONS.md  README.md  LICENSE.md
-├── pyproject.toml  uv.lock
+├── BUILD.md  PROGRESS.md  BACKLOG.md  DECISIONS.md  README.md  LICENSE.md  THIRD_PARTY_LICENSES.md
+├── pyproject.toml  uv.lock  models.yaml
 ├── src/evra/        # app, audio, store, jobs, workers, llm, notes, bridge, desktop
 ├── frontend/        # React + TypeScript + Tailwind + Vite
 ├── tools/           # scripts: model download, benchmarks, evals
@@ -160,6 +165,12 @@ Evra/
 ├── docs/archive/    # BUILD_PROMPT.v3.md (reference only)
 └── private/         # git-ignored: real recordings, labels, personal notes
 ```
+
+### 4.5 Models and third-party licences
+
+- `models.yaml` lists every model: id, source (Hugging Face repo or sherpa-onnx release asset), expected licence, SHA-256 per file, approximate size, when it is loaded, attribution text. Verify each repo id exists before adding it.
+- `tools/download_models.py` downloads on first use with resume and checksum verification into `%LOCALAPPDATA%\Evra\models` (resolved by `platformdirs`). Weights are never committed.
+- `THIRD_PARTY_LICENSES.md` lists every dependency, model and font with its licence and attribution; it is rendered on an in-app Licences & credits page (M6).
 
 ---
 
@@ -242,6 +253,7 @@ Phase 1 has one implementation: Parakeet TDT 0.6B v3 int8 via sherpa-onnx, CPU, 
 | `in_person` | Mic only | Room speakers, owner found by voiceprint |
 | `hybrid` | **Both channels, separately** | Room speakers, owner found by voiceprint |
 
+- **Mode shortcuts (§8.1):** in **1:1** mode, call situations skip diarization entirely (mic = owner, system = the other person) and `in_person` runs with `num_speakers = 2`. The table above applies to **Meeting** mode.
 - Label namespaces: `room` (mic), `remote` (system), `evra` (Evra's own voice, Phase 3). Room and remote speakers are never merged.
 - **Shared-laptop guard:** if the mic voice does not match the owner's voiceprint, it is not labelled as the owner.
 
@@ -295,6 +307,8 @@ score   = 0.4 * w_time + 0.3 * w_lex + 0.3 * w_sem
 meeting ends ─► fast pass (skipped if the live transcript covered everything)
             ─► diarize ─► assign words ─► identity ─► align ─► note (synthesis + extraction) ─► validate ─► ready
 ```
+
+- Steps are skipped per mode and situation (§6.3, §8.1) — e.g. a 1:1 call on headphones goes straight from transcript to identity (naming the other person) to alignment.
 
 - The **transcript view is available immediately** (live transcript, speakers filled in when ready).
 - The note area shows **stage progress** ("Separating speakers → Linking your notes → Writing note") and the finished note appears **once**, with speaker names. No draft-then-replace.
@@ -544,7 +558,64 @@ Measured on the dev machine; *(estimate)* values are recorded in `PROGRESS.md` o
 | Resources while recording | ≤ 25% average CPU, app process ≤ 1.5 GB RSS *(estimate)* |
 | Idle (workers stopped) | ≤ 300 MB RSS, < 2% CPU |
 
-## 10. Phase 1 milestones and checkpoints — PENDING
+## 10. Phase 1 milestones and checkpoints
+
+Ordered so the **main use case — a 1:1 call — works end to end as early as possible** (a 1:1 call on headphones needs no diarization). Do milestones in order; do not start one before the previous one's "Done when" passes. Tag `p1-m<N>-done` at each.
+
+| # | Milestone | Delivers | Done when | Human checkpoint |
+| --- | --- | --- | --- | --- |
+| **M0** | Bootstrap | Repo layout; `pyproject.toml` (uv, Python 3.12); `frontend/` (Vite + React + TS + Tailwind + shadcn/ui); pywebview window loading React (dev server and built modes); Python⇄JS bridge with typed calls and pushed events; `config.py` (pydantic-settings, TOML, platformdirs); structlog; SQLite + migration runner + `0001_init.sql`; `models.yaml`; licence gate; `tools/check.py`; CI + gitleaks; `evra --version` | CI green; the app window opens and round-trips a call through the bridge | — |
+| **M1** | Windows capture | `capture/windows.py` (PyAudioWPatch loopback), `capture/mic.py` (sounddevice), `capture/fake.py`, ring buffers, clock alignment, silence padding, device-change recovery, encrypted spill, `evra capture-test 60` CLI (two WAVs + health report) | 60-min soak: drift < 30 ms, no drops, health report clean | **HC1** |
+| **M2** | Audio processing + early risk spikes | livekit echo cancellation, Silero VAD, spill crash recovery; spike: meeting window always-on-top without stealing focus | §5.3 echo acceptance passes (or fallback chosen + ADR); focus spike resolved | **HC2** |
+| **M3** | **1:1 call end to end** | Worker supervisor + protocol; onnx worker (Parakeet); live transcript panel; fast pass; transcript store; `LlmProvider` + Ollama; A1 synthesis + validator (§7.5); main window, meeting window, transcript view, note view; LLM bake-off (2–3 models) recorded in `DECISIONS.md` | A real 1:1 call on headphones produces a cited note; §9.5 1:1 timing measured | **HC0** (Ollama), **HC3** |
+| **M4** | Speakers | Torch worker; pyannote per situation incl. in-person 1:1 (`num_speakers = 2`) and hybrid; enrolment in onboarding; voiceprints + identity + thresholds; word assignment; rename with three scopes; Forget this person | §6.6 acceptance | **HC0** (HF token), **HC4** |
+| **M5** | Notes complete | Timestamped notepad; Qwen3-Embedding in torch worker; aligner; templates; extraction A4–A7; map-reduce path; provenance + regeneration + version history; citation chips with audio playback; Opus re-encode + retention sweeper | §7.8 acceptance | **HC-DATA** |
+| **M6** | Daily-use ready | Onboarding, settings, tray, hotkeys, `Ctrl+K` palette, "Quiet paper" styling pass, Needs-attention list, error banners (§9.1), accessibility pass, `tools/eval_notes.py` run, README with screenshots | Every §9.5 target measured and recorded; one week of real daily use | **HC-WEEK** |
+
+### 10.1 Human checkpoint catalogue
+
+| ID | When | What the human does | Paste back |
+| --- | --- | --- | --- |
+| HC0 | Before M3 / M4 | Install Ollama; accept `pyannote/speaker-diarization-community-1` conditions on Hugging Face and create a read token (entered in the app's settings dialog, never pasted into chat) | "Ollama installed", "HF token saved" |
+| HC1 | M1 | Play a video and talk over it for 60 s with headphones, then with laptop speakers; listen to both WAVs | Health report + "both WAVs sound right" (or what's wrong) |
+| HC2 | M2 | Join a call from a second device; talk from both ends on laptop speakers | Mic-transcript comparison with echo cancellation on vs off |
+| HC3 | M3 | Hold a real 15–30 min 1:1 call on headphones (with the other person's consent) | Note rating 1–5 + any wrong facts |
+| HC4 | M4 | Enrol voice; hold an in-person 1:1 and a hybrid meeting; name speakers once; repeat a second session | Recognition results |
+| HC-DATA | M5 | Put 3–5 consenting 1:1 recordings in `private/`; label 30 note lines in the labelling tool | "Data ready" |
+| HC-WEEK | M6 | Use Evra for a week of real 1:1s | List of annoyances and failures |
+
+Consent: always tell the other person a meeting is being recorded.
+
+Checkpoint message format:
+
+```
+======== HUMAN CHECKPOINT <ID>: <title> ========
+Why: <one sentence>
+Steps:
+  1. ...
+Expected result: ...
+Paste back: <exactly what is needed>
+================================================
+```
+
+While waiting, continue with independent work that does not depend on the result.
+
+---
+
+## 11. Rules for the builder (Claude Code)
+
+1. **Read `BUILD.md` fully before writing code.** It is the source of truth; `docs/archive/BUILD_PROMPT.v3.md` is reference only.
+2. Keep a short `CLAUDE.md` (≤ 150 lines): decisions summary, commands, conventions, pointers into `BUILD.md` by section.
+3. Work milestone by milestone (§10). Inside a milestone: tests first where practical, implement, run `tools/check.py`, fix everything.
+4. **Git (D22): after completing each feature or update — one coherent piece of work — commit with a Conventional Commit message and push to `origin` immediately.** Don't batch unrelated work. Before every push: `tools/check.py` passes and gitleaks finds nothing. Never commit anything listed in §9.3. Never force-push, rewrite history or push to `main` without the human asking.
+5. **Update tracking files as you go:** `PROGRESS.md` (what was built/measured, with date and commit hash), `DECISIONS.md` (every choice or deviation: context, evidence, decision, consequences), `BACKLOG.md` (anything deferred). Numbers marked *(estimate)* get measured values recorded.
+6. **Decisions in §2 never change silently.** If evidence says one is wrong, write a `DECISIONS.md` entry with the evidence, take the stated fallback, and continue.
+7. **Licence gate first:** before adding any Python/npm dependency or model, check its licence, add it to `models.yaml` / `THIRD_PARTY_LICENSES.md`, and run the gate.
+8. **Never invent APIs.** When unsure, read the installed source or official docs, or write a ≤ 20-line spike in `spikes/` (deleted once its lesson is in real code).
+9. **Code quality:** type hints everywhere (mypy strict on `src/`); TypeScript strict; files under ~500 lines; no global mutable state except the app container; dependency injection for hardware, network and clock so tests can fake them.
+10. **Privacy:** never log transcript, note or document text or audio above DEBUG. Real meeting data never leaves `private/` or the app data directory.
+11. **Public-repo wording:** repository files describe Evra's goals as personal use, portfolio and distribution only.
+12. Stop only at HUMAN CHECKPOINTS or when an external dependency truly blocks you.
 
 ---
 

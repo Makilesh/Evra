@@ -43,3 +43,8 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** FSL-1.1-ALv2 (Sentry) allows reading, running, modifying and non-competing use; bars competing commercial use; each release converts to Apache-2.0 after two years. Official text taken from getsentry/fsl.software.
 - **Decision:** `LICENSE.md` = FSL-1.1-ALv2, Copyright 2026 Makilesh.
 - **Consequences:** third-party components keep their own licences (tracked in the licence gate); contributors' terms to be decided if outside contributions are accepted.
+
+## D22 — Commit and push after every completed feature (2026-09-24)
+- **Context:** the owner wants the public repo to track progress continuously.
+- **Decision:** after each coherent feature or update: `tools/check.py` and gitleaks pass → Conventional Commit → push to `origin` on the working branch.
+- **Consequences:** small, frequent pushes; secret scanning and the §9.3 rules are the safety net; no force-push, history rewrite or push to `main` unless asked.

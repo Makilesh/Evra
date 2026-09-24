@@ -18,4 +18,5 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Repo is public at github.com/Makilesh/Evra (branch `core`). Hardened `.gitignore` (`private/`, `.remember/`, audio, env files, node_modules).
 - Code licence: FSL-1.1-ALv2 (D21), `LICENSE.md` added.
 - Public docs contain only personal-use, portfolio and distribution goals.
-- Next: design §10 Phase 1 milestones and checkpoints.
+- Agreed §10 Phase 1 milestones M0–M6 (1:1 call end-to-end at M3) and human checkpoints; §11 builder rules; git workflow D22 (commit + push after every completed feature).
+- Next: owner reviews the full BUILD.md, then an implementation plan for M0 is written.
