@@ -8,6 +8,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 2: ChunkRing — non-blocking callback hand-off, drops counted.
 - Task 3: SourceClock — steady timestamps from jittery/bursty callbacks; follows drift; detects real jumps.
 - Task 4: ChannelTimeline — ≥50 ms gaps filled, >20 ms drift corrected in 10 ms steps (60-min simulated drift < 30 ms throughout), silence padding.
+- Task 5: CapturePipeline — per-channel drain/clock/convert/place/emit; loopback padding, overflow gaps, device swap, levels in dBFS.
 
 ## 2026-09-24 — M0 Bootstrap
 
