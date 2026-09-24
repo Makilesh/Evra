@@ -91,3 +91,14 @@ def test_start_failure_maps_to_mic_unavailable_with_privacy_hint() -> None:
 def test_unknown_device_is_a_clear_error() -> None:
     with pytest.raises(MicUnavailableError, match="not found"):
         MicSource("nope", backend=FakeSd(missing=True))
+
+
+def test_is_active_follows_the_stream() -> None:
+    sd = FakeSd()
+    mic = MicSource(backend=sd)
+    assert not mic.is_active()
+    mic.start()
+    sd.stream.active = True  # type: ignore[union-attr]
+    assert mic.is_active()
+    sd.stream.active = False  # type: ignore[union-attr]
+    assert not mic.is_active()

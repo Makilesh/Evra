@@ -192,3 +192,17 @@ def test_device_overflows_are_reported_and_fail_the_report() -> None:
     _, health = _run(CaptureSession(mic, system), mic, system)
     assert health.channels["mic"].overflows == 3  # type: ignore[attr-defined]
     assert not health.ok  # type: ignore[attr-defined]
+
+
+def test_a_dead_stream_is_restarted() -> None:
+    mic, system = _sources(1.5)
+    session = CaptureSession(mic, system, liveness_s=0.05)
+    session.start(lambda f: None)
+    time.sleep(0.3)
+    mic.kill()  # e.g. Bluetooth reconnect: same device id, but the stream is gone
+    deadline = time.monotonic() + 3
+    while session.stream_restarts == 0 and time.monotonic() < deadline:
+        time.sleep(0.02)
+    health = session.stop()
+    assert session.stream_restarts >= 1
+    assert health.stream_restarts >= 1

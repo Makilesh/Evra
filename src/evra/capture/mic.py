@@ -79,6 +79,9 @@ class MicSource:
             self._stream.close()
             self._stream = None
 
+    def is_active(self) -> bool:
+        return self._stream is not None and bool(self._stream.active)
+
     def reopen(self) -> None:
         self.stop()
         self.start()

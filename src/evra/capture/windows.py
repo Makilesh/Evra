@@ -103,6 +103,9 @@ class LoopbackSource:
         self.stop()
         self.start()
 
+    def is_active(self) -> bool:
+        return self._stream is not None and bool(self._stream.is_active())
+
 
 def default_output_id() -> str | None:
     """Id of the current Windows default output endpoint, or None if there is none."""

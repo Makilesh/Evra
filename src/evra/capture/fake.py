@@ -55,6 +55,7 @@ class FakeSource:
         self._sleep = sleep
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._killed = False
 
     @classmethod
     def from_wav(cls, path: Path, **kwargs: Any) -> FakeSource:
@@ -77,6 +78,7 @@ class FakeSource:
             yield t_s, chunk
 
     def start(self) -> None:
+        self._killed = False
         self._stop.clear()
         self.finished.clear()
         self._thread = threading.Thread(target=self._run, name=f"fake-{self.name}", daemon=True)
@@ -91,6 +93,14 @@ class FakeSource:
     def reopen(self) -> None:
         self.stop()
         self.start()
+
+    def is_active(self) -> bool:
+        return not self._killed  # a replay that simply ended is still "alive"
+
+    def kill(self) -> None:
+        """Test hook: the stream dies (like a Bluetooth reconnect) without stop()."""
+        self._killed = True
+        self._stop.set()
 
     def _run(self) -> None:
         t0 = self._now()

@@ -171,3 +171,12 @@ def test_loopback_counts_input_overflow_status() -> None:
     frames = np.zeros((2, 2), dtype=np.float32)
     pa.stream.kwargs["stream_callback"](frames.tobytes(), 2, {}, 2)  # type: ignore[union-attr]
     assert src.overflows == 1
+
+
+def test_loopback_is_active_follows_the_stream() -> None:
+    pa = FakePaModule()
+    src = LoopbackSource(backend=pa)
+    assert not src.is_active()
+    src.start()
+    pa.stream.is_active = lambda: False  # type: ignore[union-attr, method-assign]
+    assert not src.is_active()

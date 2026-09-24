@@ -46,6 +46,7 @@ class CaptureHealth:
     channels: dict[str, ChannelHealth]
     inter_channel_drift_ms: float
     device_changes: int
+    stream_restarts: int
     hints: list[str]
     ok: bool
 
@@ -73,6 +74,7 @@ class CaptureSession:
         watcher_factory: WatcherFactory | None = None,
         now_ns: Callable[[], int] = time.monotonic_ns,
         tick_s: float = 0.01,
+        liveness_s: float = 2.0,
     ) -> None:
         self._sources: dict[Channel, AudioSource] = {MIC: mic, SYSTEM: system}
         self._watcher_factory = watcher_factory
@@ -84,6 +86,8 @@ class CaptureSession:
         self._thread: threading.Thread | None = None
         self._failure: str | None = None  # exception type that stopped the pipeline thread
         self.device_changes = 0
+        self.stream_restarts = 0
+        self._liveness_s = liveness_s
 
     def start(self, on_frames: Callable[[Frames], None]) -> None:
         mic, system = self._sources[MIC], self._sources[SYSTEM]
@@ -164,18 +168,37 @@ class CaptureSession:
             channels={"mic": mic, "system": system},
             inter_channel_drift_ms=drift,
             device_changes=self.device_changes,
+            stream_restarts=self.stream_restarts,
             hints=hints,
             ok=problems == 0 and drift < DRIFT_LIMIT_MS,
         )
 
     def _run(self) -> None:
         assert self._pipeline is not None
+        next_check = time.monotonic() + self._liveness_s
         while not self._stop.wait(self._tick):
             try:
                 self._pipeline.step()
             except Exception as exc:  # never let the capture thread die silently
                 self._fail(exc)
                 return
+            if time.monotonic() >= next_check:
+                next_check = time.monotonic() + self._liveness_s
+                self._restart_dead_streams()
+
+    def _restart_dead_streams(self) -> None:
+        """A stream can die while the device id stays the same (Bluetooth reconnect,
+        format change, another app taking exclusive mode): reopen it."""
+        assert self._pipeline is not None
+        for channel, source in self._sources.items():
+            if source.is_active():
+                continue
+            try:
+                self._pipeline.swap_source(channel, cause="stream_restart")
+                self.stream_restarts += 1
+                log.info("capture_stream_restarted", channel=channel)
+            except Exception as exc:  # still gone: try again at the next check
+                log.warning("capture_stream_restart_failed", error=type(exc).__name__)
 
     def _fail(self, exc: BaseException) -> None:
         self._failure = type(exc).__name__
