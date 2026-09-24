@@ -97,6 +97,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D22 | Git workflow | After each completed feature/update: `tools/check.py` + gitleaks pass → Conventional Commit → push to `origin` on the working branch. No force-push, no history rewrite, no push to `main` unless asked | 2026-09-24 |
 | D23 | Dev data location | Running from the source checkout keeps all app data in `<repo>/.data/` (git-ignored); installed builds use per-user OS dirs; `evra run --data-dir` overrides | 2026-09-24 |
 | D24 | Resampling | libsamplerate via `samplerate` (stateful, seamless across chunks) | 2026-09-24 |
+| D25 | Output-device watch | pycaw Core Audio endpoint id, polled every 2 s | 2026-09-24 |
 
 ---
 
@@ -192,7 +193,7 @@ Evra/
 - **System audio:** PyAudioWPatch opens the WASAPI loopback twin of the default output device at its native rate/channels. Downmix and resample to 16 kHz in the pipeline with a stateful libsamplerate resampler (`samplerate`, D24) (never ask WASAPI to convert; avoid `soxr`, which is LGPL).
 - **Microphone:** `sounddevice` on the default input (user-selectable); native rate, resampled.
 - **Silence padding:** loopback delivers nothing when nothing plays; if no loopback data arrives for 50 ms while capturing, synthesise zeros so the timeline keeps moving.
-- **Device changes:** poll the default output every 2 s; on change, reopen loopback on the new device and record a `gap` (cause `device_change`). Target < 500 ms lost.
+- **Device changes:** poll the default output every 2 s; on change, reopen loopback on the new device and record a `gap` (cause `device_change`). Target < 500 ms lost. The default endpoint id is read via pycaw (D25).
 - **Mic permission:** on access error, show a dialog linking to `ms-settings:privacy-microphone`.
 - **Interface:** a `CaptureBackend` protocol (`list_devices`, `start`, `stop`, `health`) emitting `Frames(channel, pcm, t_capture_ns)`. `capture/fake.py` replays WAV files with real-time pacing, injected silences, dropouts and device changes; every test above the OS boundary uses it.
 

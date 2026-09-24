@@ -72,3 +72,9 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** `resample_poly` is stateless, so per-chunk calls create seams at every boundary. A spike on the dev machine showed the default mic at 44.1 kHz (a rational 160/441 ratio) and 26 ms callbacks. `samplerate` 0.2.4 (MIT binding; libsamplerate BSD-2-Clause) streams statefully: 88 200 → 31 954 samples, ≈3 ms held in the filter.
 - **Decision:** `ToMono16k` uses `samplerate.Resampler("sinc_fastest")`; scipy is not a dependency.
 - **Consequences:** one fewer large dependency; the tiny constant filter delay is absorbed by the timeline.
+
+## D25 — Default-output detection via pycaw (Core Audio) (2026-09-24)
+- **Context:** BUILD.md §5.1 requires reopening loopback when the default output changes (polled every 2 s).
+- **Evidence:** PortAudio (inside PyAudioWPatch) fixes its device list at initialisation, so it cannot see a new default device while running. pycaw (MIT; comtypes MIT) returns the current endpoint id from the Windows Core Audio API; verified on the dev machine (hardware test).
+- **Decision:** `DefaultOutputWatcher` polls `pycaw.AudioUtilities.GetSpeakers().id`; on change `LoopbackSource.reopen()` re-initialises PyAudio and the pipeline records a `device_change` gap.
+- **Consequences:** two small Windows-only dependencies; macOS/Linux get their own watchers in their milestone.

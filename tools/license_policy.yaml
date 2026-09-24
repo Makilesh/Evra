@@ -40,4 +40,7 @@ overrides:
     clr-loader:
       licence: MIT
       source: https://github.com/pythonnet/clr-loader/blob/main/LICENSE
+    pycaw:
+      licence: MIT
+      source: https://github.com/AndreMiras/pycaw/blob/develop/LICENSE
   npm: {}

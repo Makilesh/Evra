@@ -53,3 +53,4 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Test: assert the percent-encoded `file://` URL converts back to the same file.
 - **Before M3 renders transcript/LLM text:** set pywebview `ALLOW_FILE_URLS = False` and add a CSP to the built `index.html`.
 - **Packaging milestone:** lock DEBUG/devtools off in release builds; include the built UI in the bundle; full licence texts in the register; single-instance guard (M6).
+- sounddevice 0.5.6 raises a NumPy 2.5 DeprecationWarning (setting array shape) inside its callback path; watch for a sounddevice release before NumPy removes it.
