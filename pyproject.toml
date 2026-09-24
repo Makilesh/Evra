@@ -39,7 +39,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src"]
+files = ["src", "tools"]
 
 [[tool.mypy.overrides]]
 module = ["webview", "webview.*"]
@@ -53,6 +53,9 @@ addopts = "-ra"
 [dependency-groups]
 dev = [
     "mypy>=2.3.1",
+    "pip-licenses>=5.5.5",
     "pytest>=9.1.1",
+    "pyyaml>=6.0.3",
     "ruff>=0.16.8",
+    "types-pyyaml>=6.0.12.20260906",
 ]
