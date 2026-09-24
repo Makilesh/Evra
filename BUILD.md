@@ -93,6 +93,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D20 | Repository | Public GitHub repo; no private data, secrets or weights committed; gitleaks; Windows CI from the start (§9.3–9.4) | 2026-09-24 |
 | D21 | Code licence | Evra's own code under **FSL-1.1-ALv2** (`LICENSE.md`): source-available, no competing commercial use, each release becomes Apache-2.0 after two years | 2026-09-24 |
 | D22 | Git workflow | After each completed feature/update: `tools/check.py` + gitleaks pass → Conventional Commit → push to `origin` on the working branch. No force-push, no history rewrite, no push to `main` unless asked | 2026-09-24 |
+| D23 | Dev data location | Running from the source checkout keeps all app data in `<repo>/.data/` (git-ignored); installed builds use per-user OS dirs; `evra run --data-dir` overrides | 2026-09-24 |
 
 ---
 
@@ -169,7 +170,7 @@ Evra/
 ### 4.5 Models and third-party licences
 
 - `models.yaml` lists every model: id, source (Hugging Face repo or sherpa-onnx release asset), expected licence, SHA-256 per file, approximate size, when it is loaded, attribution text. Verify each repo id exists before adding it.
-- `tools/download_models.py` downloads on first use with resume and checksum verification into `%LOCALAPPDATA%\Evra\models` (resolved by `platformdirs`). Weights are never committed.
+- `tools/download_models.py` downloads on first use with resume and checksum verification into the models directory: `<repo>/.data/data/models` from a source checkout (D23), `%LOCALAPPDATA%\Evra\models` for an installed build (resolved by `platformdirs`). Weights are never committed.
 - `THIRD_PARTY_LICENSES.md` lists every dependency, model and font with its licence and attribution; it is rendered on an in-app Licences & credits page (M6).
 
 ---
@@ -368,7 +369,7 @@ Chosen when recording starts, next to the situation picker. The mode tells the p
 
 ### 8.2 Storage (SQLite, `store/migrations/0001_init.sql`)
 
-WAL mode, `foreign_keys=ON`, one database per user under `%LOCALAPPDATA%\Evra` (resolved by `platformdirs`). Times are integer milliseconds; `*_ms` fields are relative to meeting start.
+WAL mode, `foreign_keys=ON`, one database per user: `<repo>/.data/data/evra.db` when running from the source checkout (D23), `%LOCALAPPDATA%\Evra\evra.db` for an installed build (resolved by `platformdirs`). Times are integer milliseconds; `*_ms` fields are relative to meeting start.
 
 ```sql
 CREATE TABLE meeting (
@@ -616,6 +617,7 @@ While waiting, continue with independent work that does not depend on the result
 10. **Privacy:** never log transcript, note or document text or audio above DEBUG. Real meeting data never leaves `private/` or the app data directory.
 11. **Public-repo wording:** repository files describe Evra's goals as personal use, portfolio and distribution only.
 12. Stop only at HUMAN CHECKPOINTS or when an external dependency truly blocks you.
+13. **Keep everything inside the project folder (D23):** when running from source, app data (database, settings, logs, models, recordings) lives in `<repo>/.data/`; spikes in `spikes/`; scratch and research files in `private/`. All git-ignored. Never write working files to the system temp folder.
 
 ---
 

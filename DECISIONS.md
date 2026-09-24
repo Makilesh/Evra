@@ -48,3 +48,9 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Context:** the owner wants the public repo to track progress continuously.
 - **Decision:** after each coherent feature or update: `tools/check.py` and gitleaks pass → Conventional Commit → push to `origin` on the working branch.
 - **Consequences:** small, frequent pushes; secret scanning and the §9.3 rules are the safety net; no force-push, history rewrite or push to `main` unless asked.
+
+## D23 — Keep development data inside the project folder (2026-09-24)
+- **Context:** the owner wants everything Evra and the builder create to live in `D:\GEN AI\Evra`, not scattered across `C:`.
+- **Evidence:** models and recordings will be multi-GB; the project drive is where the owner looks for files.
+- **Decision:** from a source checkout, `resolve_paths()` puts all app data in `<repo>/.data/`; installed builds use platformdirs; `evra run --data-dir` overrides. Spikes go in `spikes/`, scratch/research in `private/`; all git-ignored. uv's shared Python runtime stays in uv's own directory.
+- **Consequences:** deleting `.data/` resets the dev app; tests always use temporary `AppPaths.under(tmp)`.
