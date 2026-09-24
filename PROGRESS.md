@@ -13,6 +13,18 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 7: FakeSource, MicSource (sounddevice), LoopbackSource (PyAudioWPatch), DefaultOutputWatcher (pycaw, D25); hardware tests 4/4 on the dev machine.
 - Task 8: CaptureSession — sources + pipeline thread + output watcher; CaptureHealth with drift, drops, gaps, hints.
 - Task 9: `evra capture-test SECONDS` — two WAVs + health.json; spill + key cleaned up. Dev-machine 10 s run: PASS (0 drops, inter-channel drift 0.0 ms, mic -26.4 dBFS, system -16.5 dBFS, earbuds 44.1k mic + 48k loopback).
+- Final review (fresh reviewer): 1 Critical + 7 Important, all fixed test-first:
+  - device swap could crash the pipeline thread (2-ch → 1-ch headset);
+  - callback stalls created false gaps;
+  - short loopback silences reordered audio;
+  - starts dropped audio (start time + clock warm-up);
+  - loopback errors unmapped and the watcher died;
+  - health passed stalled / overflowing / blocked channels;
+  - spill reader accepted swapped segments;
+  - dead streams never restarted.
+  Two more found on real hardware: start-up correction from a late first callback, and padding stretched by a slow device close. 13 minors deferred to BACKLOG.md.
+- Real 10 s run on fixed code: PASS — 0 drops, 0 corrections on both channels, inter-channel drift 3.2 ms. Hardware tests 4/4.
+- 60-minute soak on the fixed code: running (built-in mic + speaker loopback).
 
 ## 2026-09-24 — M0 Bootstrap
 
