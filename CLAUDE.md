@@ -14,7 +14,7 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 
 ## Rules (full list: BUILD.md §11)
 - Work milestone by milestone (BUILD.md §10); plans live in `docs/superpowers/plans/`.
-- After each completed feature: checks pass → Conventional Commit → `git push origin core` (D22). No force-push.
+- After each completed feature: checks pass → Conventional Commit → `git push` on the current working branch (D22; one branch per milestone, e.g. `windows-capture`). No force-push.
 - Update `PROGRESS.md`, `DECISIONS.md`, `BACKLOG.md` as you go.
 - Never change a §2 decision silently; write a DECISIONS.md entry.
 - Licence gate before any new dependency or model.
