@@ -25,6 +25,21 @@ describe("getApi", () => {
     await expect(pending).resolves.toBe(fakeApi);
   });
 
+  it("waits when pywebview has only injected an empty api object", async () => {
+    window.pywebview = { api: {} as EvraApi };
+    const pending = getApi(1000);
+    window.pywebview = { api: fakeApi };
+    window.dispatchEvent(new Event("pywebviewready"));
+    await expect(pending).resolves.toBe(fakeApi);
+  });
+
+  it("rejects if pywebviewready fires but the api is still empty", async () => {
+    window.pywebview = { api: {} as EvraApi };
+    const pending = getApi(1000);
+    window.dispatchEvent(new Event("pywebviewready"));
+    await expect(pending).rejects.toThrow("pywebviewready fired without an api");
+  });
+
   it("rejects when the bridge never appears", async () => {
     await expect(getApi(10)).rejects.toThrow("Python bridge not available");
   });

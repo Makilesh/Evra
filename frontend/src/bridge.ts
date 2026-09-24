@@ -33,13 +33,22 @@ export function setApiForTests(api: EvraApi | null): void {
   apiOverride = api;
 }
 
+// pywebview injects `window.pywebview = { api: {} }` first and fills in the methods later
+// (then fires `pywebviewready`), so an api object alone does not mean it is usable.
+function readyApi(): EvraApi | null {
+  const api = window.pywebview?.api;
+  return api && typeof api.app_info === "function" ? api : null;
+}
+
 export function getApi(timeoutMs = 10_000): Promise<EvraApi> {
   if (apiOverride) return Promise.resolve(apiOverride);
-  if (window.pywebview?.api) return Promise.resolve(window.pywebview.api);
+  const ready = readyApi();
+  if (ready) return Promise.resolve(ready);
   return new Promise((resolve, reject) => {
     const onReady = () => {
       window.clearTimeout(timer);
-      if (window.pywebview?.api) resolve(window.pywebview.api);
+      const api = readyApi();
+      if (api) resolve(api);
       else reject(new Error("pywebviewready fired without an api"));
     };
     const timer = window.setTimeout(() => {
