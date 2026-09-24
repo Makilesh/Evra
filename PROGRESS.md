@@ -15,6 +15,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 9: GitHub Actions (Windows checks + gitleaks-action v3); local gitleaks 8.30.1 via tools/check.py — no leaks in history.
 - Commits: bf0a634 (T1) · 3f940ee (T2) · e81e1c6 (T3) · 6a1b44b (T4) · 78cff1b (T5) · 443edc1 (T6) · 19b6baf (T7) · b1a559f (T8) · 5c1a360 + 3de7053 (T9).
 - **M0 done:** CI green (run 35995915108); `tools/check.py` all PASS incl. gitleaks; window round-trips calls both ways; no network listener (0 TCP / 0 UDP, verified with Get-NetTCPConnection / Get-NetUDPEndpoint); 75 Python + 11 frontend tests.
+- Final review (fresh reviewer): 0 Critical, 7 fixed with failing-test-first (log tracebacks + redaction on every path, bridge readiness race, BOM settings, WebView2 profile in `.data`, licence gate fail-closed, startup errors logged). 14 minors deferred to BACKLOG.md. 91 Python + 13 frontend tests.
 - Next: M1 Windows capture (plan to be written).
 
 ## 2026-09-24 — Planning session 1
