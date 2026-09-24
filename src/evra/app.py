@@ -14,7 +14,7 @@ from evra.bridge.api import BridgeApi
 from evra.bridge.events import EventBus
 from evra.config import Settings, debug_enabled, load_settings
 from evra.constants import APP_NAME
-from evra.logging_setup import configure_logging
+from evra.logging_setup import LOG_FILE_NAME, configure_logging
 from evra.paths import AppPaths, resolve_paths
 from evra.store.db import connect
 from evra.store.migrate import migrate
@@ -66,12 +66,23 @@ def run_app(
     except UiNotBuiltError as exc:
         print(exc, file=sys.stderr)
         return 2
-    app = build_app(paths or resolve_paths(), debug=debug or debug_enabled())
-    opener(
-        url=url,
-        api=app.api,
-        bus=app.bus,
-        debug=app.debug,
-        storage_dir=app.paths.data_dir / "webview",
-    )
+    paths = paths or resolve_paths()
+    try:
+        app = build_app(paths, debug=debug or debug_enabled())
+        opener(
+            url=url,
+            api=app.api,
+            bus=app.bus,
+            debug=app.debug,
+            storage_dir=app.paths.data_dir / "webview",
+        )
+    except Exception as exc:
+        # Log the details (redacted per §9.1) and give the user one readable line.
+        log.exception("app_failed")
+        log_file = paths.log_dir / LOG_FILE_NAME
+        print(
+            f"{APP_NAME} could not start ({type(exc).__name__}). Details are in {log_file}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
