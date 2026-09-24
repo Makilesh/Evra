@@ -54,3 +54,9 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** models and recordings will be multi-GB; the project drive is where the owner looks for files.
 - **Decision:** from a source checkout, `resolve_paths()` puts all app data in `<repo>/.data/`; installed builds use platformdirs; `evra run --data-dir` overrides. Spikes go in `spikes/`, scratch/research in `private/`; all git-ignored. uv's shared Python runtime stays in uv's own directory.
 - **Consequences:** deleting `.data/` resets the dev app; tests always use temporary `AppPaths.under(tmp)`.
+
+## Config via pydantic + tomllib instead of pydantic-settings (2026-09-24)
+- **Context:** BUILD.md §10 M0 lists pydantic-settings; settings live in a runtime-resolved TOML path and tests need to inject it.
+- **Evidence:** pydantic-settings' TOML source is configured per class; injecting a path per call needs a workaround. Only `EVRA_DEBUG` comes from the environment.
+- **Decision:** `Settings` is a plain pydantic model; `load_settings(path)`/`save_settings(path, s)` use `tomllib`/`tomli-w`; `debug_enabled()` reads `EVRA_DEBUG`.
+- **Consequences:** one fewer dependency; corrupt files are moved to `settings.toml.bad` and defaults load.

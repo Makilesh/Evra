@@ -6,7 +6,12 @@ readme = "README.md"
 license = "LicenseRef-FSL-1.1-ALv2"
 license-files = ["LICENSE.md"]
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "platformdirs>=4.11.12",
+    "pydantic>=2.13.5",
+    "structlog>=26.1.0",
+    "tomli-w>=1.2.0",
+]
 
 [project.scripts]
 evra = "evra.__main__:main"
