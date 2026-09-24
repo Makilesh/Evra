@@ -12,6 +12,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 6: pywebview window loads the single-file UI via file:// — verified 0 listening TCP/UDP sockets; bridge works both ways (built and dev modes); `evra run [--dev] [--debug] [--data-dir]`.
 - Task 7: licence gate (226 components: python + npm + models), policy file (MIT-0 allowed; clr-loader override verified MIT), models.yaml, generated THIRD_PARTY_LICENSES.md.
 - Task 8: tools/check.py runs ruff (lint + format), mypy, pytest, oxlint, tsc, vitest and the licence gate in one command — all PASS.
+- Task 9: GitHub Actions (Windows checks + gitleaks-action v3); local gitleaks 8.30.1 via tools/check.py — no leaks in history.
 
 ## 2026-09-24 — Planning session 1
 

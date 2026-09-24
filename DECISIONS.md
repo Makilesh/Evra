@@ -60,3 +60,9 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** pydantic-settings' TOML source is configured per class; injecting a path per call needs a workaround. Only `EVRA_DEBUG` comes from the environment.
 - **Decision:** `Settings` is a plain pydantic model; `load_settings(path)`/`save_settings(path, s)` use `tomllib`/`tomli-w`; `debug_enabled()` reads `EVRA_DEBUG`.
 - **Consequences:** one fewer dependency; corrupt files are moved to `settings.toml.bad` and defaults load.
+
+## Secret scanning: CI always, locally via tools/check.py (2026-09-24)
+- **Context:** BUILD.md §9.3 asks for gitleaks in CI and before commits.
+- **Evidence:** Smart App Control blocked pnpm.exe on 2026-09-24 and was then switched off. Local gitleaks: runs (8.30.1, installed with winget); `gitleaks git` scanned 12 commits, no leaks.
+- **Decision:** gitleaks runs in CI on every push (full history, gitleaks-action v3; no licence key needed for a personal account). `tools/check.py` runs it locally whenever `gitleaks` is on PATH.
+- **Consequences:** every commit is scanned before push on the dev machine; CI is the backstop.

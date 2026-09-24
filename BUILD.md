@@ -533,7 +533,7 @@ The repository is public on GitHub.
 - **Never commit:** real meeting audio, transcripts, notes, labels, LLM responses recorded from real meetings, tokens, keys, `.env` files, model weights.
 - **Committed fixtures** use only public (AMI, CC-BY-4.0, with attribution) or synthetic audio; recorded LLM fixtures are made from those fixtures only.
 - The owner's real recordings and personal notes live in `private/` (git-ignored); tools read them from a path in settings.
-- **gitleaks** secret scanning runs in CI and as a pre-commit hook.
+- **gitleaks** secret scanning runs in CI on every push, and locally through `tools/check.py` when gitleaks is installed.
 
 ### 9.4 CI (`.github/workflows/ci.yml`)
 
