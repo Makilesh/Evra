@@ -44,7 +44,7 @@ def load_settings(path: Path) -> Settings:
     if not path.exists():
         return Settings()
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = tomllib.loads(path.read_text(encoding="utf-8-sig"))  # tolerate a Windows BOM
         return Settings.model_validate(data)
     except (tomllib.TOMLDecodeError, ValidationError, UnicodeDecodeError):
         backup = path.with_suffix(".toml.bad")

@@ -44,3 +44,12 @@ def test_debug_enabled_reads_only_evra_debug() -> None:
     assert debug_enabled({"EVRA_DEBUG": "1"}) is True
     assert debug_enabled({"EVRA_DEBUG": "0"}) is False
     assert debug_enabled({}) is False
+
+
+def test_utf8_bom_file_is_read_not_reset(tmp_path: Path) -> None:
+    # PowerShell 5 `Set-Content -Encoding UTF8` and some editors write a BOM.
+    path = tmp_path / "settings.toml"
+    path.write_bytes(b"\xef\xbb\xbf" + b'theme = "dark"\n')
+    assert load_settings(path).theme == "dark"
+    assert path.exists()
+    assert not (tmp_path / "settings.toml.bad").exists()
