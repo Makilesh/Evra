@@ -38,6 +38,8 @@ class FakePyAudio:
         }
 
     def open(self, **kwargs: Any) -> FakeStream:
+        if self._m.open_error:
+            raise OSError(-9996, "Invalid device")
         self._m.stream = FakeStream(**kwargs)
         return self._m.stream
 
@@ -49,8 +51,9 @@ class FakePaModule:
     paFloat32 = 1
     paContinue = 0
 
-    def __init__(self, no_device: bool = False) -> None:
+    def __init__(self, no_device: bool = False, open_error: bool = False) -> None:
         self.no_device = no_device
+        self.open_error = open_error
         self.instances = 0
         self.terminated = 0
         self.stream: FakeStream | None = None
@@ -115,3 +118,47 @@ def test_watcher_reports_changes_only() -> None:
     assert got_two.wait(2)
     watcher.stop()
     assert seen[:2] == ["B", "C"]
+
+
+def test_open_failure_is_a_clear_error_and_releases_portaudio() -> None:
+    pa = FakePaModule(open_error=True)
+    with pytest.raises(LoopbackUnavailableError):
+        LoopbackSource(backend=pa).start()
+    assert pa.terminated == 1
+
+
+def test_stop_survives_a_device_that_already_vanished() -> None:
+    pa = FakePaModule()
+    src = LoopbackSource(backend=pa)
+    src.start()
+
+    def gone() -> None:
+        raise OSError(-9999, "Unanticipated host error")
+
+    pa.stream.stop_stream = gone  # type: ignore[union-attr, method-assign]
+    src.stop()
+    assert pa.terminated == 1
+
+
+def test_watcher_keeps_polling_after_errors() -> None:
+    calls = {"n": 0}
+
+    def flaky_id() -> str | None:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("COM hiccup")
+        return "A" if calls["n"] < 4 else "B"
+
+    seen: list[str | None] = []
+    got = threading.Event()
+
+    def on_change(new: str | None) -> None:
+        seen.append(new)
+        if new == "B":
+            got.set()
+        raise RuntimeError("handler bug")  # must not kill the watcher either
+
+    watcher = DefaultOutputWatcher(on_change, get_id=flaky_id, interval_s=0.001)
+    watcher.start()
+    assert got.wait(2)
+    watcher.stop()

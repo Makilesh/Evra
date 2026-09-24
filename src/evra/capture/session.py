@@ -12,7 +12,7 @@ import structlog
 
 from evra.audio.frames import MIC, SAMPLE_RATE, SYSTEM, Channel, Frames
 from evra.audio.pipeline import CapturePipeline, ChannelStats
-from evra.capture.sources import AudioSource, CaptureError
+from evra.capture.sources import AudioSource
 
 log = structlog.get_logger(__name__)
 
@@ -88,7 +88,7 @@ class CaptureSession:
         mic.start()
         try:
             system.start()
-        except CaptureError:
+        except BaseException:
             mic.stop()
             raise
         self._pipeline = CapturePipeline(
@@ -169,5 +169,5 @@ class CaptureSession:
             return
         try:
             self._pipeline.swap_source(SYSTEM)
-        except CaptureError as exc:
-            log.warning("loopback_reopen_failed", hint=exc.hint)
+        except Exception as exc:  # the system channel pads silence until the next change
+            log.warning("loopback_reopen_failed", error=type(exc).__name__)

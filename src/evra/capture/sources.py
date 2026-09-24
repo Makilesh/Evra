@@ -11,6 +11,10 @@ MIC_PRIVACY_HINT = (
     "(ms-settings:privacy-microphone) and allow desktop apps to use the microphone."
 )
 NO_OUTPUT_HINT = "Connect speakers or headphones and make them the default output device."
+DEVICE_BUSY_HINT = (
+    "Another app may be using the output device exclusively: close it, or turn off "
+    "exclusive mode in Sound settings > device properties > Advanced, then retry."
+)
 
 
 class CaptureError(RuntimeError):

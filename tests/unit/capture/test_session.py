@@ -130,3 +130,41 @@ def test_clean_start_needs_no_drift_corrections() -> None:
         assert health.channels[ch].corrections == 0  # type: ignore[attr-defined]
         assert health.channels[ch].dropped_ms == 0  # type: ignore[attr-defined]
         assert health.channels[ch].gaps == []  # type: ignore[attr-defined]
+
+
+def test_start_failure_with_os_error_still_stops_the_mic() -> None:
+    mic, _ = _sources(0.5)
+
+    class Broken(FakeSource):
+        def start(self) -> None:
+            raise OSError("device in use")
+
+    session = CaptureSession(mic, Broken(np.zeros((480, 2), dtype=np.float32), 48_000))
+    with pytest.raises(OSError):
+        session.start(lambda f: None)
+    assert mic._thread is None
+
+
+def test_failed_reopen_does_not_escape_the_watcher_callback() -> None:
+    mic, system = _sources(1.0)
+    callbacks: list[Callable[[str | None], None]] = []
+
+    class ManualWatcher:
+        def __init__(self, on_change: Callable[[str | None], None]) -> None:
+            callbacks.append(on_change)
+
+        def start(self) -> None: ...
+
+        def stop(self) -> None: ...
+
+    session = CaptureSession(mic, system, watcher_factory=ManualWatcher)
+    session.start(lambda f: None)
+    time.sleep(0.1)
+
+    def broken_start() -> None:
+        raise OSError("new device not ready")
+
+    system.start = broken_start  # type: ignore[method-assign]
+    callbacks[0]("new-device")  # must not raise
+    assert mic.finished.wait(5)
+    session.stop()

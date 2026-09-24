@@ -7,15 +7,19 @@ Core Audio API via pycaw (D25).
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import structlog
 
 from evra.audio.ringbuffer import ChunkRing
-from evra.capture.sources import NO_OUTPUT_HINT, LoopbackUnavailableError
+from evra.capture.sources import DEVICE_BUSY_HINT, NO_OUTPUT_HINT, LoopbackUnavailableError
+
+log = structlog.get_logger(__name__)
 
 
 def _pyaudio() -> Any:
@@ -53,15 +57,21 @@ class LoopbackSource:
         rate = int(loop["defaultSampleRate"])
         channels = int(loop["maxInputChannels"])
         self._cb_channels = channels
-        stream = pa.open(
-            format=self._pam.paFloat32,
-            channels=channels,
-            rate=rate,
-            input=True,
-            input_device_index=int(loop["index"]),
-            frames_per_buffer=rate // 100,
-            stream_callback=self._callback,
-        )
+        try:
+            stream = pa.open(
+                format=self._pam.paFloat32,
+                channels=channels,
+                rate=rate,
+                input=True,
+                input_device_index=int(loop["index"]),
+                frames_per_buffer=rate // 100,
+                stream_callback=self._callback,
+            )
+        except OSError as exc:
+            pa.terminate()
+            raise LoopbackUnavailableError(
+                f"could not capture from {loop['name']!r}", DEVICE_BUSY_HINT
+            ) from exc
         self._pa, self._stream = pa, stream
         self.name = str(loop["name"])
         self.native_rate, self.native_channels = rate, channels
@@ -75,13 +85,16 @@ class LoopbackSource:
         return (None, self._pam.paContinue)
 
     def stop(self) -> None:
-        if self._stream is not None:
-            self._stream.stop_stream()
-            self._stream.close()
+        try:
+            if self._stream is not None:
+                with contextlib.suppress(OSError):  # the device may already be gone
+                    self._stream.stop_stream()
+                    self._stream.close()
+        finally:
             self._stream = None
-        if self._pa is not None:
-            self._pa.terminate()
-            self._pa = None
+            if self._pa is not None:
+                self._pa.terminate()
+                self._pa = None
 
     def reopen(self) -> None:
         self.stop()
@@ -133,7 +146,10 @@ class DefaultOutputWatcher:
 
     def _run(self) -> None:
         while not self._stop.wait(self._interval):
-            current = self._get_id()
-            if current != self._last:
-                self._last = current
-                self._on_change(current)
+            try:
+                current = self._get_id()
+                if current != self._last:
+                    self._last = current
+                    self._on_change(current)
+            except Exception as exc:  # keep watching: one failure must not end device handling
+                log.warning("output_watch_error", error=type(exc).__name__)
