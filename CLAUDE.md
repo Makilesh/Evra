@@ -19,7 +19,8 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 - Never change a §2 decision silently; write a DECISIONS.md entry.
 - Licence gate before any new dependency or model.
 - Never invent APIs; read installed source/docs or write a spike in `spikes/`.
-- Never log transcript/note/document/audio content above DEBUG.
+- Never log transcript/note/document/audio content above DEBUG. Pass content only as keyword values
+  (`log.info("saved", text=t)`), never inside the event string; exception messages are redacted.
 - Evra opens no network listener. pywebview gets only `file://` or the dev-server URL.
 - Keep everything inside this folder (D23): app data in `.data/`, spikes in `spikes/`, scratch/research
   in `private/` (all git-ignored). Never use the system temp folder.

@@ -125,9 +125,7 @@ def configure_logging(log_dir: Path, *, debug: bool) -> Path:
             foreign_pre_chain=[*shared, redact_content, scrub_traceback_text],
             processors=[
                 structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-                structlog.processors.ExceptionRenderer(
-                    ExceptionDictTransformer(show_locals=False)
-                ),
+                structlog.processors.ExceptionRenderer(ExceptionDictTransformer(show_locals=False)),
                 redact_exception_messages,
                 structlog.processors.JSONRenderer(),
             ],
