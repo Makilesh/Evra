@@ -13,3 +13,5 @@ node_modules/
 .data/
 spikes/
 .superpowers/
+src/evra/ui/web/
+frontend/dist/
