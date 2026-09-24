@@ -2,6 +2,10 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-09-24 — M0 Bootstrap
+
+- Task 1: Python skeleton, uv-managed 3.12, `evra --version`, CLAUDE.md, README.
+
 ## 2026-09-24 — Planning session 1
 
 - Reviewed the agent-written `BUILD_PROMPT.md` v3; archived it at `docs/archive/BUILD_PROMPT.v3.md` (reference only).

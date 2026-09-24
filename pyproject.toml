@@ -1,0 +1,52 @@
+[project]
+name = "evra"
+version = "0.1.0"
+description = "Local-first meeting notes with an in-meeting expert"
+readme = "README.md"
+license = "LicenseRef-FSL-1.1-ALv2"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.scripts]
+evra = "evra.__main__:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/evra"]
+
+[tool.uv]
+python-preference = "only-managed"
+link-mode = "copy"  # uv cache is on C:, the project on D: (no hardlinks across drives)
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["frontend", "src/evra/ui/web", "docs", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["webview", "webview.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
