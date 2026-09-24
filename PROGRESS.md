@@ -11,6 +11,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 5: CapturePipeline — per-channel drain/clock/convert/place/emit; loopback padding, overflow gaps, device swap, levels in dBFS.
 - Task 6: AES-GCM spill segments (authenticated header, atomic writes) + per-meeting keys in Credential Manager (service Evra, user meeting/<id>).
 - Task 7: FakeSource, MicSource (sounddevice), LoopbackSource (PyAudioWPatch), DefaultOutputWatcher (pycaw, D25); hardware tests 4/4 on the dev machine.
+- Task 8: CaptureSession — sources + pipeline thread + output watcher; CaptureHealth with drift, drops, gaps, hints.
 
 ## 2026-09-24 — M0 Bootstrap
 
