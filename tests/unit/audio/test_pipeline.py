@@ -175,3 +175,56 @@ def test_swap_handles_a_late_chunk_from_the_old_device(rig) -> None:  # type: ig
     stats = pipe.stats(SYSTEM)
     assert stats.native_channels == 1
     assert [g.cause for g in stats.gaps] == ["device_change"]
+
+
+def _passthrough_rig() -> tuple[StubSource, StubSource, FakeClock, list[Frames], CapturePipeline]:
+    mic = StubSource(native_rate=16_000, native_channels=1)
+    system = StubSource(native_rate=16_000, native_channels=1, pads_silence=True)
+    clock = FakeClock()
+    frames: list[Frames] = []
+    pipe = CapturePipeline({MIC: mic, SYSTEM: system}, frames.append, start_ns=0, now_ns=clock)
+    return mic, system, clock, frames, pipe
+
+
+def _level(i: int) -> np.ndarray:
+    return np.full((160, 1), (i + 1) / 1000, dtype=np.float32)  # rises chunk by chunk
+
+
+def _pcm_of(frames: list[Frames], ch: int) -> np.ndarray:
+    return np.concatenate([f.pcm for f in frames if f.channel == ch])
+
+
+@pytest.mark.parametrize("silence_ms", [60, 80, 100])
+def test_short_loopback_silence_keeps_order_and_is_not_a_dropout(silence_ms: int) -> None:
+    mic, system, clock, frames, pipe = _passthrough_rig()
+    quiet = range(100, 100 + silence_ms // 10)
+    for i in range(300):
+        clock.t = (i + 1) * 10 * MS
+        mic.ring.put(_level(i), clock.t)
+        if i not in quiet:
+            system.ring.put(_level(i), clock.t)
+        pipe.step()
+    pipe.flush()
+    audio = _pcm_of(frames, SYSTEM)
+    heard = audio[audio != 0].astype(np.int32)
+    assert np.all(np.diff(heard) >= 0)  # resumed audio never lands before earlier audio
+    stats = pipe.stats(SYSTEM)
+    assert all(g.cause == "silence" for g in stats.gaps)
+    assert stats.dropped_ms == 0
+
+
+@pytest.mark.parametrize("stall_ms", [90, 150])
+def test_callback_stall_with_burst_catch_up_loses_nothing(stall_ms: int) -> None:
+    mic, system, clock, frames, pipe = _passthrough_rig()
+    backlog = range(100, 100 + stall_ms // 10 + 1)
+    release = 101 * 10 * MS + stall_ms * MS
+    for i in range(300):
+        clock.t = release if i in backlog else (i + 1) * 10 * MS
+        mic.ring.put(_level(i), clock.t)
+        system.ring.put(_level(i), clock.t)
+        if i not in backlog or i == backlog[-1]:
+            pipe.step()
+    pipe.flush()
+    stats = pipe.stats(MIC)
+    assert stats.gaps == () and stats.dropped_ms == 0 and stats.corrections == 0
+    assert len(_pcm_of(frames, MIC)) == 300 * 160

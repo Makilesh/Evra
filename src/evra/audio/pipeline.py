@@ -10,9 +10,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from evra.audio.clock import ChannelTimeline, Gap, SourceClock
+from evra.audio.clock import ChannelTimeline, Gap, SourceClock, Timed
 from evra.audio.convert import ToMono16k
 from evra.audio.frames import FRAME_SAMPLES, NS, SAMPLE_RATE, Channel, Frames, Int16Array
+from evra.audio.ringbuffer import Chunk
 from evra.capture.sources import AudioSource
 
 SILENCE_AFTER_NS = 50_000_000  # no loopback data for 50 ms → pad silence (§5.1)
@@ -47,7 +48,7 @@ class _ChannelState:
         self.buffer: Int16Array = np.zeros(0, dtype=np.int16)
         self.frames_out = 0
         self.last_chunk_ns: int | None = None
-        self.padding = False
+        self.held: dict[int, Chunk] = {}  # chunks whose time the clock has not decided yet
         self.next_cause: str | None = None
         self.next_seq = 0  # ring sequence expected next; a jump means chunks were lost
         self.sum_squares = 0.0
@@ -87,6 +88,7 @@ class CapturePipeline:
         self.step()
         with self._lock:
             for channel, state in self._states.items():
+                self._release_held(state)
                 rest = len(state.buffer) % FRAME_SAMPLES
                 if rest:
                     pad = np.zeros(FRAME_SAMPLES - rest, dtype=np.int16)
@@ -103,10 +105,10 @@ class CapturePipeline:
             state = self._states[channel]
             state.source.stop()
             self._drain(state)
+            self._release_held(state)
             state.source.start()
             state.reset_format()
             state.next_cause = cause
-            state.padding = False
 
     def stats(self, channel: Channel) -> ChannelStats:
         with self._lock:
@@ -132,20 +134,29 @@ class CapturePipeline:
     def _drain(self, s: _ChannelState) -> None:
         for chunk in s.source.ring.drain():
             if chunk.seq != s.next_seq:  # the ring overflowed: audio was really lost
+                self._release_held(s)
                 s.clock = SourceClock(s.source.native_rate, latency_ns=s.source.latency_ns)
                 s.next_cause = s.next_cause or "dropout"
             s.next_seq = chunk.seq + 1
-            if s.padding:  # resuming after silence: re-anchor on this chunk
-                s.clock = SourceClock(s.source.native_rate, latency_ns=s.source.latency_ns)
-                s.next_cause = s.next_cause or "silence"
-                s.padding = False
-            t_first = s.clock.first_sample_ns(chunk.t_callback_ns, len(chunk.data))
-            pcm = s.converter.process(chunk.data)
-            self._measure(s, pcm)
-            placed = s.timeline.place(pcm, t_first, cause=s.next_cause)
-            s.next_cause = None
-            s.buffer = np.concatenate([s.buffer, placed])
-            s.last_chunk_ns = chunk.t_callback_ns
+            s.held[chunk.seq] = chunk
+            s.last_chunk_ns = chunk.t_callback_ns  # data is arriving: stop padding
+            for timed in s.clock.push(chunk.seq, chunk.t_callback_ns, len(chunk.data)):
+                self._place(s, timed)
+
+    def _release_held(self, s: _ChannelState) -> None:
+        for timed in s.clock.flush():
+            self._place(s, timed)
+
+    def _place(self, s: _ChannelState, timed: Timed) -> None:
+        chunk = s.held.pop(timed.key)
+        pcm = s.converter.process(chunk.data)
+        self._measure(s, pcm)
+        cause = s.next_cause
+        if cause is None and timed.jumped:  # idle loopback resuming vs. lost audio
+            cause = "silence" if s.source.pads_silence else "dropout"
+        placed = s.timeline.place(pcm, timed.t_first_ns, cause=cause)
+        s.next_cause = None
+        s.buffer = np.concatenate([s.buffer, placed])
 
     def _maybe_pad(self, s: _ChannelState, now: int) -> None:
         if not s.source.pads_silence:
@@ -155,7 +166,6 @@ class CapturePipeline:
             return
         fill = s.timeline.pad_until(now)
         if len(fill):
-            s.padding = True
             s.buffer = np.concatenate([s.buffer, fill])
 
     def _emit(self, channel: Channel, s: _ChannelState) -> None:
