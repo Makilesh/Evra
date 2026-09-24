@@ -59,23 +59,75 @@ def _normalise_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def _term_ok(term: str, allowed: frozenset[str], aliases: Mapping[str, str]) -> bool:
-    term = term.strip().strip("()").strip()
-    return bool(term) and aliases.get(term, term) in allowed
+class _ParseError(ValueError):
+    pass
+
+
+def _tokenise(expression: str, aliases: Mapping[str, str]) -> list[str]:
+    # Replace free-text aliases first: some contain parentheses, e.g. "ISC License (ISCL)".
+    for alias in sorted(aliases, key=len, reverse=True):
+        expression = expression.replace(alias, aliases[alias])
+    parts = re.split(r"(\(|\)|;|\s+AND\s+|\s+OR\s+)", expression)
+    tokens: list[str] = []
+    for part in (p.strip() for p in parts):
+        if part:
+            tokens.append("AND" if part == ";" else part)
+    return tokens
 
 
 def licence_ok(expression: str, allowed: frozenset[str], aliases: Mapping[str, str]) -> bool:
-    """OR-alternatives: any may pass. Within one alternative, AND / ';' parts must all pass."""
+    """Evaluate an SPDX-style expression (AND binds tighter than OR; ';' means AND).
+
+    Fails closed: anything that does not parse is not allowed.
+    """
     expression = expression.strip()
     if not expression:
         return False
     if aliases.get(expression, expression) in allowed:
         return True
-    for alternative in re.split(r"\s+OR\s+", expression.strip("()")):
-        parts = re.split(r"\s+AND\s+|;", alternative)
-        if all(_term_ok(p, allowed, aliases) for p in parts):
-            return True
-    return False
+    tokens = _tokenise(expression, aliases)
+    pos = 0
+
+    def peek() -> str | None:
+        return tokens[pos] if pos < len(tokens) else None
+
+    def take() -> str:
+        nonlocal pos
+        if pos >= len(tokens):
+            raise _ParseError("unexpected end")
+        pos += 1
+        return tokens[pos - 1]
+
+    def atom() -> bool:
+        token = take()
+        if token == "(":
+            value = either()
+            if take() != ")":
+                raise _ParseError("expected )")
+            return value
+        if token in {")", "AND", "OR"}:
+            raise _ParseError(f"unexpected {token}")
+        return token in allowed
+
+    def both() -> bool:
+        value = atom()
+        while peek() == "AND":
+            take()
+            value = atom() and value  # evaluate both sides so parse errors surface
+        return value
+
+    def either() -> bool:
+        value = both()
+        while peek() == "OR":
+            take()
+            value = both() or value
+        return value
+
+    try:
+        result = either()
+    except _ParseError:
+        return False
+    return result and pos == len(tokens)
 
 
 def effective_licence(component: Component, policy: Policy) -> str:

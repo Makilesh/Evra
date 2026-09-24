@@ -40,6 +40,12 @@ def _c(licence: str, *, runtime: bool = True, name: str = "pkg") -> Component:
         ("UNKNOWN", False),
         ("", False),
         ("(MIT OR Apache-2.0)", True),
+        ("GPL-3.0-only AND (MIT OR Apache-2.0)", False),
+        ("(MIT OR Apache-2.0) AND BSD-3-Clause", True),
+        ("(MIT OR GPL-3.0-only) AND GPL-2.0-only", False),
+        ("MIT AND (", False),
+        ("MIT OR", False),
+        ("ISC License (ISCL); MIT License", True),
     ],
 )
 def test_licence_expressions(policy: Policy, expr: str, ok: bool) -> None:
