@@ -24,7 +24,13 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - dead streams never restarted.
   Two more found on real hardware: start-up correction from a late first callback, and padding stretched by a slow device close. 13 minors deferred to BACKLOG.md.
 - Real 10 s run on fixed code: PASS — 0 drops, 0 corrections on both channels, inter-channel drift 3.2 ms. Hardware tests 4/4.
-- 60-minute soak on the fixed code: running (built-in mic + speaker loopback).
+- **60-minute soak on the fixed code (2026-09-25, built-in mic + speaker loopback):**
+  - **DoD met:** inter-channel drift 4.0 ms (limit 30), 0 dropped chunks, 0 overflows, both channels 3600.3 s. 1 drift correction in the hour (mic).
+  - **Memory:** Evra flat at 86–123 MB for the whole hour, so no leak. It spiked to 310 MB at the end while assembling an hour of WAV (capture-test only).
+  - **Health said FAIL** because of 3 short gaps it labelled "dropout":
+    - mic, 120 ms + 310 ms at 52:44, while the machine had only 0.7–1.0 GB RAM free (other apps) — most likely real audio lost while Windows was paging;
+    - system, 70 ms at 2.7 s — cause not yet understood; to investigate.
+  - 12 "silence" gaps on the system channel are expected (nothing playing).
 
 ## 2026-09-24 — M0 Bootstrap
 
