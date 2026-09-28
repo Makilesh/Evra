@@ -43,4 +43,7 @@ overrides:
     pycaw:
       licence: MIT
       source: https://github.com/AndreMiras/pycaw/blob/develop/LICENSE
+    sherpa-onnx:
+      licence: Apache-2.0
+      source: https://github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE (verified in sherpa_onnx-1.13.8.dist-info/licenses/LICENSE)
   npm: {}
