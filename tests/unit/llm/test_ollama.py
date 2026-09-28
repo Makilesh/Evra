@@ -1,3 +1,4 @@
+import http.client
 import io
 import urllib.error
 import urllib.request
@@ -176,3 +177,18 @@ def test_real_http_ignores_proxies_and_refuses_redirects(monkeypatch: pytest.Mon
         h.redirect_request(request, None, 302, "Found", {}, "http://evil.example/") is None  # type: ignore[arg-type]
         for h in redirects
     )
+
+
+def test_a_broken_http_reply_is_unavailable_not_a_traceback() -> None:
+    fake = FakeHttp(error=http.client.IncompleteRead(b""))
+    with pytest.raises(LlmUnavailable):
+        _provider(fake).chat_json("m", [ChatMessage("user", "x")], SCHEMA)
+
+
+@pytest.mark.parametrize("answer", [[1, 2], "text", None])
+def test_a_reply_that_is_not_a_json_object_is_an_llm_error(answer: Any) -> None:
+    http = FakeHttp({"/api/chat": answer, "/api/tags": answer})
+    with pytest.raises(LlmError):
+        _provider(http).chat_json("m", [ChatMessage("user", "x")], SCHEMA)
+    with pytest.raises(LlmError):
+        _provider(http).installed_models()

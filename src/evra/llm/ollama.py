@@ -9,6 +9,7 @@ official client's source: POST /api/chat, GET /api/tags, GET /api/ps, POST /api/
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import time
@@ -141,7 +142,7 @@ class OllamaProvider:
         model: str | None = None,
     ) -> Any:
         try:
-            return self._http.request(method, path, body)
+            reply = self._http.request(method, path, body)
         except urllib.error.HTTPError as exc:
             exc.close()
             if exc.code == 404 and model is not None:
@@ -153,10 +154,13 @@ class OllamaProvider:
             raise LlmUnavailable("Ollama is not running") from None
         except TimeoutError:
             raise self._timeout() from None
-        except OSError:
+        except (OSError, http.client.HTTPException):  # refused, reset, cut-off reply
             raise LlmUnavailable("Ollama is not running") from None
         except ValueError:
             raise LlmError("Ollama sent a reply that is not JSON") from None
+        if not isinstance(reply, dict):
+            raise LlmError("Ollama sent a reply that is not a JSON object")
+        return reply
 
     def _timeout(self) -> LlmTimeout:
         return LlmTimeout(f"no answer within {self._settings.timeout_s:.0f} s")

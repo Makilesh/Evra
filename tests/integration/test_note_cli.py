@@ -208,3 +208,19 @@ def test_a_cut_off_note_says_why_and_stores_nothing(
     assert note_command(_args(), paths, provider=FakeProvider([GOOD[:120]], truncated=True)) == 1
     assert "ran out of output room" in capsys.readouterr().err
     assert _current(paths, mid) is None
+
+
+class InterruptedProvider(FakeProvider):
+    def chat_json(
+        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+    ) -> ChatResult:
+        raise KeyboardInterrupt
+
+
+def test_ctrl_c_while_waiting_stops_cleanly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths, mid = _recorded(tmp_path)
+    assert note_command(_args(), paths, provider=InterruptedProvider([])) == 130
+    assert "Stopped; nothing saved." in capsys.readouterr().err
+    assert _current(paths, mid) is None

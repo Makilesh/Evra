@@ -121,6 +121,9 @@ def _run(
             template=template,
             settings=settings,
         )
+    except KeyboardInterrupt:
+        _err("Stopped; nothing saved.")
+        return 130
     except LlmUnavailable:
         _err("Ollama is not running. Start it (it lives in the system tray) and try again.")
         return 2
