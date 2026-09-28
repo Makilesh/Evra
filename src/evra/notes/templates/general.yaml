@@ -1,0 +1,22 @@
+name: General
+sections:
+  - id: decisions
+    title: Decisions
+    instruction: Explicit agreements, approvals or choices between options.
+    required: false
+  - id: action_items
+    title: Action items
+    instruction: Tasks someone committed to or was asked to do, with owner and due date if stated.
+    required: false
+  - id: open_questions
+    title: Open questions
+    instruction: Questions raised and not answered by the end of the meeting.
+    required: false
+  - id: discussion
+    title: Discussion by topic
+    instruction: The main topics in order, with the key points of each.
+    required: true
+  - id: key_moments
+    title: Key moments
+    instruction: At most three moments that most changed the meeting's outcome.
+    required: false
