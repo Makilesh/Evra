@@ -54,6 +54,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     record.add_argument("--mic", default=None, help="microphone index or name")
     record.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
+    note = commands.add_parser("note", help="write a cited note for a recorded meeting")
+    note.add_argument("meeting_id", nargs="?", default=None, help="meeting id (default: latest)")
+    note.add_argument("--model", default=None, help="Ollama model (default: settings llm.model)")
+    note.add_argument("--template", default=None, help="note template (default: the meeting's)")
+    note.add_argument(
+        "--think",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="let a thinking model think first (default: settings llm.think)",
+    )
+    note.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
     return parser
 
 
@@ -81,6 +92,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         command = models_command if args.command == "models" else transcribe_command
         return command(args, resolve_paths(args.data_dir))
+    if args.command == "note":
+        from evra.notes.cli import note_command
+        from evra.paths import resolve_paths
+
+        return note_command(args, resolve_paths(args.data_dir))
     parser.print_help()
     return 0
 
