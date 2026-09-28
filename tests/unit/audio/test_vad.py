@@ -1,3 +1,4 @@
+import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -43,6 +44,9 @@ class FakeVad:
 
     def empty(self) -> bool:
         return not self.ready
+
+    def is_speech_detected(self) -> bool:
+        return False  # scripted segments never trigger the forced 20 s cut
 
     @property
     def front(self) -> _Seg:
@@ -112,3 +116,66 @@ def test_real_silero_finds_the_speech() -> None:
     segs = _run(SpeechSegmenter(0, silero_vad(Path(model))), audio)
     assert len(segs) >= 1
     assert 500 <= segs[0].start_ms <= 1_100
+
+
+@dataclass
+class ContinuousVad:
+    """Hears speech in everything; only a flush closes a segment (like one endless voice)."""
+
+    fed: int = 0
+    start: int = 0
+    audio: list[np.ndarray] = field(default_factory=list)
+    ready: list[_Seg] = field(default_factory=list)
+
+    def accept_waveform(self, samples: np.ndarray) -> None:
+        self.audio.append(samples.copy())
+        self.fed += len(samples)
+
+    def is_speech_detected(self) -> bool:
+        return True
+
+    def flush(self) -> None:
+        if self.fed > self.start:
+            everything = np.concatenate(self.audio)
+            self.ready.append(_Seg(self.start, everything[self.start : self.fed]))
+            self.start = self.fed
+
+    def empty(self) -> bool:
+        return not self.ready
+
+    @property
+    def front(self) -> _Seg:
+        return self.ready[0]
+
+    def pop(self) -> None:
+        self.ready.pop(0)
+
+
+def test_continuous_speech_is_cut_every_20_seconds_without_overlap() -> None:
+    audio = (np.arange(16_000 * 50) % 2000 - 1000).astype(np.int16)
+    segs = _run(SpeechSegmenter(0, ContinuousVad()), audio)
+    assert len(segs) == 3
+    assert all(len(s.pcm) <= 16_000 * 20 + 512 for s in segs)
+    for before, after in itertools.pairwise(segs):
+        assert after.start_index == before.start_index + len(before.pcm)  # no overlap, no gap
+    np.testing.assert_array_equal(np.concatenate([s.pcm for s in segs]), audio)  # exact samples
+
+
+@requires_models("silero-vad")
+def test_real_silero_cuts_endless_speech() -> None:
+    import wave
+
+    from evra.audio.convert import ToMono16k
+    from evra.paths import REPO_ROOT
+
+    with wave.open(str(REPO_ROOT / "spikes" / "test_wavs" / "en.wav")) as w:
+        rate = w.getframerate()
+        pcm = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+    speech = ToMono16k(rate, 1).process((pcm / 32768.0).astype(np.float32))
+    loud = np.nonzero(np.abs(speech) > 600)[0]
+    core = speech[loud[0] : loud[-1]]
+    endless = np.tile(core, 40)[: 16_000 * 50]  # 50 s with no pauses
+    model = resolve_paths().models_dir / "silero-vad" / "silero_vad.onnx"
+    segs = _run(SpeechSegmenter(0, silero_vad(Path(model))), endless)
+    assert len(segs) >= 3
+    assert max(len(s.pcm) for s in segs) <= 16_000 * 21
