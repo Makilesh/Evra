@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from evra import __version__
+from evra.console import safe_console
 from evra.constants import APP_ID, APP_NAME
 
 
@@ -69,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    safe_console()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "run":

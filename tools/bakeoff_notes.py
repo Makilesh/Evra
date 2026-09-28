@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from evra.config import LlmSettings
+from evra.console import safe_console
 from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import LlmError, LlmProvider
 from evra.notes.templates import load_template
@@ -179,6 +180,7 @@ def format_table(rows: Sequence[Row]) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    safe_console()
     parser = argparse.ArgumentParser(description="Compare Ollama models on note writing")
     parser.add_argument("models", nargs="+")
     parser.add_argument("--runs", type=int, default=1)
