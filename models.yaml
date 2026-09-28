@@ -1,0 +1,10 @@
+# Every model Evra downloads (BUILD.md §4.5). Weights are never committed.
+# Entry shape:
+#   - id: parakeet-tdt-0.6b-v3-int8
+#     source: {type: huggingface, repo: owner/name}      # or {type: url, url: ...}
+#     licence: CC-BY-4.0
+#     files: [{name: model.onnx, sha256: <hex>}]
+#     size_mb: 640
+#     loaded: during_meeting | after_meeting | on_demand
+#     attribution: "Speech recognition uses ... (CC BY 4.0)."
+models: []
