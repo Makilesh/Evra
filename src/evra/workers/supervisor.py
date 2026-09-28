@@ -1,15 +1,25 @@
-"""A model worker process: started on first use, stopped when idle, restarted after a crash."""
+"""A model worker process: started on first use, stopped when idle, restarted after a crash
+or a hang (BUILD.md §4.2).
+
+Each running child is a *generation* with its own pipe, pending requests, reader thread and
+sender thread. Sends never happen under the state lock: a Windows pipe blocks once its buffer
+fills, so a hung child must never be able to freeze callers or `stop()`. A request that misses
+its deadline kills the whole generation; the next request starts a fresh one. (Periodic
+heartbeats are deferred: per-request deadlines are the liveness check for now.)
+"""
 
 from __future__ import annotations
 
 import contextlib
 import itertools
 import multiprocessing
+import queue
 import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeout
 from multiprocessing.connection import Connection
 from multiprocessing.process import BaseProcess
 from typing import Any
@@ -20,6 +30,106 @@ else:
     from multiprocessing.connection import Connection as _Pipe
 
 from evra.workers.protocol import SHUTDOWN, Request, WorkerCrashed, WorkerError, worker_main
+
+_STOP_SENDER = object()
+
+
+class _Generation:
+    """One child process and everything that talks to it."""
+
+    def __init__(self, name: str, factory: str, config: dict[str, Any]) -> None:
+        ctx = multiprocessing.get_context("spawn")
+        parent, child = ctx.Pipe()
+        self.name = name
+        self.proc: BaseProcess = ctx.Process(
+            target=worker_main, args=(child, factory, config), name=f"evra-{name}", daemon=True
+        )
+        self.proc.start()
+        child.close()
+        self.conn: Connection | _Pipe = parent
+        self.pending: dict[int, Future[Any]] = {}
+        self.lock = threading.Lock()
+        self.outbox: queue.Queue[object] = queue.Queue()
+        self.dead = False
+        self.reader = threading.Thread(target=self._read, name=f"{name}-reader", daemon=True)
+        self.sender = threading.Thread(target=self._send, name=f"{name}-sender", daemon=True)
+        self.reader.start()
+        self.sender.start()
+
+    def enqueue(self, request: Request, future: Future[Any] | None) -> None:
+        with self.lock:
+            if self.dead:
+                if future is not None:
+                    future.set_exception(WorkerCrashed(self.name))
+                return
+            if future is not None:
+                self.pending[request.id] = future
+        self.outbox.put(request)
+
+    def forget(self, request_id: int) -> None:
+        with self.lock:
+            self.pending.pop(request_id, None)
+
+    @property
+    def usable(self) -> bool:
+        return not self.dead and self.proc.is_alive()
+
+    @property
+    def busy(self) -> bool:
+        with self.lock:
+            return bool(self.pending)
+
+    def kill(self, *, graceful: bool) -> None:
+        """End this generation; every unanswered request fails with WorkerCrashed."""
+        with self.lock:
+            self.dead = True
+        if graceful:
+            self.outbox.put(Request(0, SHUTDOWN, None))
+            self.proc.join(5)
+        if self.proc.is_alive():
+            self.proc.terminate()
+            self.proc.join(5)
+        self.outbox.put(_STOP_SENDER)
+        with contextlib.suppress(OSError):
+            self.conn.close()  # unblocks a sender stuck writing to a hung child
+        self._fail_all()
+
+    def _send(self) -> None:
+        while (item := self.outbox.get()) is not _STOP_SENDER:
+            assert isinstance(item, Request)
+            try:
+                self.conn.send(item)
+            except (OSError, EOFError, ValueError):
+                break
+        self._mark_dead()
+
+    def _read(self) -> None:
+        while True:
+            try:
+                response = self.conn.recv()
+            except (EOFError, OSError, ValueError):
+                break
+            with self.lock:
+                future = self.pending.pop(response.id, None)
+            if future is None or future.done():
+                continue
+            if response.ok:
+                future.set_result(response.payload)
+            else:
+                future.set_exception(WorkerError(response.error))
+        self._mark_dead()
+
+    def _mark_dead(self) -> None:
+        with self.lock:
+            self.dead = True
+        self._fail_all()
+
+    def _fail_all(self) -> None:
+        with self.lock:
+            pending, self.pending = self.pending, {}
+        for future in pending.values():
+            if not future.done():
+                future.set_exception(WorkerCrashed(self.name))
 
 
 class Worker:
@@ -37,103 +147,63 @@ class Worker:
         self._config = dict(config or {})
         self._idle_timeout = idle_timeout_s
         self._clock = clock
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # guards _gen and _last_used only; never held while sending
         self._ids = itertools.count(1)
-        self._pending: dict[int, Future[Any]] = {}
-        self._proc: BaseProcess | None = None
-        self._conn: Connection | _Pipe | None = None
-        self._reader: threading.Thread | None = None
-        self._broken = False  # set by the reader when the pipe closes (the child is gone)
+        self._gen: _Generation | None = None
         self._last_used = clock()
 
     @property
     def alive(self) -> bool:
-        return self._proc is not None and self._proc.is_alive()
+        gen = self._gen
+        return gen is not None and gen.usable
 
     def submit(self, op: str, payload: Any) -> Future[Any]:
-        future: Future[Any] = Future()
-        with self._lock:
-            self._ensure_started()
-            assert self._conn is not None
-            request_id = next(self._ids)
-            self._pending[request_id] = future
-            self._last_used = self._clock()
-            try:
-                self._conn.send(Request(request_id, op, payload))
-            except (OSError, EOFError):
-                self._pending.pop(request_id, None)
-                future.set_exception(WorkerCrashed(self.name))
-        return future
+        return self._submit(op, payload)[1]
 
     def call(self, op: str, payload: Any, timeout: float | None = None) -> Any:
-        return self.submit(op, payload).result(timeout)
+        """Send a request and wait. A missed deadline kills and replaces the worker."""
+        gen, future, request_id = self._submit(op, payload)
+        try:
+            return future.result(timeout)
+        except FutureTimeout:
+            gen.forget(request_id)
+            self._retire(gen)
+            raise TimeoutError(f"{self.name} worker did not answer within {timeout} s") from None
 
     def stop_if_idle(self) -> bool:
         with self._lock:
-            idle = not self._pending and self._clock() - self._last_used >= self._idle_timeout
-        if idle and self.alive:
-            self.stop()
-            return True
-        return False
+            gen = self._gen
+            idle = gen is not None and not gen.busy
+            if not idle or self._clock() - self._last_used < self._idle_timeout:
+                return False
+            self._gen = None  # detach under the lock: no new request can reach it
+        assert gen is not None
+        gen.kill(graceful=True)
+        return True
 
     def stop(self) -> None:
         with self._lock:
-            proc, conn, reader = self._proc, self._conn, self._reader
-            self._proc = self._conn = self._reader = None
-        if conn is not None:
-            with contextlib.suppress(OSError, EOFError):
-                conn.send(Request(0, SHUTDOWN, None))
-        if proc is not None:
-            proc.join(5)
-            if proc.is_alive():
-                proc.terminate()
-                proc.join(5)
-        if conn is not None:
-            conn.close()
-        if reader is not None:
-            reader.join(5)
+            gen, self._gen = self._gen, None
+        if gen is not None:
+            gen.kill(graceful=True)
 
-    def _ensure_started(self) -> None:
-        if self._proc is not None and self._proc.is_alive() and not self._broken:
-            return
-        if self._proc is not None:  # a crashed child: its pipe closed before is_alive() noticed
-            self._proc.join(5)
-            if self._proc.is_alive():
-                self._proc.terminate()
-        self._broken = False
-        ctx = multiprocessing.get_context("spawn")
-        parent, child = ctx.Pipe()
-        proc = ctx.Process(
-            target=worker_main,
-            args=(child, self._factory, self._config),
-            name=f"evra-{self.name}",
-            daemon=True,
-        )
-        proc.start()
-        child.close()
-        self._proc, self._conn = proc, parent
-        self._reader = threading.Thread(
-            target=self._read, args=(parent,), name=f"{self.name}-reader", daemon=True
-        )
-        self._reader.start()
+    def _submit(self, op: str, payload: Any) -> tuple[_Generation, Future[Any], int]:
+        future: Future[Any] = Future()
+        with self._lock:
+            if self._gen is None or not self._gen.usable:
+                old, self._gen = self._gen, _Generation(self.name, self._factory, self._config)
+                if old is not None:  # crashed or hung: make sure it is really gone
+                    threading.Thread(
+                        target=old.kill, kwargs={"graceful": False}, daemon=True
+                    ).start()
+            gen = self._gen
+            request_id = next(self._ids)
+            self._last_used = self._clock()
+        gen.enqueue(Request(request_id, op, payload), future)
+        return gen, future, request_id
 
-    def _read(self, conn: Connection | _Pipe) -> None:
-        while True:
-            try:
-                response = conn.recv()
-            except (EOFError, OSError):
-                break
-            with self._lock:
-                future = self._pending.pop(response.id, None)
-            if future is None:
-                continue
-            if response.ok:
-                future.set_result(response.payload)
-            else:
-                future.set_exception(WorkerError(response.error))
-        with self._lock:  # the process died or was stopped: nobody will answer these
-            if self._conn is conn:
-                self._broken = True
-            pending, self._pending = self._pending, {}
-        for future in pending.values():
-            future.set_exception(WorkerCrashed(self.name))
+    def _retire(self, gen: _Generation) -> None:
+        with self._lock:
+            if self._gen is gen:
+                self._gen = None
+        gen.kill(graceful=False)

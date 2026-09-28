@@ -78,7 +78,7 @@ def test_segments_are_stored_in_order_with_absolute_times(db) -> None:  # type: 
 
 def test_failed_segment_is_counted_and_later_segments_still_work(db) -> None:  # type: ignore[no-untyped-def]
     path, mid, vid = db
-    asr = FakeAsr(fail_first=1)
+    asr = FakeAsr(fail_first=2)  # the first try and its retry both fail
     live = LiveTranscriber(asr, path, meeting_id=mid, version_id=vid)
     live.start()
     live.submit(_seg(0, 1.0, 1))
@@ -111,3 +111,14 @@ def test_a_listener_error_does_not_stop_transcription(db) -> None:  # type: igno
     live.submit(_seg(0, 1.0, 1))
     live.submit(_seg(0, 2.0, 2))
     assert live.stop().utterances == 2
+
+
+def test_a_timeout_is_retried_once(db) -> None:  # type: ignore[no-untyped-def]
+    path, mid, vid = db
+    asr = FakeAsr(fail_first=1)
+    live = LiveTranscriber(asr, path, meeting_id=mid, version_id=vid)
+    live.start()
+    live.submit(_seg(0, 1.0, 5))
+    stats = live.stop()
+    assert asr.calls == 2 and stats.failures == 0
+    assert [r.text for r in _stored(path, vid)] == ["text 5"]

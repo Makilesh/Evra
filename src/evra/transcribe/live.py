@@ -89,7 +89,10 @@ class LiveTranscriber:
         try:
             try:
                 results = self._asr.transcribe(segment.pcm)
-            except WorkerCrashed:  # the worker restarts on the next call: try once more
+            except (
+                WorkerCrashed,
+                TimeoutError,
+            ):  # a crashed or hung worker is replaced: retry once
                 results = self._asr.transcribe(segment.pcm)
         except Exception as exc:
             self._failures += 1

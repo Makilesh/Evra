@@ -52,3 +52,30 @@ def test_stop_is_clean_and_idempotent(worker) -> None:  # type: ignore[no-untype
     worker.stop()
     worker.stop()
     assert not worker.alive
+
+
+BIG = b"x" * 65_536  # larger than a Windows pipe buffer: send() blocks if the child stops reading
+
+
+def test_hung_request_times_out_and_the_worker_is_replaced(worker) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    first_pid = worker.call("pid", None, timeout=30)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        worker.call("sleep", {"s": 60, "blob": BIG}, timeout=2)
+    assert time.monotonic() - started < 10
+    with pytest.raises(TimeoutError):  # a second big request must not block forever either
+        worker.call("sleep", {"s": 60, "blob": BIG}, timeout=2)
+    assert worker.call("pid", None, timeout=30) != first_pid
+
+
+def test_stop_returns_promptly_while_a_request_hangs(worker) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    worker.call("pid", None, timeout=30)
+    for _ in range(3):
+        worker.submit("sleep", {"s": 60, "blob": BIG})
+    started = time.monotonic()
+    worker.stop()
+    assert time.monotonic() - started < 12 and not worker.alive

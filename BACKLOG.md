@@ -82,3 +82,4 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Choose microphones by name, not index: Windows renumbers devices when Bluetooth reconnects (seen twice).
 - Bluetooth hands-free switching causes short mic dropouts; surface "use a wired/USB mic or the laptop mic" as a hint.
 - Loopback endpoint role (multimedia vs communications) before real calls on speakers.
+- Worker heartbeats (BUILD.md §4.2): deferred; per-request deadlines that kill and replace a hung worker are the liveness check for now.

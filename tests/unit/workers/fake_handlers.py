@@ -1,6 +1,8 @@
 """Handler factories that run inside spawned test workers."""
 
 import os
+import signal
+import time
 from typing import Any
 
 
@@ -16,6 +18,11 @@ def echo(**config: Any) -> Any:
             os._exit(3)
         if op == "pid":
             return os.getpid()
+        if op == "sleep":  # simulates a hung model (payload may be large)
+            time.sleep(payload["s"])
+            return "slept"
+        if op == "sigint":  # is Ctrl+C ignored inside the worker?
+            return signal.getsignal(signal.SIGINT) == signal.SIG_IGN
         raise KeyError(op)
 
     return handle
