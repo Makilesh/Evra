@@ -65,3 +65,10 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Loopback endpoint role: decide multimedia vs communications default (call apps may use a separate communications device) — needs a DECISIONS entry and an HC1 check.
 - Multichannel outputs (5.1/7.1): downmix with proper weights instead of a plain mean.
 - M2 AEC: pair mic/system frames by timeline index (the system channel can lag ~100 ms while padding).
+
+## M1 parked items (2026-09-28)
+
+- **HC1** (owner): `uv run evra capture-test 60` on headphones, then on laptop speakers, talking over a video; listen to mic.wav / system.wav.
+- Investigate the 70 ms system-channel "dropout" gap 2.7 s into the soak (cause unknown); add an INFO log per gap (channel, cause, length, clock decision — no audio content) to diagnose future ones.
+- Mic "dropout" gaps under heavy system memory pressure (0.7–1.0 GB free) — confirm they are real loss; consider surfacing low system memory as a health hint.
+- Tag `p1-m1-done` once the above close.

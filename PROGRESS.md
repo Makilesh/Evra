@@ -4,6 +4,8 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
 
+**Status (2026-09-28): parked by the owner.** Code complete and reviewed; soak DoD met (drift 4.0 ms, 0 drops). Open items moved to BACKLOG.md "M1 parked items". No `p1-m1-done` tag until they close.
+
 - Task 1: Frames + ToMono16k streaming converter (libsamplerate, D24).
 - Task 2: ChunkRing — non-blocking callback hand-off, drops counted.
 - Task 3: SourceClock — steady timestamps from jittery/bursty callbacks; follows drift; detects real jumps.
