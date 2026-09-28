@@ -93,3 +93,37 @@ def test_interrupt_still_finishes_the_meeting(tmp_path: Path) -> None:
     assert result.interrupted and result.utterances == 1
     assert store.get_meeting(mid)["state"] == "ready"
     assert not mic.is_active() or mic._thread is None
+
+
+def test_ctrl_c_is_held_off_while_wrapping_up() -> None:
+    import signal
+
+    from evra.transcribe.record import ignore_ctrl_c
+
+    before = signal.getsignal(signal.SIGINT)
+    with ignore_ctrl_c():
+        assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+    assert signal.getsignal(signal.SIGINT) == before
+
+
+def test_capture_start_failure_marks_the_meeting_failed(tmp_path: Path) -> None:
+    import pytest
+
+    from evra.capture.sources import CaptureError
+
+    db, store, mid, vid = _setup(tmp_path)
+    _, system = _sources(0.5)
+
+    class BrokenMic(FakeSource):
+        def start(self) -> None:
+            raise CaptureError("no microphone", "plug one in")
+
+    mic = BrokenMic(np.zeros((1600, 1), dtype=np.float32), 16_000)
+    segmenters = {
+        0: SpeechSegmenter(0, FakeVad(script=[])),
+        1: SpeechSegmenter(1, FakeVad(script=[])),
+    }
+    live = LiveTranscriber(NumberAsr(), db, meeting_id=mid, version_id=vid)
+    with pytest.raises(CaptureError):
+        run_recording(CaptureSession(mic, system), segmenters, live, store, mid, seconds=1)
+    assert store.get_meeting(mid)["state"] == "failed"

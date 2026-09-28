@@ -79,3 +79,7 @@ def test_stop_returns_promptly_while_a_request_hangs(worker) -> None:  # type: i
     started = time.monotonic()
     worker.stop()
     assert time.monotonic() - started < 12 and not worker.alive
+
+
+def test_worker_ignores_ctrl_c(worker) -> None:  # type: ignore[no-untyped-def]
+    assert worker.call("sigint", None, timeout=30) is True  # the app owns the worker's lifetime

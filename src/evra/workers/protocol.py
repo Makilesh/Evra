@@ -6,6 +6,7 @@ Errors cross the pipe as the exception *type* only: messages can quote meeting c
 from __future__ import annotations
 
 import importlib
+import signal
 from collections.abc import Callable
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
@@ -55,7 +56,12 @@ def serve(conn: Connection, handler: Handler) -> None:
 
 
 def worker_main(conn: Connection, factory: str, config: dict[str, Any]) -> None:
-    """Entry point of a spawned worker: build the handler named "module:function", then serve."""
+    """Entry point of a spawned worker: build the handler named "module:function", then serve.
+
+    Ctrl+C reaches every process on the console; the app owns the worker's lifetime, so the
+    worker ignores it (otherwise it dies mid-request and prints a traceback).
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     module_name, _, attr = factory.partition(":")
     handler: Handler = getattr(importlib.import_module(module_name), attr)(**config)
     serve(conn, handler)
