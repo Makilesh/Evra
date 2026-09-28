@@ -154,8 +154,12 @@ def summary_lines(result: RecordingResult) -> list[str]:
     stats = result.stats
     capture = "ok" if result.health and result.health.ok else "had problems"
     lines = []
-    if result.utterances == 0:
+    if stats.segments == 0:
         lines.append("-- no speech detected")
+    elif result.utterances == 0:
+        lines.append(f"-- speech was detected but not transcribed ({stats.failures} failed)")
+    if not stats.drained:
+        lines.append(f"-- {stats.unprocessed} segments were still waiting when recording stopped")
     lines.append(
         f"-- {result.utterances} utterances, {stats.failures} failed segments,"
         f" ASR real-time factor {stats.rtf:.3f}; capture {capture}; meeting {result.meeting_id}"

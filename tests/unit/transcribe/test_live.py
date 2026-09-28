@@ -122,3 +122,56 @@ def test_a_timeout_is_retried_once(db) -> None:  # type: ignore[no-untyped-def]
     stats = live.stop()
     assert asr.calls == 2 and stats.failures == 0
     assert [r.text for r in _stored(path, vid)] == ["text 5"]
+
+
+def test_a_database_error_is_counted_and_later_segments_still_work(db, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import sqlite3
+
+    path, mid, vid = db
+    real_add = MeetingStore.add_utterance
+    calls = {"n": 0}
+
+    def flaky_add(self, **kwargs):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real_add(self, **kwargs)
+
+    monkeypatch.setattr(MeetingStore, "add_utterance", flaky_add)
+    live = LiveTranscriber(FakeAsr(), path, meeting_id=mid, version_id=vid)
+    live.start()
+    live.submit(_seg(0, 1.0, 1))
+    live.submit(_seg(0, 2.0, 2))
+    stats = live.stop()
+    assert stats.failures == 1 and stats.utterances == 1
+
+
+def test_an_unreachable_database_fails_segments_instead_of_dying(tmp_path: Path) -> None:
+    folder = tmp_path / "not-a-database"
+    folder.mkdir()
+    live = LiveTranscriber(FakeAsr(), folder, meeting_id="m", version_id="v")
+    live.start()
+    live.submit(_seg(0, 1.0, 1))
+    stats = live.stop(timeout_s=10)
+    assert stats.drained and stats.failures == 1 and stats.utterances == 0
+
+
+def test_stop_that_times_out_reports_leftovers_and_stops_writing(db) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    path, mid, vid = db
+
+    class SlowAsr(FakeAsr):
+        def transcribe(self, pcm: np.ndarray) -> list[Segment]:
+            time.sleep(0.4)
+            return super().transcribe(pcm)
+
+    live = LiveTranscriber(SlowAsr(), path, meeting_id=mid, version_id=vid)
+    live.start()
+    for i in range(6):
+        live.submit(_seg(0, float(i), i + 1))
+    stats = live.stop(timeout_s=0.5)
+    assert not stats.drained and stats.unprocessed >= 3
+    written = len(_stored(path, vid))
+    time.sleep(1.5)
+    assert len(_stored(path, vid)) <= written + 1  # at most the one already in progress

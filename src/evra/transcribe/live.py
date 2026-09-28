@@ -30,6 +30,8 @@ class TranscriberStats:
     failures: int
     audio_ms: int
     asr_ms: int
+    unprocessed: int = 0  # segments still queued when stop() gave up
+    drained: bool = True  # False if stop() timed out before the queue emptied
 
     @property
     def rtf(self) -> float:
@@ -37,6 +39,12 @@ class TranscriberStats:
 
 
 class LiveTranscriber:
+    """Queued speech segments → ASR → utterances, in order, on one thread and one DB connection.
+
+    It never dies silently: an ASR or database error fails just that segment (counted), and a
+    `stop()` that times out says how much was left and stops the thread from writing more.
+    """
+
     def __init__(
         self, asr: Transcriber, db_path: Path, *, meeting_id: str, version_id: str
     ) -> None:
@@ -47,8 +55,11 @@ class LiveTranscriber:
         self._queue: queue.Queue[object] = queue.Queue()
         self._listeners: list[UtteranceListener] = []
         self._thread: threading.Thread | None = None
+        self._abandon = threading.Event()
         self._segments = self._utterances = self._failures = 0
         self._audio_ms = self._asr_ms = 0
+        self._unprocessed = 0
+        self._drained = True
 
     def add_listener(self, listener: UtteranceListener) -> None:
         self._listeners.append(listener)
@@ -64,19 +75,38 @@ class LiveTranscriber:
         self._queue.put(_STOP)
         if self._thread is not None:
             self._thread.join(timeout_s)
+            if self._thread.is_alive():  # still busy: say so, and stop it writing more
+                self._abandon.set()
+                self._drained = False
+                self._unprocessed = max(self._queue.qsize() - 1, 0)  # minus the stop marker
             self._thread = None
         return self.stats()
 
     def stats(self) -> TranscriberStats:
         return TranscriberStats(
-            self._segments, self._utterances, self._failures, self._audio_ms, self._asr_ms
+            self._segments,
+            self._utterances,
+            self._failures,
+            self._audio_ms,
+            self._asr_ms,
+            self._unprocessed,
+            self._drained,
         )
 
     def _run(self) -> None:
-        conn = connect(self._db_path)
+        try:
+            conn = connect(self._db_path)
+        except Exception as exc:  # the transcript cannot be stored: fail every segment
+            log.error("transcript_store_unavailable", error=type(exc).__name__)
+            while (item := self._queue.get()) is not _STOP:
+                self._segments += 1
+                self._failures += 1
+            return
         store = MeetingStore(conn)
         try:
             while (item := self._queue.get()) is not _STOP:
+                if self._abandon.is_set():
+                    break
                 assert isinstance(item, SpeechSegment)
                 self._handle(store, item)
         finally:
@@ -89,10 +119,9 @@ class LiveTranscriber:
         try:
             try:
                 results = self._asr.transcribe(segment.pcm)
-            except (
-                WorkerCrashed,
-                TimeoutError,
-            ):  # a crashed or hung worker is replaced: retry once
+            except (WorkerCrashed, TimeoutError):  # a crashed or hung worker is replaced
+                if self._abandon.is_set():
+                    raise
                 results = self._asr.transcribe(segment.pcm)
         except Exception as exc:
             self._failures += 1
@@ -100,21 +129,30 @@ class LiveTranscriber:
             return
         finally:
             self._asr_ms += int((time.perf_counter() - started) * 1000)
+        if self._abandon.is_set():
+            return
         offset = segment.start_ms
-        for result in results:
-            if not result.text:
-                continue
-            utterance = store.add_utterance(
-                version_id=self._version_id,
-                meeting_id=self._meeting_id,
-                channel=segment.channel,
-                start_ms=offset + result.start_ms,
-                end_ms=offset + result.end_ms,
-                text=result.text,
-                words=tuple(
-                    Word(offset + w.start_ms, offset + w.end_ms, w.text) for w in result.words
-                ),
-            )
+        try:
+            stored = [
+                store.add_utterance(
+                    version_id=self._version_id,
+                    meeting_id=self._meeting_id,
+                    channel=segment.channel,
+                    start_ms=offset + result.start_ms,
+                    end_ms=offset + result.end_ms,
+                    text=result.text,
+                    words=tuple(
+                        Word(offset + w.start_ms, offset + w.end_ms, w.text) for w in result.words
+                    ),
+                )
+                for result in results
+                if result.text
+            ]
+        except Exception as exc:  # e.g. database locked or disk full: lose this segment only
+            self._failures += 1
+            log.warning("utterance_store_failed", error=type(exc).__name__)
+            return
+        for utterance in stored:
             self._utterances += 1
             for listener in self._listeners:
                 try:

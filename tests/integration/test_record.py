@@ -127,3 +127,18 @@ def test_capture_start_failure_marks_the_meeting_failed(tmp_path: Path) -> None:
     with pytest.raises(CaptureError):
         run_recording(CaptureSession(mic, system), segmenters, live, store, mid, seconds=1)
     assert store.get_meeting(mid)["state"] == "failed"
+
+
+def test_summary_only_claims_no_speech_when_none_was_detected() -> None:
+    from evra.transcribe.live import TranscriberStats
+    from evra.transcribe.record import RecordingResult, summary_lines
+
+    silent = RecordingResult("m", 0, None, TranscriberStats(0, 0, 0, 0, 0), False)
+    failed = RecordingResult("m", 0, None, TranscriberStats(3, 0, 3, 3000, 10), False)
+    leftover = RecordingResult(
+        "m", 2, None, TranscriberStats(5, 2, 0, 5000, 10, unprocessed=3, drained=False), False
+    )
+    assert "no speech detected" in "\n".join(summary_lines(silent))
+    failed_text = "\n".join(summary_lines(failed))
+    assert "no speech detected" not in failed_text and "3 failed" in failed_text
+    assert "3 segments were still waiting" in "\n".join(summary_lines(leftover))
