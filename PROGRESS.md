@@ -9,6 +9,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 3: SpeechSegmenter — Silero VAD per channel, 512-sample windows, 300 ms pre-roll, timeline-aligned.
 - Task 4: Worker processes — spawn, typed request/response, futures, crash → restart, idle stop, errors as type names only.
 - Task 5: ASR worker (Parakeet in its own process) + AsrClient — real transcription through the worker in 1.8 s incl. spawn + model load.
+- Task 6: MeetingStore — meetings, current transcript version, utterances with word timings.
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
 
