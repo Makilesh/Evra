@@ -55,3 +55,11 @@ def test_capture_test_rejects_non_positive_seconds() -> None:
 
     with pytest.raises(SystemExit):
         build_parser().parse_args(["capture-test", "0"])
+
+
+def test_transcription_subcommands_are_registered() -> None:
+    from evra.__main__ import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["models", "--download"]).download is True
+    assert parser.parse_args(["transcribe", "a.wav"]).wav == "a.wav"

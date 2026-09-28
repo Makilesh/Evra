@@ -39,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     test.add_argument("--fake-system", default=None, help="replay this WAV as system audio")
     test.add_argument("--list-devices", action="store_true", help="list microphones and exit")
     test.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
+    models = commands.add_parser("models", help="list (and download) the speech models")
+    models.add_argument("--download", action="store_true", help="download missing models")
+    models.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
+    transcribe = commands.add_parser("transcribe", help="transcribe a WAV file")
+    transcribe.add_argument("wav", help="16-bit PCM WAV file")
+    transcribe.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
     return parser
 
 
@@ -55,6 +61,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         from evra.paths import resolve_paths
 
         return capture_test_command(args, resolve_paths(args.data_dir))
+    if args.command in ("models", "transcribe"):
+        from evra.paths import resolve_paths
+        from evra.transcribe.cli import models_command, transcribe_command
+
+        command = models_command if args.command == "models" else transcribe_command
+        return command(args, resolve_paths(args.data_dir))
     parser.print_help()
     return 0
 

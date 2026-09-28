@@ -11,6 +11,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 5: ASR worker (Parakeet in its own process) + AsrClient — real transcription through the worker in 1.8 s incl. spawn + model load.
 - Task 6: MeetingStore — meetings, current transcript version, utterances with word timings.
 - Task 7: LiveTranscriber — ordered queue → ASR → utterances (absolute times) on its own DB connection; crash retried once; failures counted.
+- Task 8: `evra models [--download]`, `evra transcribe WAV` (VAD → Parakeet worker); en.wav transcribed correctly in 1.8 s including model load.
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
 
