@@ -96,3 +96,9 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Decision:** Evra does not manage Ollama's model folder: LLM weights live wherever the user's Ollama keeps them, outside D23. Evra only connects to Ollama as a client on localhost; that listener is Ollama's, not Evra's. Tested with Ollama 0.34.4.
 - **Client:** Evra speaks Ollama's REST API with the Python standard library (no proxies, redirects refused). The official `ollama` package was tried and dropped: its HTTP stack (httpx) pulls in `certifi`, which is MPL-2.0, dev-only under §9.2.
 - **Consequences:** note-writing models are not removed with `.data/`; setup docs tell users to install Ollama and pull the chosen model. Bundling llama.cpp (no external server) stays in the backlog.
+
+## Note grounding in M3b: per bullet, lexical, short prompt ids (2026-09-28)
+- **Context:** §7.5 checks every generated claim; Appendix B puts a regex on citations, so one malformed citation would fail the whole note; the embedding model (D17) arrives in M5.
+- **Evidence:** 32-character utterance ids cost tokens and invite copy mistakes; grammar-constrained JSON already guarantees shape.
+- **Decision:** prompts show utterances as `u:1…u:N` (time order) and citations are mapped back to real ids; citation syntax is checked per bullet (a bad citation drops only its bullet); support is lexical until M5 — ≥ 20% content-word overlap (5-letter prefixes), and numbers (incl. spoken numbers) and capitalised names must appear in the cited text; A1 also shows the JSON schema in its system prompt. If the JSON is still invalid after one A9 repair, the note fails with a clear message: the plain bullet-list fallback of §9.1 is built from extraction results, which arrive in M5.
+- **Consequences:** paraphrased numbers ("five hundred" said, "$0.5k" written) or years spoken as words are dropped; the bake-off reports drop rates per model.

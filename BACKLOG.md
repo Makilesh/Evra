@@ -90,3 +90,10 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Tests: a stronger device-closed assertion in `test_interrupt_still_finishes_the_meeting`; `requires_models` tests should skip, not fail, when `spikes/test_wavs/en.wav` is missing; add tests for a Range request answered with 200 and for 416.
 - ASR payload is copied 3–4 times per segment (bytes, pickle, astype); fine at the 20 s cap, revisit with shared memory if segments grow.
 - Scale the ASR timeout with segment length if long segments ever time out on slow CPUs (60 s today; a 20 s segment takes about 0.6 s).
+
+## M3b follow-ups (2026-09-28)
+
+- Embedding-based support check (cosine ≥ 0.55, §7.5) once Qwen3-Embedding runs (M5).
+- Plain bullet-list fallback note after a failed repair (§9.1), built from extraction results (M5).
+- Spoken years ("twenty twenty-six") and scaled shorthand ("12k") in the number check.
+- Map-reduce for meetings over the single-pass budget (A2/A3, M5).
