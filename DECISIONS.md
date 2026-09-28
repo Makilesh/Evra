@@ -102,6 +102,13 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** 32-character utterance ids cost tokens and invite copy mistakes; grammar-constrained JSON already guarantees shape.
 - **Decision:** prompts show utterances as `u:1…u:N` (time order) and citations are mapped back to real ids; citation syntax is checked per bullet (a bad citation drops only its bullet); support is lexical until M5 — ≥ 20% content-word overlap (5-letter prefixes), and numbers (incl. spoken numbers and "12k") and capitalised names must appear in the cited text — when one was said up to 3 lines from a cited line, that line is added as a citation (models merge context from neighbouring turns but cite one; bake-off 2026-09-28); A1 also shows the JSON schema in its system prompt. If the JSON is still invalid after one A9 repair, the note fails with a clear message: the plain bullet-list fallback of §9.1 is built from extraction results, which arrive in M5.
 - **Consequences:** paraphrased numbers ("five hundred" said, "$0.5k" written) or years spoken as words are dropped; the bake-off reports drop rates per model.
+- **Tightened after the final review (same day):**
+  - **Names.** Only `.` `!` `?`, the start of a point and a leading "Label:" count as a sentence start. After `;` `(` `-` or a later `:`, a capital is a name.
+  - **Names at a sentence start.** A capitalised word there is a name if the meeting only ever says it capitalised ("Priya"). An unknown word counts as a name only when it reads like one: alone after a label ("Owner: Marcus."), or followed by *will/and/is/has/was/said/agreed/asked/from/'s*.
+  - **Numbers written as words** in a point are checked too.
+  - **Numbers from a nearby line** are borrowed only if the line shares the word next to the number ("October 14" yes; "180 tickets" against "180 milliseconds" no). A lone "one"/"first"/"second" there doesn't count.
+  - **Remaining risk:** a made-up name the meeting never said, at the start of a point, followed by another verb ("Marcus sends the deck"), or a name that is also a common word the meeting used ("Will", "Mark"). The fix is the embedding check and owner rule in M5.
+  - **Bake-off after tightening:** gemma4 14/15 kept, and the drop was a number cited to the wrong line (the fact survives elsewhere in the note); qwen3.5 24/24; coverage 100% for both.
 
 ## M3 note model: gemma4:12b (2026-09-28)
 - **Context:** D4 — pick the local note model by testing 2–3 open models on the dev machine.

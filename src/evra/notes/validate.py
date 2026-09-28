@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from evra.llm.schemas import NoteBullet, NoteDraft
@@ -19,15 +19,19 @@ MIN_OVERLAP = 0.2
 NEARBY = 3  # a name or number said up to 3 lines away is cited from there
 _THOUSANDS = re.compile(r"(\d+(?:\.\d+)?)\s?[kK]\b")
 _RSQUO = chr(0x2019)  # typographic apostrophe
-_TYPOGRAPHIC_OPENERS = "".join(
-    map(chr, (0x201C, 0x2018, 0x2013, 0x2014, 0x2022))
-)  # quotes, dashes, bullet
 CITATION_RE = re.compile(r"^(u:[\w-]+|user|n:[\w-]+|m:\d+|d:\d+|w:\d+|g)$")
 _INLINE = re.compile(r"\s*\[((?:u:[\w-]+|user)(?:\s*,\s*(?:u:[\w-]+|user))*)\]")
 _WORD = re.compile(rf"[A-Za-z0-9]+(?:['{_RSQUO}][A-Za-z]+)?")
 _NUMBER = re.compile(r"\d+(?:[.,:]\d+)*")
 _CAPITALISED = re.compile(r"\b[A-Z][A-Za-z]+\b")
-_SENTENCE_START = ".!?:;(\"'-*" + _TYPOGRAPHIC_OPENERS
+_HARD_STOPS = ".!?"  # only these start a new sentence; after : ; ( - a capital is a name
+_LEADING_LABEL = re.compile(r"^(?:[A-Za-z']+ ?){1,3}:\s+")  # "Owner: ", "Them: "
+# How an unknown capitalised word at a sentence start reads as a name: alone ("Owner: Marcus.")
+# or followed by what people do ("Marcus will ...", "Marcus's deck").
+_NAME_FOLLOWERS = re.compile(
+    r"^(?:'s\b|\s*(?:[.,;)]|$)|\s+(?:will|and|has|is|was|said|agreed|asked|from)\b)"
+)
+_AMBIGUOUS = {"one", "first", "second"}  # alone they are rarely numbers ("the one thing")
 _NOT_NAMES = {"you", "them", "i"}
 
 
@@ -108,38 +112,65 @@ def _norm_number(text: str) -> str:
     return text.replace(",", "")
 
 
-def _spoken_numbers(words: Sequence[str]) -> set[str]:
+def _spoken_numbers(words: Sequence[str], *, lone_ambiguous: bool = True) -> set[str]:
     found: set[str] = set()
     total = current = 0
-    active = False
+    run: list[str] = []
     for word in [*words, ""]:  # the empty sentinel flushes the last run
         if word in _VALUES:
             current += _VALUES[word]
-            active = True
-        elif word in _SCALES and active:
+            run.append(word)
+        elif word in _SCALES and run:
             if word == "hundred":
                 current *= 100
             else:
                 total += current * _SCALES[word]
                 current = 0
-        elif word == "and" and active:
+            run.append(word)
+        elif word == "and" and run:
             continue
         else:
-            if active:
+            if run and (lone_ambiguous or len(run) > 1 or run[0] not in _AMBIGUOUS):
                 found.add(str(total + current))
             total = current = 0
-            active = False
+            run = []
     return found
 
 
-def _names(text: str) -> set[str]:
+@dataclass(frozen=True)
+class _Vocabulary:
+    lower: frozenset[str]  # word forms the meeting uses in lowercase: ordinary words
+    said: frozenset[str]  # every word form said in the meeting
+
+
+def _vocabulary(texts: Iterable[str]) -> _Vocabulary:
+    lower: set[str] = set()
+    said: set[str] = set()
+    for text in texts:
+        for word in _WORD.findall(text):
+            said.add(_base(word))
+            if word[0].islower():
+                lower.add(_base(word))
+    return _Vocabulary(frozenset(lower), frozenset(said))
+
+
+def _names(text: str, vocabulary: _Vocabulary) -> set[str]:
+    """Capitalised words that must come from the transcript. At a sentence start a capital
+    means nothing, so there a word counts only if the meeting never uses it in lowercase
+    (a name it said, like "Priya") or it is unknown and reads like a name ("Marcus will")."""
+    label = _LEADING_LABEL.match(text)
     found: set[str] = set()
     for match in _CAPITALISED.finditer(text):
-        before = text[: match.start()].rstrip()
-        if not before or before[-1] in _SENTENCE_START:
-            continue
         word = match.group(0).lower()
         if word in STOPWORDS or word in _NOT_NAMES:
+            continue
+        before = text[: match.start()].rstrip()
+        at_start = not before or before[-1] in _HARD_STOPS
+        at_start = at_start or (label is not None and match.start() == label.end())
+        if at_start and (
+            word in vocabulary.lower
+            or (word not in vocabulary.said and not _NAME_FOLLOWERS.match(text[match.end() :]))
+        ):
             continue
         found.add(word)
     return found
@@ -158,6 +189,7 @@ def _check(
     aliases: Mapping[str, str],
     utterance_text: Mapping[str, str],
     user_notes: str,
+    vocabulary: _Vocabulary,
 ) -> tuple[CheckedBullet | None, str]:
     text, raw = _citations(bullet)
     cited: list[str] = []
@@ -181,37 +213,65 @@ def _check(
     claim = _content(_WORD.findall(text))
     if not claim or len(claim & {_key(w) for w in source_words}) / len(claim) < MIN_OVERLAP:
         return None, "unsupported"
-    numbers = _claim_numbers(text)
-    names = _names(text)
     have_numbers, have_names = _facts(source)
+    missing_numbers = _claim_numbers(text) - have_numbers
+    missing_names = _names(text, vocabulary) - have_names
+    contexts = _number_contexts(text)
     for extra in _nearby(cited, aliases, utterance_text):
-        if numbers <= have_numbers and names <= have_names:
+        if not missing_numbers and not missing_names:
             break
-        extra_numbers, extra_names = _facts(utterance_text[extra])
-        if (numbers - have_numbers) & extra_numbers or (names - have_names) & extra_names:
+        line = utterance_text[extra]
+        numbers, names = _facts(line, lone_ambiguous=False)
+        keys = {_key(w) for w in _WORD.findall(line)}
+        # a number counts only from a line about the same thing ("October 14", not "180 ms")
+        found_numbers = {n for n in missing_numbers & numbers if contexts.get(n, set()) & keys}
+        found_names = missing_names & names
+        if found_numbers or found_names:
             cited.append(extra)  # the detail was said there: cite it too
-            have_numbers |= extra_numbers
-            have_names |= extra_names
-    if not numbers <= have_numbers:
+            missing_numbers -= found_numbers
+            missing_names -= found_names
+    if missing_numbers:
         return None, "number_not_cited"
-    if not names <= have_names:
+    if missing_names:
         return None, "name_not_cited"
     return CheckedBullet(text, tuple(cited)), ""
 
 
-def _claim_numbers(text: str) -> set[str]:
+def _expand_thousands(text: str) -> str:
     def expand(match: re.Match[str]) -> str:
         value = float(match.group(1)) * 1000
         return str(int(value)) if value.is_integer() else str(value)
 
-    return {_norm_number(n) for n in _NUMBER.findall(_THOUSANDS.sub(expand, text))}
+    return _THOUSANDS.sub(expand, text)
 
 
-def _facts(source: str) -> tuple[set[str], set[str]]:
+def _claim_numbers(text: str) -> set[str]:
+    numbers = {_norm_number(n) for n in _NUMBER.findall(_expand_thousands(text))}
+    words = [w.lower() for w in _WORD.findall(text)]
+    return numbers | _spoken_numbers(words, lone_ambiguous=False)
+
+
+def _is_content(word: str) -> bool:
+    return not word.isdigit() and len(word) > 1 and _base(word) not in STOPWORDS
+
+
+def _number_contexts(text: str) -> dict[str, set[str]]:
+    """For each written number in a claim, the content words right before and after it."""
+    expanded = _expand_thousands(text)
+    contexts: dict[str, set[str]] = {}
+    for match in _NUMBER.finditer(expanded):
+        before = [w for w in _WORD.findall(expanded[: match.start()]) if _is_content(w)]
+        after = [w for w in _WORD.findall(expanded[match.end() :]) if _is_content(w)]
+        keys = {_key(w) for w in before[-1:] + after[:1]}
+        contexts.setdefault(_norm_number(match.group(0)), set()).update(keys)
+    return contexts
+
+
+def _facts(source: str, *, lone_ambiguous: bool = True) -> tuple[set[str], set[str]]:
     """Numbers (written or spoken) and word forms in a piece of transcript."""
     words = _WORD.findall(source)
     numbers = {_norm_number(n) for n in _NUMBER.findall(source)}
-    numbers |= _spoken_numbers([w.lower() for w in words])
+    numbers |= _spoken_numbers([w.lower() for w in words], lone_ambiguous=lone_ambiguous)
     return numbers, {_base(w) for w in words}
 
 
@@ -241,11 +301,12 @@ def check_note(
     user_notes: str = "",
 ) -> CheckedNote:
     reasons: Counter[str] = Counter()
+    vocabulary = _vocabulary([*utterance_text.values(), user_notes])
 
     def check_all(bullets: Sequence[NoteBullet]) -> list[CheckedBullet]:
         kept: list[CheckedBullet] = []
         for bullet in bullets:
-            checked, reason = _check(bullet, aliases, utterance_text, user_notes)
+            checked, reason = _check(bullet, aliases, utterance_text, user_notes, vocabulary)
             if checked is None:
                 reasons[reason] += 1
             else:

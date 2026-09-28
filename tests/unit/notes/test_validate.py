@@ -1,3 +1,5 @@
+import pytest
+
 from evra.llm.schemas import NoteBullet, NoteDraft, NoteSection
 from evra.notes.templates import load_template
 from evra.notes.validate import CheckedBullet, CheckedNote, check_note
@@ -164,3 +166,87 @@ def test_names_further_away_still_drop_the_bullet() -> None:
 def test_thousands_shorthand_counts_as_the_number() -> None:
     note = check_conversation(b("There is $12k left.", "u:7"))
     assert [x.text for x in note.summary] == ["There is $12k left."]
+
+
+def check_lines(lines: list[str], bullet: NoteBullet) -> CheckedNote:
+    texts = {f"t-{i}": text for i, text in enumerate(lines, start=1)}
+    aliases = {f"u:{i}": f"t-{i}" for i in range(1, len(lines) + 1)}
+    draft = NoteDraft(summary=[bullet], sections=[])
+    return check_note(draft, aliases=aliases, utterance_text=texts, template=TEMPLATE)
+
+
+DECK = [
+    "I'll send the budget deck to finance by Friday.",
+    "Filler one about lunch.",
+    "Filler two about lunch.",
+    "Filler three about lunch.",
+    "Filler four about lunch.",
+    "Priya from legal still needs to sign off.",
+]
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Priya will send the budget deck to finance by Friday.",
+        "Marcus will send the budget deck to finance by Friday.",
+        "Owner: Marcus. Send the budget deck to finance by Friday.",
+        "Send the budget deck to finance by Friday; Marcus approved.",
+        "Legal (Marcus) approved the budget deck for finance by Friday.",
+    ],
+)
+def test_names_the_cited_line_never_said_are_dropped(claim: str) -> None:
+    assert check_lines(DECK, b(claim, "u:1")).drop_reasons == {"name_not_cited": 1}
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Budget deck goes to finance by Friday.",
+        "Deck: Send it to finance by Friday.",
+        "Them: Inform finance about the budget deck by Friday.",
+    ],
+)
+def test_ordinary_words_starting_a_point_are_not_names(claim: str) -> None:
+    assert check_lines(DECK, b(claim, "u:1")).kept == 1
+
+
+TICKETS = ["Support got two tickets and I answered them."]
+
+
+@pytest.mark.parametrize(
+    "claim", ["Support got three hundred tickets.", "Support got twelve tickets."]
+)
+def test_spelled_out_numbers_are_checked(claim: str) -> None:
+    assert check_lines(TICKETS, b(claim, "u:1")).drop_reasons == {"number_not_cited": 1}
+
+
+def test_spelled_out_numbers_that_match_are_kept() -> None:
+    assert check_lines(TICKETS, b("Support got two tickets.", "u:1")).kept == 1
+    assert check_lines(TICKETS, b("One of the tickets was answered.", "u:1")).kept == 1
+
+
+@pytest.mark.parametrize(
+    ("nearby", "claim"),
+    [
+        ("Query latency went up to about 180 milliseconds.", "Support got 180 tickets."),
+        ("The one ticket that matters is slow.", "Support got 1 ticket."),
+        ("Second, the tickets were slow.", "Support answered 2 tickets."),
+    ],
+)
+def test_a_number_is_only_borrowed_from_a_nearby_line_about_the_same_thing(
+    nearby: str, claim: str
+) -> None:
+    lines = [nearby, "Support answered the tickets."]
+    assert check_lines(lines, b(claim, "u:2")).drop_reasons == {"number_not_cited": 1}
+
+
+def test_a_date_is_borrowed_from_the_line_that_said_it() -> None:
+    lines = [
+        "Marketing wants to move the date to October 14.",
+        "The export feature still needs another week of testing.",
+    ]
+    note = check_lines(
+        lines, b("The launch moves to October 14 because testing needs a week.", "u:2")
+    )
+    assert note.summary[0].citations == ("t-2", "t-1")
