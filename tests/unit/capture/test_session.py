@@ -57,6 +57,7 @@ def test_dropout_makes_the_report_not_ok() -> None:
     gaps = health.channels["system"].gaps  # type: ignore[attr-defined]
     assert any(g["cause"] == "dropout" for g in gaps)
     assert not health.ok  # type: ignore[attr-defined]
+    assert any("dropout" in h and "system" in h for h in health.hints)  # type: ignore[attr-defined]
 
 
 def test_output_change_reopens_loopback_and_is_counted() -> None:

@@ -63,3 +63,10 @@ def test_transcription_subcommands_are_registered() -> None:
     parser = build_parser()
     assert parser.parse_args(["models", "--download"]).download is True
     assert parser.parse_args(["transcribe", "a.wav"]).wav == "a.wav"
+
+
+def test_record_subcommand_is_registered() -> None:
+    from evra.__main__ import build_parser
+
+    args = build_parser().parse_args(["record", "60", "--situation", "call_speakers"])
+    assert args.seconds == 60.0 and args.situation == "call_speakers"

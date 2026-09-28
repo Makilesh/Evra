@@ -151,6 +151,13 @@ class CaptureSession:
             if longest - ch.seconds > STALL_TOLERANCE_S:
                 hints.append(f"The {label} channel stopped delivering audio at {ch.seconds:.1f} s.")
                 problems += 1
+        for label, ch in (("microphone", mic), ("system", system)):
+            dropouts = [g for g in ch.gaps if g["cause"] == "dropout"]
+            if dropouts:
+                lost = sum(g["duration_ms"] for g in dropouts)
+                hints.append(
+                    f"{len(dropouts)} dropout(s) on the {label} channel ({lost} ms of audio lost)."
+                )
         if mic.overflows + system.overflows:
             hints.append("An audio device overflowed (input lost): the computer was too busy.")
         if self._failure is not None:

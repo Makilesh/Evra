@@ -45,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
     transcribe = commands.add_parser("transcribe", help="transcribe a WAV file")
     transcribe.add_argument("wav", help="16-bit PCM WAV file")
     transcribe.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
+    record = commands.add_parser("record", help="record a 1:1 call and transcribe it live")
+    record.add_argument("seconds", type=_positive_seconds, help="how long to record")
+    record.add_argument(
+        "--situation",
+        default="call_headphones",
+        choices=["call_headphones", "call_speakers", "in_person", "hybrid"],
+    )
+    record.add_argument("--mic", default=None, help="microphone index or name")
+    record.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
     return parser
 
 
@@ -61,6 +70,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         from evra.paths import resolve_paths
 
         return capture_test_command(args, resolve_paths(args.data_dir))
+    if args.command == "record":
+        from evra.paths import resolve_paths
+        from evra.transcribe.record import record_command
+
+        return record_command(args, resolve_paths(args.data_dir))
     if args.command in ("models", "transcribe"):
         from evra.paths import resolve_paths
         from evra.transcribe.cli import models_command, transcribe_command

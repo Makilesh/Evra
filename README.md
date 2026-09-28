@@ -21,6 +21,12 @@ Capture check (records mic + system audio, writes WAVs and a health report):
 
     uv run evra capture-test 60
 
+## Transcription
+
+    uv run evra models --download        # speech models (~670 MB, first time only)
+    uv run evra transcribe meeting.wav   # transcribe a WAV file
+    uv run evra record 60                # record a 1:1 call with a live transcript
+
 ## Licence
 
 Evra's code: FSL-1.1-ALv2 (`LICENSE.md`). Third-party components: `THIRD_PARTY_LICENSES.md`.
