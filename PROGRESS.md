@@ -5,6 +5,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 ## 2026-09-28 — M3a Transcription (branch `one-on-one-notes`)
 
 - Task 1: models.yaml (Silero VAD, Parakeet v3 int8) + modelstore (resumable, SHA-256 verified, archive whitelist); spike downloads adopted without re-download.
+- Task 2: Parakeet engine (sherpa-onnx, CPU) with word timings from BPE tokens; sherpa-onnx-core pinned explicitly (its DLLs were missing, Windows loaded System32 onnxruntime 1.17).
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
 
