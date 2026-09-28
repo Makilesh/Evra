@@ -26,6 +26,12 @@ class LlmSettings(BaseModel):
     provider: Literal["ollama"] = "ollama"
     model: str = ""  # chosen by the M3 bake-off (BUILD.md D4)
     ollama_url: str = "http://127.0.0.1:11434"
+    num_ctx: int = Field(default=32768, ge=2048)  # never Ollama's 4k default: it truncates
+    context_budget: int = Field(default=24000, ge=1000)  # estimated prompt tokens per pass
+    max_output_tokens: int = Field(default=4096, ge=256)
+    keep_alive: str = "30s"  # short: the GPU is shared (BUILD.md §8.3)
+    timeout_s: float = Field(default=600.0, gt=0)
+    think: bool = False
 
 
 class Settings(BaseModel):
