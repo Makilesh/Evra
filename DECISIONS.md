@@ -89,3 +89,9 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Context:** the owner parked M1's checkpoint and chose M3 (1:1 call end to end) next; live transcription needs VAD segments, which BUILD.md §10 scheduled in M2.
 - **Decision:** Silero VAD (`SpeechSegmenter`) ships in M3a. M2 keeps echo cancellation and spill crash recovery.
 - **Consequences:** 1:1 calls on headphones work end to end without M2; on laptop speakers the mic transcript will contain the other person's voice until M2's echo cancellation.
+
+## Ollama is an external app with its own model store and listener (2026-09-28)
+- **Context:** M3b writes notes with a local LLM through Ollama (D4). D23 keeps Evra's data inside the project folder, and Evra opens no network listener.
+- **Evidence:** Ollama has one server-wide model folder (`OLLAMA_MODELS`); the dev machine already points it at an existing shared store with other models. Ollama's server listens on `127.0.0.1:11434` whether or not Evra runs.
+- **Decision:** Evra does not manage Ollama's model folder: LLM weights live wherever the user's Ollama keeps them, outside D23. Evra only connects to Ollama as a client on localhost; that listener is Ollama's, not Evra's. Tested with Ollama 0.34.4.
+- **Consequences:** note-writing models are not removed with `.data/`; setup docs tell users to install Ollama and pull the chosen model. Bundling llama.cpp (no external server) stays in the backlog.
