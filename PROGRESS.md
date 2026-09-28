@@ -8,6 +8,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 2: Parakeet engine (sherpa-onnx, CPU) with word timings from BPE tokens; sherpa-onnx-core pinned explicitly (its DLLs were missing, Windows loaded System32 onnxruntime 1.17).
 - Task 3: SpeechSegmenter — Silero VAD per channel, 512-sample windows, 300 ms pre-roll, timeline-aligned.
 - Task 4: Worker processes — spawn, typed request/response, futures, crash → restart, idle stop, errors as type names only.
+- Task 5: ASR worker (Parakeet in its own process) + AsrClient — real transcription through the worker in 1.8 s incl. spawn + model load.
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
 
