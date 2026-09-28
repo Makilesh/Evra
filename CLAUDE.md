@@ -17,6 +17,7 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 - Transcribe a file: `uv run evra transcribe FILE.wav`
 - Record + live transcript (1:1): `uv run evra record 60`
 - Write the note for the latest recording: `uv run evra note [--model gemma4:12b]` (needs Ollama running)
+- Compare note models: `uv run python tools/bakeoff_notes.py gemma4:12b qwen3.5:9b ministral-3:14b --runs 2`
 
 ## Rules (full list: BUILD.md §11)
 - Work milestone by milestone (BUILD.md §10); plans live in `docs/superpowers/plans/`.

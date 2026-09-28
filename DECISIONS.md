@@ -102,3 +102,17 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** 32-character utterance ids cost tokens and invite copy mistakes; grammar-constrained JSON already guarantees shape.
 - **Decision:** prompts show utterances as `u:1…u:N` (time order) and citations are mapped back to real ids; citation syntax is checked per bullet (a bad citation drops only its bullet); support is lexical until M5 — ≥ 20% content-word overlap (5-letter prefixes), and numbers (incl. spoken numbers and "12k") and capitalised names must appear in the cited text — when one was said up to 3 lines from a cited line, that line is added as a citation (models merge context from neighbouring turns but cite one; bake-off 2026-09-28); A1 also shows the JSON schema in its system prompt. If the JSON is still invalid after one A9 repair, the note fails with a clear message: the plain bullet-list fallback of §9.1 is built from extraction results, which arrive in M5.
 - **Consequences:** paraphrased numbers ("five hundred" said, "$0.5k" written) or years spoken as words are dropped; the bake-off reports drop rates per model.
+
+## M3 note model: gemma4:12b (2026-09-28)
+- **Context:** D4 — pick the local note model by testing 2–3 open models on the dev machine.
+- **Evidence:** `tools/bakeoff_notes.py` on the synthetic 1:1 fixture (27 utterances ≈ 4 min, 10 expected facts), 2 runs each (first run includes model load), Ollama 0.34.4, RTX 5070 Ti Laptop 12 GB, num_ctx 32768, temperature 0, thinking off:
+
+  | model | seconds (cold / warm) | tokens in/out | kept | dropped | validity | coverage | on GPU |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | gemma4:12b | 28.8 / 20.3 | 1848/944 | 15 | 0 | 100% | 100% | 100% |
+  | qwen3.5:9b | 25.7 / 18.3 | 1784/1303 | 24 | 0 | 100% | 100% | 100% |
+  | ministral-3:14b | 94.4 / 78.6 | 1765/1373 | 19 | 0 | 100% | 90% | 67% |
+
+  qwen3.5:9b with thinking on: 75 s, the 4,096-token output budget spent on thinking, empty note after the repair. No model followed the prompt-injection line (note in French). Licences: all three Apache-2.0 (`ollama show --license`). On the owner's latest dev recording (a short video clip, not a 1:1) both leaders answered in ≈ 10 s. Before the grounding fix of the same day, gemma4 lost 5 of 15 true points to "name/number not in the cited line" — see "Note grounding in M3b".
+- **Decision:** `gemma4:12b` is the default `llm.model`: the tersest note (A1 rule 8), every action item with owner and date, fully on the GPU. `qwen3.5:9b` is the fallback (slightly faster, wordier: repeats the summary in Discussion, filed an action as a decision). Thinking stays off. ministral-3:14b is out (does not fit 12 GB VRAM, 4× slower).
+- **Consequences:** a note for a 4-minute call takes ≈ 20 s warm; the owner's first real 1:1 (HC3) confirms or flips the choice (`evra note --model qwen3.5:9b`). Re-run the bake-off when a new model family ships and before the M5 extraction prompts.

@@ -2,6 +2,19 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-09-28 — M3b Local LLM notes (branch `local-llm-notes`)
+
+- Setup: Ollama upgraded 0.16.0 → 0.34.4 (winget); gemma4:12b, qwen3.5:9b, ministral-3:14b pulled into the owner's existing Ollama model folder (DECISIONS: Ollama is an external app).
+- Task 1: `OllamaProvider` — structured JSON calls over Ollama's REST API with the standard library (loopback only, no proxies, redirects refused; the `ollama` package was dropped because httpx pulls in MPL-2.0 `certifi`); errors become one-line causes.
+- Task 2: `NoteDraft` schema, prompt files A1/A9 (Appendix A), templates `one_on_one` and `general`.
+- Task 3: A1 prompt input — utterances as `u:1…u:N` in time order, `You`/`Them` labels, data made inert inside its tags.
+- Task 4: grounding (§7.5, lexical): bullets with unknown citations, too little word overlap, or numbers/names not in the cited lines are dropped and counted.
+- Task 5: note writer — one pass, one JSON repair, too-long meetings refused, Ollama-side truncation detected.
+- Task 6: generations + output blocks stored; the newest note is current.
+- Task 7: `evra note [MEETING_ID]` — first real note from a dev recording with gemma4:12b in 12.0 s.
+- Task 8: `tools/bakeoff_notes.py` + synthetic 1:1 fixture (27 utterances, 10 expected facts). Bake-off: **gemma4:12b** chosen (100% valid points, 10/10 expected facts, 20.3 s warm for a 4-minute call, fully on GPU); qwen3.5:9b fallback; ministral-3:14b doesn't fit 12 GB. The bake-off also found two fixes: grounding now cites the nearby line a name/number came from (it had dropped true points), and console output never crashes on cp1252.
+- **M3b done** (pending HC3 on a real 1:1): `evra record` → `evra note` gives a cited note. Next: M3c (UI).
+
 ## 2026-09-28 — M3a Transcription (branch `one-on-one-notes`)
 
 - Task 1: models.yaml (Silero VAD, Parakeet v3 int8) + modelstore (resumable, SHA-256 verified, archive whitelist); spike downloads adopted without re-download.

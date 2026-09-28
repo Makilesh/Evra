@@ -24,7 +24,7 @@ class LlmSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     provider: Literal["ollama"] = "ollama"
-    model: str = ""  # chosen by the M3 bake-off (BUILD.md D4)
+    model: str = "gemma4:12b"  # M3 bake-off, DECISIONS.md 2026-09-28
     ollama_url: str = "http://127.0.0.1:11434"
     num_ctx: int = Field(default=32768, ge=2048)  # never Ollama's 4k default: it truncates
     context_budget: int = Field(default=24000, ge=1000)  # estimated prompt tokens per pass
