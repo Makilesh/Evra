@@ -18,7 +18,7 @@ dependencies = [
     "pywebview>=6.2.1",
     "pyyaml>=6.0.3",
     "samplerate>=0.2.4",
-    "sherpa-onnx>=1.13.8",
+    "sherpa-onnx==1.13.8",  # must match sherpa-onnx-core (DLLs); upgrade both together
     "sherpa-onnx-core==1.13.8",
     "sounddevice>=0.5.6",
     "structlog>=26.1.0",
