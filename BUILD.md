@@ -175,7 +175,7 @@ Evra/
 ### 4.5 Models and third-party licences
 
 - `models.yaml` lists every model: id, source (Hugging Face repo or sherpa-onnx release asset), expected licence, SHA-256 per file, approximate size, when it is loaded, attribution text. Verify each repo id exists before adding it.
-- `tools/download_models.py` downloads on first use with resume and checksum verification into the models directory: `<repo>/.data/data/models` from a source checkout (D23), `%LOCALAPPDATA%\Evra\models` for an installed build (resolved by `platformdirs`). Weights are never committed.
+- `evra models --download` (and first use of a feature that needs a model) downloads with resume and checksum verification into the models directory: `<repo>/.data/data/models` from a source checkout (D23), `%LOCALAPPDATA%\Evra\models` for an installed build (resolved by `platformdirs`). Weights are never committed.
 - `THIRD_PARTY_LICENSES.md` lists every dependency, model and font with its licence and attribution; it is rendered on an in-app Licences & credits page (M6).
 
 ---

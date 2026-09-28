@@ -13,6 +13,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 7: LiveTranscriber — ordered queue → ASR → utterances (absolute times) on its own DB connection; crash retried once; failures counted.
 - Task 8: `evra models [--download]`, `evra transcribe WAV` (VAD → Parakeet worker); en.wav transcribed correctly in 1.8 s including model load.
 - Task 9: `evra record SECONDS` — 1:1 live transcript (You/Them) into SQLite. Dev-machine runs: 2 utterances in 15 s, 0 failed segments, ASR real-time factor 0.031; health hints now printed, and dropouts always explained (Bluetooth hands-free switching caused short dropouts).
+- Final review fix pass (fresh reviewer: 1 Critical, 3 Important, 12 Minor): a hung ASR worker is killed and replaced after its deadline instead of freezing recording and shutdown (04b1b99); Ctrl+C ends `evra record` cleanly at any point (2127dc8); continuous speech is cut every 20 s without duplicated words (40092df); the live transcriber survives database errors and the summary says what it could not finish (b19d7bf); sherpa-onnx pinned to its core's version (4d11a0b). Remaining minors in BACKLOG "M3a follow-ups".
 - **M3a done:** a 1:1 call becomes a stored, labelled, timestamped transcript. Next: M3b (local LLM note writing).
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
