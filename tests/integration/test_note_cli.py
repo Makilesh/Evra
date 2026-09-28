@@ -185,14 +185,17 @@ def test_invalid_json_twice_fails_cleanly(
     assert _current(paths, mid) is None
 
 
-def test_a_note_with_nothing_supported_says_so(
+def test_a_note_with_nothing_supported_is_not_saved_and_keeps_the_previous_one(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    paths, _ = _recorded(tmp_path)
-    assert note_command(_args(), paths, provider=FakeProvider([UNSUPPORTED])) == 0
-    out = capsys.readouterr().out
-    assert "0 points kept, 1 dropped" in out
-    assert "nothing in the note could be checked" in out
+    paths, mid = _recorded(tmp_path)
+    assert note_command(_args(), paths, provider=FakeProvider([GOOD])) == 0
+    good = _current(paths, mid)
+    capsys.readouterr()
+    assert note_command(_args(), paths, provider=FakeProvider([UNSUPPORTED])) == 1
+    err = capsys.readouterr().err
+    assert "Nothing in the note could be checked" in err and "nothing saved" in err
+    assert _current(paths, mid) == good
 
 
 def test_parser_accepts_the_note_command() -> None:

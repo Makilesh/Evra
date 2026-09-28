@@ -154,6 +154,13 @@ def _run(
     except LlmError as exc:
         _err(f"The LLM failed: {exc}")
         return 1
+    if result.note.kept == 0:  # never replace a usable note with an empty one
+        _err(
+            f"Nothing in the note could be checked against the transcript"
+            f" ({result.note.dropped} points dropped); nothing saved, any earlier note is kept."
+            " Try another model with --model."
+        )
+        return 1
     notes = NoteStore(conn)
     generation_id = notes.save_generation(
         meeting_id=meeting_id,
@@ -177,6 +184,4 @@ def _run(
         f"-- note written in {result.seconds:.1f} s by {result.model}; {result.note.kept} points"
         f" kept, {result.note.dropped} dropped as unsupported{repaired}; generation {generation_id}"
     )
-    if result.note.kept == 0:
-        print("-- nothing in the note could be checked against the transcript; try another model")
     return 0

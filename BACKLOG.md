@@ -98,3 +98,4 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Spoken years ("twenty twenty-six") in the number check.
 - Map-reduce for meetings over the single-pass budget (A2/A3, M5).
 - Flaky under heavy load: `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` failed once while a 14B model ran (timing-based); make its timing tolerant.
+- Final-review minors (M3b): record the prompt-token estimate and refuse when Ollama's `prompt_eval_count` is far below it (KV-cache reuse can hide truncation on re-runs); hints for Ollama HTTP 500 (out of memory) / 400 (`--think` on a non-thinking model); pass A9's `bad_output` through `as_data`; "Ollama is not running" should also say "or install it from ollama.com"; names that are also common words ("Will", "Mark") pass the name check; `FALLBACK_MODEL` in `notes/cli.py` duplicates the `llm.model` default.
