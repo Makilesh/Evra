@@ -72,3 +72,13 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Investigate the 70 ms system-channel "dropout" gap 2.7 s into the soak (cause unknown); add an INFO log per gap (channel, cause, length, clock decision — no audio content) to diagnose future ones.
 - Mic "dropout" gaps under heavy system memory pressure (0.7–1.0 GB free) — confirm they are real loss; consider surfacing low system memory as a health hint.
 - Tag `p1-m1-done` once the above close.
+
+## M3a follow-ups (2026-09-28)
+
+- Worker logging (forward records from worker processes to the app's log via a queue).
+- Hallucination guard for phantom phrases on low-confidence segments (BUILD.md §6.2).
+- Post-meeting fast pass for when the live transcript is off.
+- Spill audio during `evra record` (crash recovery, retention, click-to-play).
+- Choose microphones by name, not index: Windows renumbers devices when Bluetooth reconnects (seen twice).
+- Bluetooth hands-free switching causes short mic dropouts; surface "use a wired/USB mic or the laptop mic" as a hint.
+- Loopback endpoint role (multimedia vs communications) before real calls on speakers.

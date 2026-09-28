@@ -13,6 +13,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Task 7: LiveTranscriber — ordered queue → ASR → utterances (absolute times) on its own DB connection; crash retried once; failures counted.
 - Task 8: `evra models [--download]`, `evra transcribe WAV` (VAD → Parakeet worker); en.wav transcribed correctly in 1.8 s including model load.
 - Task 9: `evra record SECONDS` — 1:1 live transcript (You/Them) into SQLite. Dev-machine runs: 2 utterances in 15 s, 0 failed segments, ASR real-time factor 0.031; health hints now printed, and dropouts always explained (Bluetooth hands-free switching caused short dropouts).
+- **M3a done:** a 1:1 call becomes a stored, labelled, timestamped transcript. Next: M3b (local LLM note writing).
 
 ## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
 

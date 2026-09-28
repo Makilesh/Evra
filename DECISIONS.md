@@ -84,3 +84,8 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** the sherpa-onnx 1.13.8 wheel requires `sherpa-onnx-core==1.13.8` (it carries `onnxruntime.dll` and the sherpa DLLs), but uv's lock recorded no dependencies for sherpa-onnx, so the core package was never installed and Windows loaded the old `onnxruntime.dll` from System32 (Windows ML).
 - **Decision:** depend on `sherpa-onnx-core==1.13.8` directly, pinned to the same version as `sherpa-onnx`.
 - **Consequences:** upgrade both together; packaging must bundle sherpa-onnx-core's DLLs and never rely on System32's onnxruntime.
+
+## D26 — Voice detection moves into M3 (2026-09-28)
+- **Context:** the owner parked M1's checkpoint and chose M3 (1:1 call end to end) next; live transcription needs VAD segments, which BUILD.md §10 scheduled in M2.
+- **Decision:** Silero VAD (`SpeechSegmenter`) ships in M3a. M2 keeps echo cancellation and spill crash recovery.
+- **Consequences:** 1:1 calls on headphones work end to end without M2; on laptop speakers the mic transcript will contain the other person's voice until M2's echo cancellation.

@@ -98,6 +98,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D23 | Dev data location | Running from the source checkout keeps all app data in `<repo>/.data/` (git-ignored); installed builds use per-user OS dirs; `evra run --data-dir` overrides | 2026-09-24 |
 | D24 | Resampling | libsamplerate via `samplerate` (stateful, seamless across chunks) | 2026-09-24 |
 | D25 | Output-device watch | pycaw Core Audio endpoint id, polled every 2 s | 2026-09-24 |
+| D26 | VAD placement | Silero VAD ships in M3a (needed by the live transcript); M2 keeps AEC + spill recovery | 2026-09-28 |
 
 ---
 
@@ -571,7 +572,7 @@ Ordered so the **main use case — a 1:1 call — works end to end as early as p
 | --- | --- | --- | --- | --- |
 | **M0** | Bootstrap | Repo layout; `pyproject.toml` (uv, Python 3.12); `frontend/` (Vite + React + TS + Tailwind + shadcn/ui); pywebview window loading React (dev server and built modes); Python⇄JS bridge with typed calls and pushed events; `config.py` (pydantic-settings, TOML, platformdirs); structlog; SQLite + migration runner + `0001_init.sql`; `models.yaml`; licence gate; `tools/check.py`; CI + gitleaks; `evra --version` | CI green; the app window opens and round-trips a call through the bridge | — |
 | **M1** | Windows capture | `capture/windows.py` (PyAudioWPatch loopback), `capture/mic.py` (sounddevice), `capture/fake.py`, ring buffers, clock alignment, silence padding, device-change recovery, encrypted spill, `evra capture-test 60` CLI (two WAVs + health report) | 60-min soak: drift < 30 ms, no drops, health report clean | **HC1** |
-| **M2** | Audio processing + early risk spikes | livekit echo cancellation, Silero VAD, spill crash recovery; spike: meeting window always-on-top without stealing focus | §5.3 echo acceptance passes (or fallback chosen + ADR); focus spike resolved | **HC2** |
+| **M2** | Audio processing + early risk spikes | livekit echo cancellation, spill crash recovery (VAD moved to M3, D26); spike: meeting window always-on-top without stealing focus | §5.3 echo acceptance passes (or fallback chosen + ADR); focus spike resolved | **HC2** |
 | **M3** | **1:1 call end to end** | Worker supervisor + protocol; onnx worker (Parakeet); live transcript panel; fast pass; transcript store; `LlmProvider` + Ollama; A1 synthesis + validator (§7.5); main window, meeting window, transcript view, note view; LLM bake-off (2–3 models) recorded in `DECISIONS.md` | A real 1:1 call on headphones produces a cited note; §9.5 1:1 timing measured | **HC0** (Ollama), **HC3** |
 | **M4** | Speakers | Torch worker; pyannote per situation incl. in-person 1:1 (`num_speakers = 2`) and hybrid; enrolment in onboarding; voiceprints + identity + thresholds; word assignment; rename with three scopes; Forget this person | §6.6 acceptance | **HC0** (HF token), **HC4** |
 | **M5** | Notes complete | Timestamped notepad; Qwen3-Embedding in torch worker; aligner; templates; extraction A4–A7; map-reduce path; provenance + regeneration + version history; citation chips with audio playback; Opus re-encode + retention sweeper | §7.8 acceptance | **HC-DATA** |
