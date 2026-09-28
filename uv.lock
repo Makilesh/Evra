@@ -168,6 +168,7 @@ dependencies = [
     { name = "pycaw", marker = "sys_platform == 'win32'" },
     { name = "pydantic" },
     { name = "pywebview" },
+    { name = "pyyaml" },
     { name = "samplerate" },
     { name = "sounddevice" },
     { name = "structlog" },
@@ -179,7 +180,6 @@ dev = [
     { name = "mypy" },
     { name = "pip-licenses" },
     { name = "pytest" },
-    { name = "pyyaml" },
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
@@ -195,6 +195,7 @@ requires-dist = [
     { name = "pycaw", marker = "sys_platform == 'win32'", specifier = ">=20260921" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pywebview", specifier = ">=6.2.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "samplerate", specifier = ">=0.2.4" },
     { name = "sounddevice", specifier = ">=0.5.6" },
     { name = "structlog", specifier = ">=26.1.0" },
@@ -206,7 +207,6 @@ dev = [
     { name = "mypy", specifier = ">=2.3.1" },
     { name = "pip-licenses", specifier = ">=5.5.5" },
     { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.16.8" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
 ]

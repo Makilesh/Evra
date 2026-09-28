@@ -16,6 +16,7 @@ dependencies = [
     "pycaw>=20260921 ; sys_platform == 'win32'",
     "pydantic>=2.13.5",
     "pywebview>=6.2.1",
+    "pyyaml>=6.0.3",
     "samplerate>=0.2.4",
     "sounddevice>=0.5.6",
     "structlog>=26.1.0",
@@ -54,7 +55,7 @@ module = ["webview", "webview.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["samplerate", "sounddevice", "pyaudiowpatch", "pycaw", "pycaw.*", "comtypes", "comtypes.*"]
+module = ["samplerate", "sounddevice", "pyaudiowpatch", "pycaw", "pycaw.*", "comtypes", "comtypes.*", "sherpa_onnx", "sherpa_onnx.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -68,7 +69,6 @@ dev = [
     "mypy>=2.3.1",
     "pip-licenses>=5.5.5",
     "pytest>=9.1.1",
-    "pyyaml>=6.0.3",
     "ruff>=0.16.8",
     "types-pyyaml>=6.0.12.20260906",
 ]
