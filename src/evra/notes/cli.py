@@ -20,7 +20,7 @@ from evra.llm.provider import (
 )
 from evra.logging_setup import configure_logging
 from evra.notes.templates import load_template, template_ids
-from evra.notes.writer import NoteInvalid, NoteTooLong, write_note
+from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong, write_note
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
@@ -137,6 +137,12 @@ def _run(
         _err(
             f"This meeting is too long for one pass ({exc}). Notes for long meetings are not"
             " supported yet."
+        )
+        return 1
+    except NoteCutOff as exc:
+        _err(
+            f"The model ran out of output room ({exc}). Turn off --think, or raise"
+            " llm.max_output_tokens in settings."
         )
         return 1
     except NoteInvalid:

@@ -38,6 +38,12 @@ class NoteTooLong(NoteError):
         self.limit = limit
 
 
+class NoteCutOff(NoteError):
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"the reply hit the {limit}-token output limit")
+        self.limit = limit
+
+
 class NoteInvalid(NoteError):
     def __init__(self, model: str) -> None:
         super().__init__(f"{model} returned invalid JSON twice")
@@ -94,7 +100,14 @@ def write_note(
     if prompt.estimated_tokens > settings.context_budget:
         raise NoteTooLong(prompt.estimated_tokens, settings.context_budget)
     messages = [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)]
-    calls: list[ChatResult] = [provider.chat_json(model, messages, schema)]
+
+    def call(chat: list[ChatMessage]) -> ChatResult:
+        result = provider.chat_json(model, chat, schema)
+        if result.truncated:  # a cut-off reply would be "repaired" into a shortened note
+            raise NoteCutOff(settings.max_output_tokens)
+        return result
+
+    calls: list[ChatResult] = [call(messages)]
     room = settings.num_ctx - settings.max_output_tokens
     if calls[0].tokens_in >= room:  # Ollama cut the prompt to fit its context window
         raise NoteTooLong(calls[0].tokens_in, room)
@@ -108,7 +121,7 @@ def write_note(
             bad_output=calls[0].content,
         )
         repair_messages = [ChatMessage("system", system), ChatMessage("user", user)]
-        calls.append(provider.chat_json(model, repair_messages, schema))
+        calls.append(call(repair_messages))
         version = f"{version}+{repair.version}"
         draft, error = _parse(calls[1].content)
         if draft is None:

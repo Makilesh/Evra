@@ -199,3 +199,12 @@ def test_parser_accepts_the_note_command() -> None:
     args = build_parser().parse_args(["note", "abc", "--model", "m", "--no-think"])
     assert (args.command, args.meeting_id, args.model, args.think) == ("note", "abc", "m", False)
     assert build_parser().parse_args(["note"]).meeting_id is None
+
+
+def test_a_cut_off_note_says_why_and_stores_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths, mid = _recorded(tmp_path)
+    assert note_command(_args(), paths, provider=FakeProvider([GOOD[:120]], truncated=True)) == 1
+    assert "ran out of output room" in capsys.readouterr().err
+    assert _current(paths, mid) is None

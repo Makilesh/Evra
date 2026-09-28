@@ -4,7 +4,14 @@ import pytest
 
 from evra.config import LlmSettings
 from evra.notes.templates import load_template
-from evra.notes.writer import NoteInvalid, NoteResult, NoteTooLong, NoTranscript, write_note
+from evra.notes.writer import (
+    NoteCutOff,
+    NoteInvalid,
+    NoteResult,
+    NoteTooLong,
+    NoTranscript,
+    write_note,
+)
 from evra.store.meetings import Utterance
 from tests.unit.notes.fakes import FakeProvider, utt
 
@@ -105,3 +112,22 @@ def test_a_truncated_prompt_is_detected() -> None:
 def test_no_transcript() -> None:
     with pytest.raises(NoTranscript):
         write(FakeProvider([GOOD]), utterances=[])
+
+
+def test_a_cut_off_reply_is_refused_not_repaired() -> None:
+    provider = FakeProvider([GOOD[:120], GOOD], truncated=True)
+    with pytest.raises(NoteCutOff) as caught:
+        write(provider)
+    assert caught.value.limit == 4096
+    assert len(provider.calls) == 1  # no repair of a note that ran out of room
+
+
+def test_a_cut_off_repair_is_refused_too() -> None:
+    class CutRepair(FakeProvider):
+        def chat_json(self, model, messages, schema):  # type: ignore[no-untyped-def]
+            result = super().chat_json(model, messages, schema)
+            self.truncated = True  # the first call is fine, the repair runs out of room
+            return result
+
+    with pytest.raises(NoteCutOff):
+        write(CutRepair(["{", GOOD]))
