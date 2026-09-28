@@ -95,5 +95,6 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 
 - Embedding-based support check (cosine ≥ 0.55, §7.5) once Qwen3-Embedding runs (M5).
 - Plain bullet-list fallback note after a failed repair (§9.1), built from extraction results (M5).
-- Spoken years ("twenty twenty-six") and scaled shorthand ("12k") in the number check.
+- Spoken years ("twenty twenty-six") in the number check.
 - Map-reduce for meetings over the single-pass budget (A2/A3, M5).
+- Flaky under heavy load: `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` failed once while a 14B model ran (timing-based); make its timing tolerant.

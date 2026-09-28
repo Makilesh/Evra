@@ -1,7 +1,9 @@
 """Mechanical grounding (BUILD.md §7.5), lexical part. A kept bullet cites utterances that exist,
 shares at least 20% of its content words with them (5-letter prefixes, so "agreed" matches
 "agree"), and every number and name in it appears in what it cites ("twelve thousand" counts
-for 12,000). The embedding check (cosine >= 0.55) joins in M5 with the embedding model."""
+for 12,000, and so does "12k"). Conversation carries context across turns, so a name or number
+said up to three lines from a cited line gets that line added as a citation. The embedding
+check (cosine >= 0.55) joins in M5 with the embedding model."""
 
 from __future__ import annotations
 
@@ -14,6 +16,8 @@ from evra.llm.schemas import NoteBullet, NoteDraft
 from evra.notes.templates import Template
 
 MIN_OVERLAP = 0.2
+NEARBY = 3  # a name or number said up to 3 lines away is cited from there
+_THOUSANDS = re.compile(r"(\d+(?:\.\d+)?)\s?[kK]\b")
 _RSQUO = chr(0x2019)  # typographic apostrophe
 _TYPOGRAPHIC_OPENERS = "".join(
     map(chr, (0x201C, 0x2018, 0x2013, 0x2014, 0x2022))
@@ -177,13 +181,55 @@ def _check(
     claim = _content(_WORD.findall(text))
     if not claim or len(claim & {_key(w) for w in source_words}) / len(claim) < MIN_OVERLAP:
         return None, "unsupported"
-    numbers = {_norm_number(n) for n in _NUMBER.findall(source)}
-    numbers |= _spoken_numbers([w.lower() for w in source_words])
-    if any(_norm_number(n) not in numbers for n in _NUMBER.findall(text)):
+    numbers = _claim_numbers(text)
+    names = _names(text)
+    have_numbers, have_names = _facts(source)
+    for extra in _nearby(cited, aliases, utterance_text):
+        if numbers <= have_numbers and names <= have_names:
+            break
+        extra_numbers, extra_names = _facts(utterance_text[extra])
+        if (numbers - have_numbers) & extra_numbers or (names - have_names) & extra_names:
+            cited.append(extra)  # the detail was said there: cite it too
+            have_numbers |= extra_numbers
+            have_names |= extra_names
+    if not numbers <= have_numbers:
         return None, "number_not_cited"
-    if not _names(text) <= {_base(w) for w in source_words}:
+    if not names <= have_names:
         return None, "name_not_cited"
     return CheckedBullet(text, tuple(cited)), ""
+
+
+def _claim_numbers(text: str) -> set[str]:
+    def expand(match: re.Match[str]) -> str:
+        value = float(match.group(1)) * 1000
+        return str(int(value)) if value.is_integer() else str(value)
+
+    return {_norm_number(n) for n in _NUMBER.findall(_THOUSANDS.sub(expand, text))}
+
+
+def _facts(source: str) -> tuple[set[str], set[str]]:
+    """Numbers (written or spoken) and word forms in a piece of transcript."""
+    words = _WORD.findall(source)
+    numbers = {_norm_number(n) for n in _NUMBER.findall(source)}
+    numbers |= _spoken_numbers([w.lower() for w in words])
+    return numbers, {_base(w) for w in words}
+
+
+def _nearby(
+    cited: Sequence[str], aliases: Mapping[str, str], utterance_text: Mapping[str, str]
+) -> list[str]:
+    """Utterances within NEARBY lines of the cited ones, closest first."""
+    position = {uid: int(alias[2:]) for alias, uid in aliases.items() if alias[2:].isdigit()}
+    by_position = {n: uid for uid, n in position.items()}
+    anchors = [position[c] for c in cited if c in position]
+    found: list[str] = []
+    for distance in range(1, NEARBY + 1):
+        for anchor in anchors:
+            for n in (anchor - distance, anchor + distance):
+                uid = by_position.get(n)
+                if uid is not None and uid in utterance_text and uid not in (*cited, *found):
+                    found.append(uid)
+    return found
 
 
 def check_note(

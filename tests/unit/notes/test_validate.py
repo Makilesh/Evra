@@ -125,3 +125,42 @@ def test_sections_follow_the_template_and_empty_ones_disappear() -> None:
         ("extra", "Extra", 1),
     ]
     assert (note.kept, note.dropped) == (4, 1)
+
+
+CONVERSATION = {
+    "c-1": "How are things with Priya's team? You were waiting on their API limits.",
+    "c-2": "Still waiting on them.",
+    "c-3": "I'll ask Priya directly tomorrow.",
+    "c-4": "Unrelated chat about lunch.",
+    "c-5": "More chat.",
+    "c-6": "Even more chat.",
+    "c-7": "We have 12,000 dollars left, and the Berlin office is closed.",
+}
+CONVERSATION_ALIASES = {f"u:{i}": f"c-{i}" for i in range(1, 8)}
+
+
+def check_conversation(bullet: NoteBullet) -> CheckedNote:
+    draft = NoteDraft(
+        summary=[bullet],
+        sections=[],
+    )
+    return check_note(
+        draft, aliases=CONVERSATION_ALIASES, utterance_text=CONVERSATION, template=TEMPLATE
+    )
+
+
+def test_a_name_from_a_nearby_line_adds_that_line_as_a_citation() -> None:
+    note = check_conversation(b("Them will ask Priya directly about the API limits.", "u:3"))
+    assert [(x.text, x.citations) for x in note.summary] == [
+        ("Them will ask Priya directly about the API limits.", ("c-3", "c-1"))
+    ]
+
+
+def test_names_further_away_still_drop_the_bullet() -> None:
+    note = check_conversation(b("Them will ask Priya directly about the Berlin office.", "u:3"))
+    assert note.drop_reasons == {"name_not_cited": 1}
+
+
+def test_thousands_shorthand_counts_as_the_number() -> None:
+    note = check_conversation(b("There is $12k left.", "u:7"))
+    assert [x.text for x in note.summary] == ["There is $12k left."]
