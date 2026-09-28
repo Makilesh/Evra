@@ -9,8 +9,8 @@ from evra.capture.session import CaptureSession
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
-from evra.transcribe.live import LiveTranscriber
 from evra.transcribe.labels import LABELS
+from evra.transcribe.live import LiveTranscriber
 from evra.transcribe.record import run_recording
 from tests.unit.audio.test_vad import FakeVad
 

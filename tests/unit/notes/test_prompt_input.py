@@ -1,6 +1,6 @@
 import pytest
 
-from evra.notes.prompt_input import as_data, build_note_prompt, transcript_lines
+from evra.notes.prompt_input import EN_DASH, as_data, build_note_prompt, transcript_lines
 from evra.notes.templates import load_template
 from evra.store.meetings import Utterance
 
@@ -85,7 +85,7 @@ def test_gaps_are_listed_with_cause() -> None:
         schema=SCHEMA,
         gaps=[{"start_ms": 61_000, "end_ms": 64_000, "cause": "device_change"}],
     )
-    assert "GAP 01:01–01:04 (device_change)" in prompt.user
+    assert f"GAP 01:01{EN_DASH}01:04 (device_change)" in prompt.user
 
 
 def test_estimate_grows_with_the_transcript() -> None:

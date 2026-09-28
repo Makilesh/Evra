@@ -19,6 +19,8 @@ from evra.transcribe.labels import PARTICIPANTS_1ON1, speaker_label
 
 CHARS_PER_TOKEN = 3.5  # conservative for English; Ollama's real count is recorded afterwards
 NONE = "(none)"
+LOOKALIKE_LT, LOOKALIKE_GT = chr(0x2039), chr(0x203A)  # single angle quotation marks
+EN_DASH = chr(0x2013)
 
 
 @dataclass(frozen=True)
@@ -32,7 +34,7 @@ class NotePrompt:
 
 def as_data(text: str) -> str:
     """Angle brackets become look-alikes so data can never open or close a prompt tag."""
-    return text.replace("<", "‹").replace(">", "›")
+    return text.replace("<", LOOKALIKE_LT).replace(">", LOOKALIKE_GT)
 
 
 def _one_line(text: str) -> str:
@@ -56,7 +58,7 @@ def _gap_lines(gaps: Sequence[Mapping[str, Any]]) -> str:
     lines = []
     for gap in gaps:
         start, end = format_ms(int(gap["start_ms"])), format_ms(int(gap["end_ms"]))
-        lines.append(f"GAP {start}–{end} ({_one_line(str(gap['cause']))})")
+        lines.append(f"GAP {start}{EN_DASH}{end} ({_one_line(str(gap['cause']))})")
     return "\n".join(lines) or NONE
 
 
