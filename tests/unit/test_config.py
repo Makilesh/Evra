@@ -53,3 +53,10 @@ def test_utf8_bom_file_is_read_not_reset(tmp_path: Path) -> None:
     assert load_settings(path).theme == "dark"
     assert path.exists()
     assert not (tmp_path / "settings.toml.bad").exists()
+
+
+def test_the_microphone_defaults_to_windows_default_and_round_trips(tmp_path: Path) -> None:
+    assert Settings().mic_name == ""
+    path = tmp_path / "settings.toml"
+    save_settings(path, Settings(mic_name="Headset (realme Buds Air7)"))
+    assert load_settings(path).mic_name == "Headset (realme Buds Air7)"
