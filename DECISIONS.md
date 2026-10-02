@@ -123,3 +123,25 @@ One entry per decision. Format: context · evidence · decision · consequences.
   qwen3.5:9b with thinking on: 75 s, the 4,096-token output budget spent on thinking, empty note after the repair. No model followed the prompt-injection line (note in French). Licences: all three Apache-2.0 (`ollama show --license`). On the owner's latest dev recording (a short video clip, not a 1:1) both leaders answered in ≈ 10 s. Before the grounding fix of the same day, gemma4 lost 5 of 15 true points to "name/number not in the cited line" — see "Note grounding in M3b".
 - **Decision:** `gemma4:12b` is the default `llm.model`: the tersest note (A1 rule 8), every action item with owner and date, fully on the GPU. `qwen3.5:9b` is the fallback (slightly faster, wordier: repeats the summary in Discussion, filed an action as a decision). Thinking stays off. ministral-3:14b is out (does not fit 12 GB VRAM, 4× slower).
 - **Consequences:** a note for a 4-minute call takes ≈ 20 s warm; the owner's first real 1:1 (HC3) confirms or flips the choice (`evra note --model qwen3.5:9b`). Re-run the bake-off when a new model family ships and before the M5 extraction prompts.
+
+## M3c scope: the main window first (2026-10-02)
+- **Context:** BUILD.md §10 lists the meeting window under M3; it must stay on top without stealing focus, which is the M2 spike that was skipped.
+- **Decision (owner):** M3c ships the main window only: Record/Stop with timer, levels and live transcript, the meetings list, Note and Transcript tabs, the automatic note with Retry. The floating meeting window follows the M2 focus spike.
+- **Consequences:** during a call the main window is the meeting window; HC3 is done from it.
+
+## Microphones are chosen by name on the default input's host API (2026-10-02)
+- **Context:** Windows lists every mic once per host API (MME, DirectSound, WASAPI, WDM-KS) and Bluetooth reconnects renumber them; sounddevice refuses a bare name that matches several ("Multiple input devices found"); MME cuts names at 31 characters (`spikes/mic_names.py`).
+- **Decision:** `evra.capture.devices` lists the mics of the default input's host API (MME, the API `MicSource(None)` already records from), shows the full name from another host API when MME cut it, stores the chosen name in settings (`mic_name`, `""` = Windows default) and resolves it to that API's device index at Record. A name that is gone fails before any meeting exists, and the picker keeps showing it as "(not connected)".
+- **Consequences:** WASAPI-only devices are not offered; revisit if one is ever missing from the list.
+
+## Meetings are created only once capture runs (2026-10-02)
+- **Context:** M3a created the meeting before opening the devices, so a missing mic left a `failed` empty meeting.
+- **Decision:** `LiveRecording` opens capture first and creates the meeting right after; `evra record` and the window share it. Segments cut before the transcriber exists are held and handed over in order.
+- **Consequences:** a failed start leaves nothing behind; `test_capture_start_failure_creates_no_meeting` replaces the M3a test that expected a `failed` meeting.
+
+## The window's recording and note flow (2026-10-02)
+- **Decision:**
+  - One recording or note job at a time (`idle → loading → recording → stopping → processing → idle`); Record is refused while a note is written; refused calls get the current state back.
+  - The note is written automatically after Stop (D16); failures carry a fixed reason code, never error text. `no_transcript` was added to the spec's codes for a recording with no speech.
+  - Closing the window saves a running recording and writes no note; on the next start, meetings left `processing` become `ready` (Retry writes the note) and meetings left `recording` become `failed`.
+- **Consequences:** an `evra record` running in another process while the app starts would see its meeting marked `failed`; run one recorder at a time.

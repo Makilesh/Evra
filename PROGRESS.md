@@ -2,6 +2,21 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-10-02 — M3c Main window (branch `main-window`)
+
+- Task 1: microphones listed and chosen by name on the default input's host API (Windows lists each mic per audio API; bare names were ambiguous); `mic_name` setting.
+- Task 2: one `LiveRecording` core for `evra record` and the window; capture opens before the meeting exists, so a missing mic leaves nothing behind; per-channel levels.
+- Task 3: meeting list, rename, startup recovery of meetings left mid-way; JSON views for the window.
+- Task 4: one note job (`write_and_save`) with fixed failure codes, shared by `evra note` and the window.
+- Task 5: `MeetingService` — one recording at a time, events to the window, automatic note after Stop, Retry, closing the window saves the recording.
+- Task 6: bridge calls (meetings, mics, record/stop, write note, rename, state); events to a closed window are dropped; the app shuts the service down when the window closes.
+- Task 7: frontend types, strings, formats; Inter + Newsreader bundled (no web fonts).
+- Task 8: `useEvra` keeps all window state from Python's events.
+- Tasks 9–10: top bar (mic picker, Record/Stop, timer, level meters), meetings list, live transcript, cited note, meeting view with rename.
+- Task 11: the window end to end (50 frontend tests).
+- Real runs (2026-10-02): `evra record` with an unknown mic fails cleanly with no meeting; the service end to end with real capture, Parakeet and a public test clip played on the speakers: speech recognition ready in 2.6 s, both channels transcribed, levels moved, states in order; with Ollama stopped the note reported `ollama_down`, and Retry with Ollama up wrote the note in 10.4 s. The window opened on the latest meeting's cited note and closed cleanly.
+- Next: **HC3** — a real 1:1 on headphones recorded and noted from the window (click Record, talk, Stop, read the note).
+
 ## 2026-09-28 — M3b Local LLM notes (branch `local-llm-notes`)
 
 - Setup: Ollama upgraded 0.16.0 → 0.34.4 (winget); gemma4:12b, qwen3.5:9b, ministral-3:14b pulled into the owner's existing Ollama model folder (DECISIONS: Ollama is an external app).
