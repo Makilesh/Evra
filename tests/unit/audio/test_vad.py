@@ -35,6 +35,8 @@ class FakeVad:
         have = sum(len(a) for a in self.audio)
         while self.script and (self.script[0][1] <= have or self.flushed):
             start, end = self.script.pop(0)
+            if start >= have:  # flushed before this speech was ever heard, like the real VAD
+                continue
             everything = np.concatenate(self.audio)
             self.ready.append(_Seg(start, everything[start:end]))
 
