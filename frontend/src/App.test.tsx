@@ -2,13 +2,10 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it } from "vitest";
 import App from "@/App";
-import { emit, setApiForTests, type EvraApi } from "@/bridge";
+import { emit, setApiForTests } from "@/bridge";
+import { makeFakeApi } from "@/test/fakeApi";
 
-const fakeApi: EvraApi = {
-  ping: async (m) => ({ reply: `pong: ${m}` }),
-  app_info: async () => ({ name: "Evra", version: "0.1.0" }),
-  request_hello: async () => null,
-};
+const fakeApi = makeFakeApi();
 
 afterEach(() => setApiForTests(null));
 

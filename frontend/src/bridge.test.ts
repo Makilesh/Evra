@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emit, getApi, onEvent, setApiForTests, type EvraApi } from "@/bridge";
+import { makeFakeApi } from "@/test/fakeApi";
 
-const fakeApi: EvraApi = {
-  ping: async (m) => ({ reply: `pong: ${m}` }),
-  app_info: async () => ({ name: "Evra", version: "0.1.0" }),
-  request_hello: async () => null,
-};
+const fakeApi = makeFakeApi();
 
 afterEach(() => {
   setApiForTests(null);
