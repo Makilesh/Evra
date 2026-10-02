@@ -16,8 +16,11 @@ from evra.config import Settings, debug_enabled, load_settings
 from evra.constants import APP_NAME
 from evra.logging_setup import LOG_FILE_NAME, configure_logging
 from evra.paths import AppPaths, resolve_paths
+from evra.services.meetings import MeetingService
 from evra.store.db import connect
+from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.transcribe.recording import RecordingKit
 from evra.ui.window import WEB_DIR, UiNotBuiltError, open_main_window, resolve_ui_url
 
 log = structlog.get_logger(__name__)
@@ -36,6 +39,7 @@ class App:
     bus: EventBus
     api: BridgeApi
     debug: bool
+    service: MeetingService
 
 
 def build_app(paths: AppPaths, *, debug: bool) -> App:
@@ -45,12 +49,16 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
     conn = connect(paths.db_path)
     try:
         schema = migrate(conn)
+        recovered = MeetingStore(conn).recover_after_restart()
     finally:
         conn.close()
     bus = EventBus()
-    api = BridgeApi(app_name=APP_NAME, version=__version__, bus=bus)
-    log.info("app_started", version=__version__, schema_version=schema)
-    return App(paths=paths, settings=settings, bus=bus, api=api, debug=debug)
+    service = MeetingService(paths=paths, settings=settings, emit=bus.emit, kit=RecordingKit(paths))
+    api = BridgeApi(
+        app_name=APP_NAME, version=__version__, bus=bus, control=service, db_path=paths.db_path
+    )
+    log.info("app_started", version=__version__, schema_version=schema, recovered=recovered)
+    return App(paths=paths, settings=settings, bus=bus, api=api, debug=debug, service=service)
 
 
 def run_app(
@@ -69,13 +77,17 @@ def run_app(
     paths = paths or resolve_paths()
     try:
         app = build_app(paths, debug=debug or debug_enabled())
-        opener(
-            url=url,
-            api=app.api,
-            bus=app.bus,
-            debug=app.debug,
-            storage_dir=app.paths.data_dir / "webview",
-        )
+        try:
+            opener(
+                url=url,
+                api=app.api,
+                bus=app.bus,
+                debug=app.debug,
+                storage_dir=app.paths.data_dir / "webview",
+            )
+        finally:  # the window is closed: save a running recording, stop the workers
+            app.bus.detach()
+            app.service.shutdown()
     except Exception as exc:
         # Log the details (redacted per §9.1) and give the user one readable line.
         log.exception("app_failed")

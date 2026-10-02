@@ -7,6 +7,9 @@ import re
 from collections.abc import Mapping
 from typing import Any, Protocol
 
+import structlog
+
+log = structlog.get_logger(__name__)
 _EVENT_NAME = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
 
 
@@ -30,10 +33,19 @@ class EventBus:
     def attach(self, runner: JsRunner) -> None:
         self._runner = runner
 
+    def detach(self) -> None:
+        """The window is gone: later events are dropped."""
+        self._runner = None
+
     def emit(self, name: str, payload: Mapping[str, Any]) -> bool:
-        """Push an event to the UI. Returns False if no window is attached yet."""
+        """Push an event to the UI. False if no window is attached or it is closing."""
         script = build_emit_script(name, payload)
-        if self._runner is None:
+        runner = self._runner
+        if runner is None:
             return False
-        self._runner.run_js(script)
+        try:
+            runner.run_js(script)
+        except Exception as exc:  # a window that is closing; the event only mattered to it
+            log.debug("event_dropped", name=name, error=type(exc).__name__)
+            return False
         return True
