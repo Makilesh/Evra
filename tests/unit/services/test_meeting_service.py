@@ -53,6 +53,7 @@ class FakeKit:
         )
         self.mics: list[object] = []
         self.closed = False
+        self.releases = 0
 
     def prepare(self) -> None:
         time.sleep(self.prepare_delay)
@@ -91,6 +92,10 @@ class FakeKit:
             on_utterance=on_utterance,
             on_level=on_level,
         )
+
+    def release_if_idle(self) -> bool:
+        self.releases += 1
+        return True
 
     def close(self) -> None:
         self.closed = True
@@ -145,6 +150,7 @@ class NoModel(FakeProvider):
 def make(
     tmp_path: Path,
     provider: Callable[[LlmSettings], LlmProvider] | None = None,
+    idle_check_s: float = 60.0,
     **kit: Any,
 ) -> tuple[MeetingService, Events, FakeKit, AppPaths]:
     paths = AppPaths.under(tmp_path)
@@ -160,6 +166,7 @@ def make(
         kit=fake_kit,
         provider_factory=provider or (lambda settings: FakeProvider([GOOD])),
         level_interval_s=0.02,
+        idle_check_s=idle_check_s,
     )
     return service, events, fake_kit, paths
 
@@ -393,3 +400,20 @@ def test_choosing_a_mic_keeps_settings_edited_while_the_app_runs(tmp_path: Path)
     events.wait_for("transcript.utterance")
     service.stop()
     events.wait_for("note.ready")
+
+
+def test_speech_recognition_is_unloaded_only_while_idle(tmp_path: Path) -> None:
+    service, events, kit, _ = make(tmp_path, idle_check_s=0.03)
+    time.sleep(0.2)
+    assert kit.releases > 0  # idle: the worker may go after its idle timeout (BUILD.md §4.2)
+    service.start("")
+    events.wait_for("transcript.utterance")
+    during = kit.releases
+    time.sleep(0.2)
+    assert kit.releases == during  # never while recording
+    service.stop()
+    events.wait_for("note.ready")
+    service.shutdown()
+    after = kit.releases
+    time.sleep(0.15)
+    assert kit.releases == after  # and never after the window closed

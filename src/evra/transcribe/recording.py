@@ -198,5 +198,14 @@ class RecordingKit:
             on_level=on_level,
         )
 
+    def release_if_idle(self) -> bool:
+        """Stop the ASR worker once it has been idle for its timeout (BUILD.md §4.2: workers
+        free their memory); the next recording loads it again."""
+        with self._lock:
+            if self._vad_path is None or not self._asr.stop_if_idle():
+                return False
+            self._vad_path = None
+            return True
+
     def close(self) -> None:
         self._asr.stop()

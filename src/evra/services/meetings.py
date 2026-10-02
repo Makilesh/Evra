@@ -60,6 +60,8 @@ class Kit(Protocol):
         on_level: Callable[[int, float], None] | None = None,
     ) -> Recording: ...
 
+    def release_if_idle(self) -> bool: ...
+
     def close(self) -> None: ...
 
 
@@ -75,6 +77,7 @@ class MeetingService:
         level_interval_s: float = 0.1,
         mic_lister: Callable[[], MicList] = list_mics,
         device_refresher: Callable[[], None] = refresh_devices,
+        idle_check_s: float = 60.0,
     ) -> None:
         self._paths = paths
         self._settings = settings
@@ -93,6 +96,9 @@ class MeetingService:
         self._levels = [0.0, 0.0]
         self._ticker_stop = threading.Event()
         self._ticker: threading.Thread | None = None
+        self._idle_check = idle_check_s
+        self._idle_stop = threading.Event()
+        threading.Thread(target=self._unload_when_idle, name="idle-unloader", daemon=True).start()
 
     @property
     def mic_name(self) -> str:
@@ -279,7 +285,19 @@ class MeetingService:
                 log.warning("recording_stop_failed", error=type(exc).__name__)
             with self._lock:
                 self._set("idle")
+        self._idle_stop.set()
         self._kit.close()
+
+    def _unload_when_idle(self) -> None:
+        """Let speech recognition free its memory while nothing records (BUILD.md §4.2)."""
+        while not self._idle_stop.wait(self._idle_check):
+            with self._lock:
+                idle = self._state == "idle" and not self._closing
+            if idle:
+                try:
+                    self._kit.release_if_idle()
+                except Exception as exc:
+                    log.warning("worker_not_released", error=type(exc).__name__)
 
     # --- helpers ---------------------------------------------------------------------------
 
