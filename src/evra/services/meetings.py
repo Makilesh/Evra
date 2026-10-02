@@ -141,6 +141,10 @@ class MeetingService:
             log.warning("recording_not_started", error=type(exc).__name__)
             message = f"Could not start recording ({type(exc).__name__}): {exc}"
             return self._back_to_idle({"ok": False, "error": message, "hint": ""})
+        except Exception as exc:  # anything else must not leave the service stuck in "loading"
+            log.warning("recording_not_started", error=type(exc).__name__)
+            message = f"Could not start recording ({type(exc).__name__})."
+            return self._back_to_idle({"ok": False, "error": message, "hint": ""})
         with self._lock:
             closing = self._closing
             if not closing:

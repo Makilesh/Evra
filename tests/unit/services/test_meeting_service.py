@@ -365,3 +365,18 @@ def test_the_mic_list_is_refreshed_only_while_nothing_records(tmp_path: Path) ->
     events.wait_for("transcript.utterance")
     service.stop()
     events.wait_for("note.ready")
+
+
+def test_an_unexpected_start_error_returns_to_idle(tmp_path: Path) -> None:
+    service, events, kit, _ = make(tmp_path, mic_error=RuntimeError("onnxruntime failed"))
+    assert service.start("") == {
+        "ok": False,
+        "error": "Could not start recording (RuntimeError).",
+        "hint": "",
+    }
+    assert events.states() == ["loading", "idle"]
+    kit.mic_error = None
+    assert service.start("")["ok"] is True  # not stuck in "loading"
+    events.wait_for("transcript.utterance")
+    service.stop()
+    events.wait_for("note.ready")
