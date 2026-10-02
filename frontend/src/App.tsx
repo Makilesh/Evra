@@ -1,59 +1,57 @@
-import { useEffect, useState } from "react";
-import { getApi, onEvent, type AppInfo } from "@/bridge";
+import { Banner } from "@/components/Banner";
+import { MeetingList } from "@/components/MeetingList";
+import { MeetingView } from "@/components/MeetingView";
+import { TopBar } from "@/components/TopBar";
+import { strings } from "@/strings";
+import { useEvra } from "@/useEvra";
 
-// M0 bootstrap screen: proves both bridge directions. Replaced by the real UI from M3.
+// The main window (M3c spec §4): top bar, meetings list, the open meeting.
 export default function App() {
-  const [info, setInfo] = useState<AppInfo | null>(null);
-  const [reply, setReply] = useState("");
-  const [lastEvent, setLastEvent] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const off = onEvent("app.hello", (payload) => setLastEvent(JSON.stringify(payload)));
-    getApi()
-      .then(async (api) => {
-        setInfo(await api.app_info());
-        await api.request_hello();
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-    return off;
-  }, []);
-
-  async function handlePing() {
-    try {
-      const api = await getApi();
-      setReply((await api.ping("hello")).reply);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+  const { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError } = useEvra();
+  if (state.bridgeError) {
+    return (
+      <main className="mx-auto max-w-xl p-10">
+        <Banner message={strings.bridgeDown} hint={state.bridgeError} />
+      </main>
+    );
   }
-
+  const { recording, detail } = state;
+  const liveId = recording.state === "recording" ? (recording.meeting_id ?? null) : null;
+  const isLive = detail !== null && detail.meeting.id === liveId;
+  const canWrite = detail !== null && !isLive && recording.state === "idle" && detail.utterances.length > 0;
   return (
-    <main className="mx-auto max-w-xl p-10">
-      <h1 className="font-serif text-3xl">{info ? `${info.name} ${info.version}` : "Evra"}</h1>
-      <p className="mt-2 text-muted-ink">Bootstrap check: the window talks to Python.</p>
-      <button
-        type="button"
-        onClick={handlePing}
-        className="mt-6 rounded-md bg-accent px-4 py-2 text-paper"
-      >
-        Ping Python
-      </button>
-      {reply && (
-        <p role="status" className="mt-4">
-          {reply}
-        </p>
-      )}
-      {lastEvent && (
-        <p data-testid="last-event" className="mt-2 text-sm text-muted-ink">
-          {lastEvent}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="mt-4 text-rec">
-          {error}
-        </p>
-      )}
-    </main>
+    <div className="flex h-screen flex-col">
+      <TopBar
+        appName={state.appName}
+        recording={recording}
+        levels={state.levels}
+        mics={state.mics}
+        startError={state.startError}
+        onStart={(mic) => void startRecording(mic)}
+        onStop={() => void stopRecording()}
+        onDismissError={dismissStartError}
+      />
+      <div className="flex min-h-0 flex-1">
+        <aside className="w-72 shrink-0 border-r border-line">
+          <MeetingList meetings={state.meetings} selectedId={state.selectedId} liveId={liveId} onSelect={select} />
+        </aside>
+        <main className="min-w-0 flex-1">
+          {detail ? (
+            <MeetingView
+              key={detail.meeting.id}
+              detail={detail}
+              isLive={isLive}
+              noteStatus={state.noteStatus[detail.meeting.id]}
+              hints={state.hints[detail.meeting.id]}
+              canWrite={canWrite}
+              onWrite={() => void writeNote(detail.meeting.id)}
+              onRename={(title) => rename(detail.meeting.id, title)}
+            />
+          ) : (
+            <p className="p-10 text-muted-ink">{strings.selectMeeting}</p>
+          )}
+        </main>
+      </div>
+    </div>
   );
 }
