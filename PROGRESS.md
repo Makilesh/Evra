@@ -15,7 +15,12 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
 - Tasks 9–10: top bar (mic picker, Record/Stop, timer, level meters), meetings list, live transcript, cited note, meeting view with rename.
 - Task 11: the window end to end (50 frontend tests).
 - Real runs (2026-10-02): `evra record` with an unknown mic fails cleanly with no meeting; the service end to end with real capture, Parakeet and a public test clip played on the speakers: speech recognition ready in 2.6 s, both channels transcribed, levels moved, states in order; with Ollama stopped the note reported `ollama_down`, and Retry with Ollama up wrote the note in 10.4 s. The window opened on the latest meeting's cited note and closed cleanly.
-- Next: **HC3** — a real 1:1 on headphones recorded and noted from the window (click Record, talk, Stop, read the note).
+- Final review (fresh reviewer): 0 Critical, 2 Important + 2 re-graded; fixed: mic list follows devices connected after start, an unexpected start error no longer sticks on "Loading…", choosing a mic keeps settings edited meanwhile, speech recognition unloads after 5 idle minutes. Minors in BACKLOG.
+- **HC3 (owner, 2026-10-02), Bluetooth earbuds + Google Meet in Brave:**
+  - 17:35 call: only "You" — Evra listened to the right output (Headphones, realme Buds Air7) but Windows played nothing on it for >95% of the recording; not reproduced since.
+  - 21:31 test (owner on the phone as the other participant): "Them" lines from Meet, note with citations; the owner's voice also appears as "You" because the earbud mic hears them talking into the phone (test setup, not echo); 6 Bluetooth mic dropouts (360 ms); the owner's name is misheard.
+  - Check from a fresh process (`evra capture-test 30` during the Meet): system channel −24.6 dBFS, PASS.
+- Next: HC3 with a real second person; then merge M3c.
 
 ## 2026-09-28 — M3b Local LLM notes (branch `local-llm-notes`)
 
