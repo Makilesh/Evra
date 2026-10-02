@@ -16,6 +16,7 @@ interface TopBarProps {
   onStart: (mic: string) => void;
   onStop: () => void;
   onDismissError: () => void;
+  onRefreshMics: () => void;
   now?: () => number;
 }
 
@@ -35,7 +36,18 @@ const BUSY: Record<Exclude<RecordingPhase, "idle" | "recording">, string> = {
   processing: strings.writingNote,
 };
 
-export function TopBar({ appName, recording, levels, mics, startError, onStart, onStop, onDismissError, now = Date.now }: TopBarProps) {
+export function TopBar({
+  appName,
+  recording,
+  levels,
+  mics,
+  startError,
+  onStart,
+  onStop,
+  onDismissError,
+  onRefreshMics,
+  now = Date.now,
+}: TopBarProps) {
   const [picked, setPicked] = useState<string | null>(null);
   const phase = recording.state;
   const chosen = picked ?? mics?.chosen ?? "";
@@ -60,6 +72,7 @@ export function TopBar({ appName, recording, levels, mics, startError, onStart, 
             value={chosen}
             disabled={phase !== "idle"}
             onChange={(event) => setPicked(event.target.value)}
+            onFocus={onRefreshMics}
             className="max-w-64 rounded-md border border-line bg-paper px-2 py-1 text-sm disabled:opacity-60"
           >
             <option value="">{strings.windowsDefault(mics?.default ?? "")}</option>

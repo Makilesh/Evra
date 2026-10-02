@@ -20,6 +20,7 @@ function bar(recording: RecordingState, extra: Partial<Parameters<typeof TopBar>
     onStart: vi.fn(),
     onStop: vi.fn(),
     onDismissError: vi.fn(),
+    onRefreshMics: vi.fn(),
     ...extra,
   };
   render(<TopBar {...props} />);
@@ -72,4 +73,10 @@ it("shows why recording could not start, with its fix, until dismissed", async (
   expect(alert).toHaveTextContent("Pick the microphone again.");
   await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(props.onDismissError).toHaveBeenCalled();
+});
+
+it("lists the microphones again when the picker is opened", async () => {
+  const props = bar({ state: "idle" });
+  await userEvent.click(screen.getByRole("combobox", { name: "Microphone" }));
+  expect(props.onRefreshMics).toHaveBeenCalled();
 });

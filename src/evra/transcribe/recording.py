@@ -19,7 +19,7 @@ import numpy as np
 from evra.asr.parakeet import PARAKEET_ID
 from evra.audio.frames import Frames, Int16Array
 from evra.audio.vad import SpeechSegment, SpeechSegmenter, silero_vad
-from evra.capture.devices import resolve_mic
+from evra.capture.devices import refresh_devices, resolve_mic
 from evra.capture.session import CaptureHealth, CaptureSession
 from evra.paths import AppPaths
 from evra.store.db import connect
@@ -181,6 +181,7 @@ class RecordingKit:
         self.prepare()
         vad_path = self._vad_path
         assert vad_path is not None
+        refresh_devices()  # see mics connected since start-up; nothing records yet
         device = mic if isinstance(mic, int) else resolve_mic(mic or "")
         session = CaptureSession(
             MicSource(device), LoopbackSource(), watcher_factory=DefaultOutputWatcher

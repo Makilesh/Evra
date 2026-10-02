@@ -31,6 +31,15 @@ def _sounddevice() -> Any:
     return sounddevice
 
 
+def refresh_devices(backend: Any = None) -> None:
+    """Enumerate devices again. PortAudio lists them once, at start-up, so mics connected
+    since then (or a changed Windows default) are otherwise invisible to a long-running window.
+    Pa_Terminate closes every open sounddevice stream: call this only when nothing records."""
+    sd = backend or _sounddevice()
+    sd._terminate()
+    sd._initialize()
+
+
 def _full_name(name: str, names: list[str]) -> str:
     if len(name) != MME_NAME_LIMIT:
         return name

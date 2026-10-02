@@ -55,7 +55,12 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
     bus = EventBus()
     service = MeetingService(paths=paths, settings=settings, emit=bus.emit, kit=RecordingKit(paths))
     api = BridgeApi(
-        app_name=APP_NAME, version=__version__, bus=bus, control=service, db_path=paths.db_path
+        app_name=APP_NAME,
+        version=__version__,
+        bus=bus,
+        control=service,
+        db_path=paths.db_path,
+        mic_lister=service.list_mics,
     )
     log.info("app_started", version=__version__, schema_version=schema, recovered=recovered)
     return App(paths=paths, settings=settings, bus=bus, api=api, debug=debug, service=service)

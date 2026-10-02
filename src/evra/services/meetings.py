@@ -16,6 +16,7 @@ from typing import Any, Literal, Protocol
 
 import structlog
 
+from evra.capture.devices import MicList, list_mics, refresh_devices
 from evra.capture.sources import CaptureError
 from evra.config import LlmSettings, Settings, save_settings
 from evra.llm.ollama import OllamaProvider
@@ -72,6 +73,8 @@ class MeetingService:
         kit: Kit,
         provider_factory: Callable[[LlmSettings], LlmProvider] = OllamaProvider,
         level_interval_s: float = 0.1,
+        mic_lister: Callable[[], MicList] = list_mics,
+        device_refresher: Callable[[], None] = refresh_devices,
     ) -> None:
         self._paths = paths
         self._settings = settings
@@ -79,6 +82,8 @@ class MeetingService:
         self._kit = kit
         self._provider_factory = provider_factory
         self._level_interval = level_interval_s
+        self._list_mics = mic_lister
+        self._refresh_devices = device_refresher
         self._lock = threading.Lock()
         self._state: State = "idle"
         self._meeting_id: str | None = None
@@ -96,6 +101,17 @@ class MeetingService:
     def state(self) -> dict[str, Any]:
         with self._lock:
             return self._payload()
+
+    def list_mics(self) -> MicList:
+        """The mics as they are now. Devices are enumerated again only while nothing records:
+        re-enumerating closes open streams, so the lock keeps a Record from starting meanwhile."""
+        with self._lock:
+            if self._state == "idle" and not self._closing:
+                try:
+                    self._refresh_devices()
+                except Exception as exc:
+                    log.warning("devices_not_refreshed", error=type(exc).__name__)
+        return self._list_mics()
 
     # --- recording -------------------------------------------------------------------------
 

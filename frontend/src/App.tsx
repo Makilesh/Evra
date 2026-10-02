@@ -7,7 +7,8 @@ import { useEvra } from "@/useEvra";
 
 // The main window (M3c spec §4): top bar, meetings list, the open meeting.
 export default function App() {
-  const { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError } = useEvra();
+  const { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError, refreshMics } =
+    useEvra();
   if (state.bridgeError) {
     return (
       <main className="mx-auto max-w-xl p-10">
@@ -30,6 +31,7 @@ export default function App() {
         onStart={(mic) => void startRecording(mic)}
         onStop={() => void stopRecording()}
         onDismissError={dismissStartError}
+        onRefreshMics={() => void refreshMics()}
       />
       <div className="flex min-h-0 flex-1">
         <aside className="w-72 shrink-0 border-r border-line">

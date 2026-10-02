@@ -348,3 +348,20 @@ def test_the_chosen_mic_is_remembered(tmp_path: Path) -> None:
     events.wait_for("transcript.utterance")  # let one line through, so a note is written
     service.stop()
     events.wait_for("note.ready")
+
+
+def test_the_mic_list_is_refreshed_only_while_nothing_records(tmp_path: Path) -> None:
+    from evra.capture.devices import MicList
+
+    refreshed: list[bool] = []
+    service, events, _, _ = make(tmp_path)
+    service._refresh_devices = lambda: refreshed.append(True)  # type: ignore[method-assign]
+    service._list_mics = lambda: MicList("Array", ("Array", "Headset"))  # type: ignore[method-assign]
+    assert service.list_mics() == MicList("Array", ("Array", "Headset"))
+    assert refreshed == [True]
+    service.start("")
+    service.list_mics()  # an open stream must never be cut by re-enumerating devices
+    assert refreshed == [True]
+    events.wait_for("transcript.utterance")
+    service.stop()
+    events.wait_for("note.ready")

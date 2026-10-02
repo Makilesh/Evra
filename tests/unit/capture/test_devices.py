@@ -74,3 +74,22 @@ def test_a_name_matching_several_mics_is_refused() -> None:
     ]
     with pytest.raises(MicUnavailableError, match="several"):
         resolve_mic("usb mic", FakeSd(devices, default=0))
+
+
+def test_refreshing_sees_mics_connected_after_start() -> None:
+    from evra.capture.devices import refresh_devices
+
+    earbuds = {"name": "Headset (Mivi Roam 2)", "hostapi": 0, "max_input_channels": 1}
+
+    class RestartingSd(FakeSd):
+        def _terminate(self) -> None:
+            self.restarted = True
+
+        def _initialize(self) -> None:
+            self.devices = [*DEVICES, earbuds]  # PortAudio enumerates again
+
+    sd = RestartingSd()
+    assert "Headset (Mivi Roam 2)" not in list_mics(sd).mics
+    refresh_devices(sd)
+    assert "Headset (Mivi Roam 2)" in list_mics(sd).mics
+    assert resolve_mic("Headset (Mivi Roam 2)", sd) == len(DEVICES)

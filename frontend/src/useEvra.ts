@@ -197,7 +197,16 @@ export function useEvra() {
     [refreshMeetings, loadDetail],
   );
 
+  const refreshMics = useCallback(async () => {
+    try {
+      const mics = await (await getApi()).list_mics();
+      setState((s) => ({ ...s, mics }));
+    } catch {
+      // keep the list that is shown
+    }
+  }, []);
+
   const dismissStartError = useCallback(() => setState((s) => ({ ...s, startError: null })), []);
 
-  return { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError };
+  return { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError, refreshMics };
 }

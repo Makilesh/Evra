@@ -107,3 +107,15 @@ it("says so when the bridge is unavailable", async () => {
   const { result } = renderHook(() => useEvra());
   await waitFor(() => expect(result.current.state.bridgeError).toBe("boom"));
 });
+
+it("lists the microphones again on request", async () => {
+  const mics = [
+    { default: "Array", mics: ["Array"], chosen: "" },
+    { default: "Array", mics: ["Array", "Headset (Mivi Roam 2)"], chosen: "" },
+  ];
+  setApiForTests(makeFakeApi({ list_mics: async () => mics.shift()! }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.mics?.mics).toEqual(["Array"]));
+  await act(() => result.current.refreshMics());
+  expect(result.current.state.mics?.mics).toEqual(["Array", "Headset (Mivi Roam 2)"]);
+});
