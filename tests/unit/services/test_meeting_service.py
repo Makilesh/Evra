@@ -380,3 +380,16 @@ def test_an_unexpected_start_error_returns_to_idle(tmp_path: Path) -> None:
     events.wait_for("transcript.utterance")
     service.stop()
     events.wait_for("note.ready")
+
+
+def test_choosing_a_mic_keeps_settings_edited_while_the_app_runs(tmp_path: Path) -> None:
+    from evra.config import save_settings
+
+    service, events, _, paths = make(tmp_path)
+    save_settings(paths.settings_file, Settings(llm=LlmSettings(model="qwen3.5:9b")))
+    service.start("Headset (realme Buds Air7)")
+    saved = load_settings(paths.settings_file)
+    assert (saved.mic_name, saved.llm.model) == ("Headset (realme Buds Air7)", "qwen3.5:9b")
+    events.wait_for("transcript.utterance")
+    service.stop()
+    events.wait_for("note.ready")

@@ -18,7 +18,7 @@ import structlog
 
 from evra.capture.devices import MicList, list_mics, refresh_devices
 from evra.capture.sources import CaptureError
-from evra.config import LlmSettings, Settings, save_settings
+from evra.config import LlmSettings, Settings, load_settings, save_settings
 from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import LlmError, LlmModelMissing, LlmProvider
 from evra.modelstore import ModelError
@@ -322,7 +322,9 @@ class MeetingService:
     def _remember_mic(self, mic_name: str) -> None:
         if mic_name == self._settings.mic_name:
             return
-        self._settings = self._settings.model_copy(update={"mic_name": mic_name})
+        # read the file again: settings edited while the app runs must not be overwritten
+        current = load_settings(self._paths.settings_file)
+        self._settings = current.model_copy(update={"mic_name": mic_name})
         try:
             save_settings(self._paths.settings_file, self._settings)
         except OSError as exc:
