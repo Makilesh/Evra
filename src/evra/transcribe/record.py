@@ -24,11 +24,10 @@ from evra.store.db import connect
 from evra.store.meetings import MeetingStore, Utterance
 from evra.store.migrate import migrate
 from evra.transcribe.cli import ensure_speech_models, format_ms
+from evra.transcribe.labels import speaker_label
 from evra.transcribe.live import LiveTranscriber, TranscriberStats
 from evra.workers.asr import AsrClient
 from evra.workers.protocol import WorkerCrashed, WorkerError
-
-LABELS = {0: "You", 1: "Them"}  # 1:1 mode: mic = owner, system = the other person
 
 
 @dataclass(frozen=True)
@@ -95,7 +94,7 @@ def run_recording(
 
 
 def _print_utterance(utterance: Utterance) -> None:
-    label = LABELS.get(utterance.channel, f"Channel {utterance.channel}")
+    label = speaker_label(utterance.channel)
     print(f"[{format_ms(utterance.start_ms)}] {label}: {utterance.text}", flush=True)
 
 

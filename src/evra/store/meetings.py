@@ -71,6 +71,19 @@ class MeetingStore:
             raise KeyError(meeting_id)
         return dict(row)
 
+    def latest_meeting_id(self) -> str | None:
+        row = self._conn.execute(
+            "SELECT id FROM meeting ORDER BY started_at DESC, created_at DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else str(row["id"])
+
+    def current_transcript_version(self, meeting_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT id FROM transcript_version WHERE meeting_id = ? AND is_current = 1",
+            (meeting_id,),
+        ).fetchone()
+        return None if row is None else str(row["id"])
+
     def create_transcript_version(self, meeting_id: str, *, kind: str, model: str) -> str:
         version_id = new_id()
         self._conn.execute("BEGIN")

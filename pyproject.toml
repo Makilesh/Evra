@@ -64,7 +64,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra -m 'not hardware'"
-markers = ["hardware: needs real audio devices or the Windows credential store (run: uv run pytest -m hardware)"]
+markers = ["hardware: needs real audio devices, the Windows credential store or a local Ollama (run: uv run pytest -m hardware)"]
 
 [dependency-groups]
 dev = [

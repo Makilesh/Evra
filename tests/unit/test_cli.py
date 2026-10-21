@@ -1,3 +1,5 @@
+import io
+import sys
 from pathlib import Path
 
 import pytest
@@ -70,3 +72,14 @@ def test_record_subcommand_is_registered() -> None:
 
     args = build_parser().parse_args(["record", "60", "--situation", "call_speakers"])
     assert args.seconds == 60.0 and args.situation == "call_speakers"
+
+
+def test_output_the_console_cannot_encode_never_crashes(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A redirected Windows console is cp1252; notes and transcripts can hold any character.
+    raw = io.BytesIO()
+    cp1252 = io.TextIOWrapper(raw, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", cp1252)
+    assert main([]) == 0
+    print("You \u2192 Them")
+    cp1252.flush()
+    assert b"You ? Them" in raw.getvalue()

@@ -90,3 +90,12 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Tests: a stronger device-closed assertion in `test_interrupt_still_finishes_the_meeting`; `requires_models` tests should skip, not fail, when `spikes/test_wavs/en.wav` is missing; add tests for a Range request answered with 200 and for 416.
 - ASR payload is copied 3–4 times per segment (bytes, pickle, astype); fine at the 20 s cap, revisit with shared memory if segments grow.
 - Scale the ASR timeout with segment length if long segments ever time out on slow CPUs (60 s today; a 20 s segment takes about 0.6 s).
+
+## M3b follow-ups (2026-09-28)
+
+- Embedding-based support check (cosine ≥ 0.55, §7.5) once Qwen3-Embedding runs (M5).
+- Plain bullet-list fallback note after a failed repair (§9.1), built from extraction results (M5).
+- Spoken years ("twenty twenty-six") in the number check.
+- Map-reduce for meetings over the single-pass budget (A2/A3, M5).
+- Flaky under heavy load: `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` failed once while a 14B model ran (timing-based); make its timing tolerant.
+- Final-review minors (M3b): record the prompt-token estimate and refuse when Ollama's `prompt_eval_count` is far below it (KV-cache reuse can hide truncation on re-runs); hints for Ollama HTTP 500 (out of memory) / 400 (`--think` on a non-thinking model); pass A9's `bad_output` through `as_data`; "Ollama is not running" should also say "or install it from ollama.com"; names that are also common words ("Will", "Mark") pass the name check; `FALLBACK_MODEL` in `notes/cli.py` duplicates the `llm.model` default.

@@ -1,0 +1,22 @@
+name: "1:1"
+sections:
+  - id: discussion
+    title: Discussion
+    instruction: What each person shared (updates, problems, feedback), grouped by topic.
+    required: true
+  - id: decisions
+    title: Decisions
+    instruction: Explicit agreements or choices made in the call.
+    required: false
+  - id: action_items
+    title: Action items
+    instruction: Tasks someone committed to or was asked to do; start with the owner (You, Them or a name) and include any stated due date.
+    required: false
+  - id: open_questions
+    title: Open questions
+    instruction: Questions raised and not answered by the end of the call.
+    required: false
+  - id: next_time
+    title: For next time
+    instruction: Topics either person wants to pick up in the next 1:1.
+    required: false
