@@ -11,10 +11,15 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 - Python only: `uv run pytest` · `uv run ruff check .` · `uv run ruff format --check .` · `uv run mypy`
 - Frontend only: `npm --prefix frontend run lint|typecheck|test`
 - Licences: `uv run python tools/license_gate.py [--write-register]`
+- Capture check: `uv run evra capture-test 60` (list mics: `uv run evra capture-test 1 --list-devices`)
+- Hardware tests: `uv run pytest -m hardware`
+- Models: `uv run evra models [--download]`
+- Transcribe a file: `uv run evra transcribe FILE.wav`
+- Record + live transcript (1:1): `uv run evra record 60`
 
 ## Rules (full list: BUILD.md §11)
 - Work milestone by milestone (BUILD.md §10); plans live in `docs/superpowers/plans/`.
-- After each completed feature: checks pass → Conventional Commit → `git push origin core` (D22). No force-push.
+- After each completed feature: checks pass → Conventional Commit → `git push` on the current working branch (D22; one branch per milestone, e.g. `windows-capture`). No force-push.
 - Update `PROGRESS.md`, `DECISIONS.md`, `BACKLOG.md` as you go.
 - Never change a §2 decision silently; write a DECISIONS.md entry.
 - Licence gate before any new dependency or model.

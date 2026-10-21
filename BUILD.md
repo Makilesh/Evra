@@ -96,6 +96,9 @@ Change none of these without a `DECISIONS.md` entry.
 | D21 | Code licence | Evra's own code under **FSL-1.1-ALv2** (`LICENSE.md`): source-available, no competing commercial use, each release becomes Apache-2.0 after two years | 2026-09-24 |
 | D22 | Git workflow | After each completed feature/update: `tools/check.py` + gitleaks pass → Conventional Commit → push to `origin` on the working branch. No force-push, no history rewrite, no push to `main` unless asked | 2026-09-24 |
 | D23 | Dev data location | Running from the source checkout keeps all app data in `<repo>/.data/` (git-ignored); installed builds use per-user OS dirs; `evra run --data-dir` overrides | 2026-09-24 |
+| D24 | Resampling | libsamplerate via `samplerate` (stateful, seamless across chunks) | 2026-09-24 |
+| D25 | Output-device watch | pycaw Core Audio endpoint id, polled every 2 s | 2026-09-24 |
+| D26 | VAD placement | Silero VAD ships in M3a (needed by the live transcript); M2 keeps AEC + spill recovery | 2026-09-28 |
 
 ---
 
@@ -172,7 +175,7 @@ Evra/
 ### 4.5 Models and third-party licences
 
 - `models.yaml` lists every model: id, source (Hugging Face repo or sherpa-onnx release asset), expected licence, SHA-256 per file, approximate size, when it is loaded, attribution text. Verify each repo id exists before adding it.
-- `tools/download_models.py` downloads on first use with resume and checksum verification into the models directory: `<repo>/.data/data/models` from a source checkout (D23), `%LOCALAPPDATA%\Evra\models` for an installed build (resolved by `platformdirs`). Weights are never committed.
+- `evra models --download` (and first use of a feature that needs a model) downloads with resume and checksum verification into the models directory: `<repo>/.data/data/models` from a source checkout (D23), `%LOCALAPPDATA%\Evra\models` for an installed build (resolved by `platformdirs`). Weights are never committed.
 - `THIRD_PARTY_LICENSES.md` lists every dependency, model and font with its licence and attribution; it is rendered on an in-app Licences & credits page (M6).
 
 ---
@@ -188,10 +191,10 @@ Evra/
 ### 5.1 Capture
 
 - **Channels:** 0 = microphone, 1 = system output. Both 16 kHz mono int16 after conversion, one monotonic clock.
-- **System audio:** PyAudioWPatch opens the WASAPI loopback twin of the default output device at its native rate/channels. Downmix and resample to 16 kHz in the pipeline with `scipy.signal.resample_poly` (never ask WASAPI to convert; avoid `soxr`, which is LGPL).
+- **System audio:** PyAudioWPatch opens the WASAPI loopback twin of the default output device at its native rate/channels. Downmix and resample to 16 kHz in the pipeline with a stateful libsamplerate resampler (`samplerate`, D24) (never ask WASAPI to convert; avoid `soxr`, which is LGPL).
 - **Microphone:** `sounddevice` on the default input (user-selectable); native rate, resampled.
 - **Silence padding:** loopback delivers nothing when nothing plays; if no loopback data arrives for 50 ms while capturing, synthesise zeros so the timeline keeps moving.
-- **Device changes:** poll the default output every 2 s; on change, reopen loopback on the new device and record a `gap` (cause `device_change`). Target < 500 ms lost.
+- **Device changes:** poll the default output every 2 s; on change, reopen loopback on the new device and record a `gap` (cause `device_change`). Target < 500 ms lost. The default endpoint id is read via pycaw (D25).
 - **Mic permission:** on access error, show a dialog linking to `ms-settings:privacy-microphone`.
 - **Interface:** a `CaptureBackend` protocol (`list_devices`, `start`, `stop`, `health`) emitting `Frames(channel, pcm, t_capture_ns)`. `capture/fake.py` replays WAV files with real-time pacing, injected silences, dropouts and device changes; every test above the OS boundary uses it.
 
@@ -569,7 +572,7 @@ Ordered so the **main use case — a 1:1 call — works end to end as early as p
 | --- | --- | --- | --- | --- |
 | **M0** | Bootstrap | Repo layout; `pyproject.toml` (uv, Python 3.12); `frontend/` (Vite + React + TS + Tailwind + shadcn/ui); pywebview window loading React (dev server and built modes); Python⇄JS bridge with typed calls and pushed events; `config.py` (pydantic-settings, TOML, platformdirs); structlog; SQLite + migration runner + `0001_init.sql`; `models.yaml`; licence gate; `tools/check.py`; CI + gitleaks; `evra --version` | CI green; the app window opens and round-trips a call through the bridge | — |
 | **M1** | Windows capture | `capture/windows.py` (PyAudioWPatch loopback), `capture/mic.py` (sounddevice), `capture/fake.py`, ring buffers, clock alignment, silence padding, device-change recovery, encrypted spill, `evra capture-test 60` CLI (two WAVs + health report) | 60-min soak: drift < 30 ms, no drops, health report clean | **HC1** |
-| **M2** | Audio processing + early risk spikes | livekit echo cancellation, Silero VAD, spill crash recovery; spike: meeting window always-on-top without stealing focus | §5.3 echo acceptance passes (or fallback chosen + ADR); focus spike resolved | **HC2** |
+| **M2** | Audio processing + early risk spikes | livekit echo cancellation, spill crash recovery (VAD moved to M3, D26); spike: meeting window always-on-top without stealing focus | §5.3 echo acceptance passes (or fallback chosen + ADR); focus spike resolved | **HC2** |
 | **M3** | **1:1 call end to end** | Worker supervisor + protocol; onnx worker (Parakeet); live transcript panel; fast pass; transcript store; `LlmProvider` + Ollama; A1 synthesis + validator (§7.5); main window, meeting window, transcript view, note view; LLM bake-off (2–3 models) recorded in `DECISIONS.md` | A real 1:1 call on headphones produces a cited note; §9.5 1:1 timing measured | **HC0** (Ollama), **HC3** |
 | **M4** | Speakers | Torch worker; pyannote per situation incl. in-person 1:1 (`num_speakers = 2`) and hybrid; enrolment in onboarding; voiceprints + identity + thresholds; word assignment; rename with three scopes; Forget this person | §6.6 acceptance | **HC0** (HF token), **HC4** |
 | **M5** | Notes complete | Timestamped notepad; Qwen3-Embedding in torch worker; aligner; templates; extraction A4–A7; map-reduce path; provenance + regeneration + version history; citation chips with audio playback; Opus re-encode + retention sweeper | §7.8 acceptance | **HC-DATA** |

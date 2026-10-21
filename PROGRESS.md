@@ -2,6 +2,52 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-09-28 — M3a Transcription (branch `one-on-one-notes`)
+
+- Task 1: models.yaml (Silero VAD, Parakeet v3 int8) + modelstore (resumable, SHA-256 verified, archive whitelist); spike downloads adopted without re-download.
+- Task 2: Parakeet engine (sherpa-onnx, CPU) with word timings from BPE tokens; sherpa-onnx-core pinned explicitly (its DLLs were missing, Windows loaded System32 onnxruntime 1.17).
+- Task 3: SpeechSegmenter — Silero VAD per channel, 512-sample windows, 300 ms pre-roll, timeline-aligned.
+- Task 4: Worker processes — spawn, typed request/response, futures, crash → restart, idle stop, errors as type names only.
+- Task 5: ASR worker (Parakeet in its own process) + AsrClient — real transcription through the worker in 1.8 s incl. spawn + model load.
+- Task 6: MeetingStore — meetings, current transcript version, utterances with word timings.
+- Task 7: LiveTranscriber — ordered queue → ASR → utterances (absolute times) on its own DB connection; crash retried once; failures counted.
+- Task 8: `evra models [--download]`, `evra transcribe WAV` (VAD → Parakeet worker); en.wav transcribed correctly in 1.8 s including model load.
+- Task 9: `evra record SECONDS` — 1:1 live transcript (You/Them) into SQLite. Dev-machine runs: 2 utterances in 15 s, 0 failed segments, ASR real-time factor 0.031; health hints now printed, and dropouts always explained (Bluetooth hands-free switching caused short dropouts).
+- Final review fix pass (fresh reviewer: 1 Critical, 3 Important, 12 Minor): a hung ASR worker is killed and replaced after its deadline instead of freezing recording and shutdown (04b1b99); Ctrl+C ends `evra record` cleanly at any point (2127dc8); continuous speech is cut every 20 s without duplicated words (40092df); the live transcriber survives database errors and the summary says what it could not finish (b19d7bf); sherpa-onnx pinned to its core's version (4d11a0b). Remaining minors in BACKLOG "M3a follow-ups".
+- **M3a done:** a 1:1 call becomes a stored, labelled, timestamped transcript. Next: M3b (local LLM note writing).
+
+## 2026-09-24 — M1 Windows capture (branch `windows-capture`)
+
+**Status (2026-09-28): parked by the owner.** Code complete and reviewed; soak DoD met (drift 4.0 ms, 0 drops). Open items moved to BACKLOG.md "M1 parked items". No `p1-m1-done` tag until they close.
+
+- Task 1: Frames + ToMono16k streaming converter (libsamplerate, D24).
+- Task 2: ChunkRing — non-blocking callback hand-off, drops counted.
+- Task 3: SourceClock — steady timestamps from jittery/bursty callbacks; follows drift; detects real jumps.
+- Task 4: ChannelTimeline — ≥50 ms gaps filled, >20 ms drift corrected in 10 ms steps (60-min simulated drift < 30 ms throughout), silence padding.
+- Task 5: CapturePipeline — per-channel drain/clock/convert/place/emit; loopback padding, overflow gaps, device swap, levels in dBFS.
+- Task 6: AES-GCM spill segments (authenticated header, atomic writes) + per-meeting keys in Credential Manager (service Evra, user meeting/<id>).
+- Task 7: FakeSource, MicSource (sounddevice), LoopbackSource (PyAudioWPatch), DefaultOutputWatcher (pycaw, D25); hardware tests 4/4 on the dev machine.
+- Task 8: CaptureSession — sources + pipeline thread + output watcher; CaptureHealth with drift, drops, gaps, hints.
+- Task 9: `evra capture-test SECONDS` — two WAVs + health.json; spill + key cleaned up. Dev-machine 10 s run: PASS (0 drops, inter-channel drift 0.0 ms, mic -26.4 dBFS, system -16.5 dBFS, earbuds 44.1k mic + 48k loopback).
+- Final review (fresh reviewer): 1 Critical + 7 Important, all fixed test-first:
+  - device swap could crash the pipeline thread (2-ch → 1-ch headset);
+  - callback stalls created false gaps;
+  - short loopback silences reordered audio;
+  - starts dropped audio (start time + clock warm-up);
+  - loopback errors unmapped and the watcher died;
+  - health passed stalled / overflowing / blocked channels;
+  - spill reader accepted swapped segments;
+  - dead streams never restarted.
+  Two more found on real hardware: start-up correction from a late first callback, and padding stretched by a slow device close. 13 minors deferred to BACKLOG.md.
+- Real 10 s run on fixed code: PASS — 0 drops, 0 corrections on both channels, inter-channel drift 3.2 ms. Hardware tests 4/4.
+- **60-minute soak on the fixed code (2026-09-25, built-in mic + speaker loopback):**
+  - **DoD met:** inter-channel drift 4.0 ms (limit 30), 0 dropped chunks, 0 overflows, both channels 3600.3 s. 1 drift correction in the hour (mic).
+  - **Memory:** Evra flat at 86–123 MB for the whole hour, so no leak. It spiked to 310 MB at the end while assembling an hour of WAV (capture-test only).
+  - **Health said FAIL** because of 3 short gaps it labelled "dropout":
+    - mic, 120 ms + 310 ms at 52:44, while the machine had only 0.7–1.0 GB RAM free (other apps) — most likely real audio lost while Windows was paging;
+    - system, 70 ms at 2.7 s — cause not yet understood; to investigate.
+  - 12 "silence" gaps on the system channel are expected (nothing playing).
+
 ## 2026-09-24 — M0 Bootstrap
 
 - Task 1: Python skeleton, uv-managed 3.12, `evra --version`, CLAUDE.md, README.

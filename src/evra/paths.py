@@ -25,6 +25,10 @@ class AppPaths:
         return self.data_dir / "evra.db"
 
     @property
+    def spill_dir(self) -> Path:
+        return self.data_dir / "spill"
+
+    @property
     def settings_file(self) -> Path:
         return self.config_dir / "settings.toml"
 

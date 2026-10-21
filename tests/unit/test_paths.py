@@ -59,3 +59,7 @@ def test_explicit_data_dir_wins(tmp_path: Path) -> None:
 def test_real_repo_is_detected_as_checkout() -> None:
     assert is_source_checkout(REPO_ROOT)
     assert (REPO_ROOT / "BUILD.md").exists()
+
+
+def test_spill_dir_is_under_data(tmp_path: Path) -> None:
+    assert AppPaths.under(tmp_path).spill_dir == tmp_path / "data" / "spill"

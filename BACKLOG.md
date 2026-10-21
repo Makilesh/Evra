@@ -53,3 +53,40 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Test: assert the percent-encoded `file://` URL converts back to the same file.
 - **Before M3 renders transcript/LLM text:** set pywebview `ALLOW_FILE_URLS = False` and add a CSP to the built `index.html`.
 - **Packaging milestone:** lock DEBUG/devtools off in release builds; include the built UI in the bundle; full licence texts in the register; single-instance guard (M6).
+- sounddevice 0.5.6 raises a NumPy 2.5 DeprecationWarning (setting array shape) inside its callback path; watch for a sounddevice release before NumPy removes it.
+
+## M1 review follow-ups (deferred minors, 2026-09-24)
+
+- Capture: open the new stream outside the pipeline lock during a device swap (a slow reopen can overflow the mic ring); guard `stop()` against a reopen still in progress.
+- `capture-test`: "microphone not found" should suggest `--list-devices`; make `seconds` optional with `--list-devices`; list devices per host API (WASAPI only) and clean driver strings; print safely on non-UTF-8 consoles.
+- Output watcher: query `GetDefaultAudioEndpoint(...).GetId()` directly, keep COM initialised per thread, ignore a single transient `None`.
+- Run PortAudio init/terminate for the loopback on one fixed thread.
+- Spill: `fsync` segment files before rename; count reopen time inside the `device_change` gap; map keyring errors in `run_capture_test`.
+- Loopback endpoint role: decide multimedia vs communications default (call apps may use a separate communications device) — needs a DECISIONS entry and an HC1 check.
+- Multichannel outputs (5.1/7.1): downmix with proper weights instead of a plain mean.
+- M2 AEC: pair mic/system frames by timeline index (the system channel can lag ~100 ms while padding).
+
+## M1 parked items (2026-09-28)
+
+- **HC1** (owner): `uv run evra capture-test 60` on headphones, then on laptop speakers, talking over a video; listen to mic.wav / system.wav.
+- Investigate the 70 ms system-channel "dropout" gap 2.7 s into the soak (cause unknown); add an INFO log per gap (channel, cause, length, clock decision — no audio content) to diagnose future ones.
+- Mic "dropout" gaps under heavy system memory pressure (0.7–1.0 GB free) — confirm they are real loss; consider surfacing low system memory as a health hint.
+- Tag `p1-m1-done` once the above close.
+- `CaptureSession.start`: if the output watcher factory raises after the sources start, the devices stay open; stop the sources on that path.
+
+## M3a follow-ups (2026-09-28)
+
+- Worker logging (forward records from worker processes to the app's log via a queue).
+- Hallucination guard for phantom phrases on low-confidence segments (BUILD.md §6.2).
+- Post-meeting fast pass for when the live transcript is off.
+- Spill audio during `evra record` (crash recovery, retention, click-to-play).
+- Choose microphones by name, not index: Windows renumbers devices when Bluetooth reconnects (seen twice).
+- Bluetooth hands-free switching causes short mic dropouts; surface "use a wired/USB mic or the laptop mic" as a hint.
+- Loopback endpoint role (multimedia vs communications) before real calls on speakers.
+- Worker heartbeats (BUILD.md §4.2): deferred; per-request deadlines that kill and replace a hung worker are the liveness check for now.
+- Model store: write the spec's SHA-256s into the `.verified` marker and compare them, and drop the marker before any fetch or extract (a changed catalogue or an interrupted re-extract is otherwise reported ready).
+- Model store: treat HTTP 416 on a full-length `.part` as complete and let the checksum decide (today it fails until the file is deleted).
+- Model store: lock a model's directory while downloading so two processes cannot append to the same `.part`.
+- Tests: a stronger device-closed assertion in `test_interrupt_still_finishes_the_meeting`; `requires_models` tests should skip, not fail, when `spikes/test_wavs/en.wav` is missing; add tests for a Range request answered with 200 and for 416.
+- ASR payload is copied 3–4 times per segment (bytes, pickle, astype); fine at the 20 s cap, revisit with shared memory if segments grow.
+- Scale the ASR timeout with segment length if long segments ever time out on slow CPUs (60 s today; a 20 s segment takes about 0.6 s).

@@ -41,3 +41,32 @@ def test_run_without_data_dir_defaults_to_none() -> None:
     from evra.__main__ import build_parser
 
     assert build_parser().parse_args(["run"]).data_dir is None
+
+
+def test_capture_test_subcommand_is_registered() -> None:
+    from evra.__main__ import build_parser
+
+    args = build_parser().parse_args(["capture-test", "60", "--mic", "2"])
+    assert args.command == "capture-test" and args.seconds == 60.0 and args.mic == "2"
+
+
+def test_capture_test_rejects_non_positive_seconds() -> None:
+    from evra.__main__ import build_parser
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["capture-test", "0"])
+
+
+def test_transcription_subcommands_are_registered() -> None:
+    from evra.__main__ import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["models", "--download"]).download is True
+    assert parser.parse_args(["transcribe", "a.wav"]).wav == "a.wav"
+
+
+def test_record_subcommand_is_registered() -> None:
+    from evra.__main__ import build_parser
+
+    args = build_parser().parse_args(["record", "60", "--situation", "call_speakers"])
+    assert args.seconds == 60.0 and args.situation == "call_speakers"
