@@ -21,6 +21,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - 21:31 test (owner on the phone as the other participant): "Them" lines from Meet, note with citations; the owner's voice also appears as "You" because the earbud mic hears them talking into the phone (test setup, not echo); 6 Bluetooth mic dropouts (360 ms); the owner's name is misheard.
   - Check from a fresh process (`evra capture-test 30` during the Meet): system channel −24.6 dBFS, PASS.
 - Next: HC3 with a real second person; then merge M3c.
+- **HC3 with a real second person (owner, 2026-10-08), Bluetooth earbuds, from the window:** 2 min 44 s call; 53 lines (19 You, 34 Them) with no line duplicated across channels (overlaps are only short back-channel replies); drift 0.8 ms; note ready 37 s after Stop (gemma4:12b, 2,347 tokens in, 914 out), 10 points kept and 1 dropped; owners in the note ("You: …") match who spoke. Weak spots: the summary repeats the discussion section almost point for point; a tentative "maybe meet tomorrow" was filed as a decision; "For next time" stayed empty while a follow-up topic went to open questions; names still misheard. Capture health reported not-OK, but which problem (likely Bluetooth mic dropouts) is not in the log. **HC3 passed.**
 
 ## 2026-09-28 — M3b Local LLM notes (branch `local-llm-notes`)
 
