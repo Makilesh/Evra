@@ -99,3 +99,14 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Map-reduce for meetings over the single-pass budget (A2/A3, M5).
 - Flaky under heavy load: `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` failed once while a 14B model ran (timing-based); make its timing tolerant.
 - Final-review minors (M3b): record the prompt-token estimate and refuse when Ollama's `prompt_eval_count` is far below it (KV-cache reuse can hide truncation on re-runs); hints for Ollama HTTP 500 (out of memory) / 400 (`--think` on a non-thinking model); pass A9's `bad_output` through `as_data`; "Ollama is not running" should also say "or install it from ollama.com"; names that are also common words ("Will", "Mark") pass the name check; `FALLBACK_MODEL` in `notes/cli.py` duplicates the `llm.model` default.
+
+## M3c follow-ups (2026-10-02)
+
+- Floating meeting window (always on top, never steals focus) after the M2 focus spike.
+- Record while a note is still being written (today Record waits until the note is done).
+- Offer WASAPI-only microphones if one is ever missing from the picker.
+- Delete a meeting from the window (with its audio and keys, BUILD.md §8.2).
+- Mic picker: long names are cut by the picker's width; show the full name on hover or widen it.
+- Note chips: two citations at the same second (one per speaker) show two identical time chips; label them You/Them or merge.
+- Final-review minors (M3c): closing during "Stopping…" should wait for the transcript to drain before stopping the ASR worker; closing while capture opens can keep an empty meeting; add a `seq` to `recording.state` so stale events are ignored; buffer live lines that arrive before the open meeting has loaded; restore note progress after a window reload; harden the service's `emit` and start the level ticker before announcing "recording"; give crash-recovered meetings a length from their last utterance; rename: keep edits on blur and say when a title is refused; avoid the brief "No note yet" flash after `note.ready`; check the mic name before first-use loading; catch bridge errors in Stop and Write note.
+- HC3 follow-ups (2026-10-02): when "No system audio arrived", log which render endpoint each app's audio session is on (device and process names only; `spikes/audio_sessions.py`) so a repeat of the 17:35 silent-loopback call can be diagnosed; teach speech recognition the owner's and contacts' names (sherpa-onnx hotwords / contextual biasing) — "Makilesh" was heard as "Maggie"/"Magiless".

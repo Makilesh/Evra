@@ -84,6 +84,37 @@ class MeetingStore:
         ).fetchone()
         return None if row is None else str(row["id"])
 
+    def list_meetings(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT m.id, m.title, m.started_at, m.ended_at, m.state, m.mode,"
+            " EXISTS(SELECT 1 FROM generation g WHERE g.meeting_id = m.id AND g.is_current = 1)"
+            " AS has_note FROM meeting m ORDER BY m.started_at DESC, m.created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def rename_meeting(self, meeting_id: str, title: str) -> bool:
+        cursor = self._conn.execute(
+            "UPDATE meeting SET title = ?, updated_at = ? WHERE id = ?",
+            (title, now_ms(), meeting_id),
+        )
+        return cursor.rowcount == 1
+
+    def recover_after_restart(self) -> int:
+        """Meetings a closed or crashed app left mid-way keep their transcript: one still
+        `processing` its note becomes `ready` (the note can be retried), one still `recording`
+        becomes `failed` (its audio may be recoverable from spill later, M2)."""
+        now = now_ms()
+        noted = self._conn.execute(
+            "UPDATE meeting SET state = 'ready', updated_at = ? WHERE state = 'processing'",
+            (now,),
+        ).rowcount
+        cut = self._conn.execute(
+            "UPDATE meeting SET state = 'failed', ended_at = COALESCE(ended_at, ?),"
+            " updated_at = ? WHERE state = 'recording'",
+            (now, now),
+        ).rowcount
+        return noted + cut
+
     def create_transcript_version(self, meeting_id: str, *, kind: str, model: str) -> str:
         version_id = new_id()
         self._conn.execute("BEGIN")

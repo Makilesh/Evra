@@ -19,8 +19,9 @@ from evra.llm.provider import (
     LlmUnavailable,
 )
 from evra.logging_setup import configure_logging
+from evra.notes.job import NothingSupported, write_and_save
 from evra.notes.templates import load_template, template_ids
-from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong, write_note
+from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
@@ -113,12 +114,14 @@ def _run(
                 _err("Installed: " + ", ".join(installed))
             return 2
         print(f"Writing the note with {model}...", flush=True)
-        result = write_note(
-            llm,
-            model=model,
+        saved = write_and_save(
+            conn,
             meeting=meeting,
+            version_id=version_id,
             utterances=utterances,
             template=template,
+            provider=llm,
+            model=model,
             settings=settings,
         )
     except KeyboardInterrupt:
@@ -151,28 +154,18 @@ def _run(
     except NoteInvalid:
         _err(f"{model} did not return a valid note, even after one repair. Try --model.")
         return 1
-    except LlmError as exc:
-        _err(f"The LLM failed: {exc}")
-        return 1
-    if result.note.kept == 0:  # never replace a usable note with an empty one
+    except NothingSupported as exc:  # never replace a usable note with an empty one
         _err(
             f"Nothing in the note could be checked against the transcript"
-            f" ({result.note.dropped} points dropped); nothing saved, any earlier note is kept."
+            f" ({exc.dropped} points dropped); nothing saved, any earlier note is kept."
             " Try another model with --model."
         )
         return 1
+    except LlmError as exc:
+        _err(f"The LLM failed: {exc}")
+        return 1
+    result, generation_id = saved.result, saved.generation_id
     notes = NoteStore(conn)
-    generation_id = notes.save_generation(
-        meeting_id=meeting_id,
-        transcript_version_id=version_id,
-        note=result.note,
-        provider=llm.name,
-        model=result.model,
-        prompt_version=result.prompt_version,
-        template=template.id,
-        tokens_in=result.tokens_in,
-        tokens_out=result.tokens_out,
-    )
     stored = notes.current_note(meeting_id)
     assert stored is not None
     titles = {SUMMARY: "Summary", **{s.id: s.title for s in template.sections}}

@@ -87,3 +87,46 @@ def test_startup_failure_in_database_is_logged_and_exits_1(
     assert code == 1
     assert "could not start" in capsys.readouterr().err
     assert "app_failed" in (paths.log_dir / "evra.log").read_text(encoding="utf-8")
+
+
+def test_build_app_recovers_meetings_left_mid_way(tmp_path: Path) -> None:
+    from evra.store.meetings import MeetingStore
+    from evra.store.migrate import migrate
+
+    paths = AppPaths.under(tmp_path)
+    paths.ensure()
+    conn = connect(paths.db_path)
+    migrate(conn)
+    mid = MeetingStore(conn).create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    conn.close()
+    build_app(paths, debug=False)
+    conn = connect(paths.db_path)
+    try:
+        assert MeetingStore(conn).get_meeting(mid)["state"] == "failed"
+    finally:
+        conn.close()
+
+
+def test_closing_the_window_shuts_the_meeting_service_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evra.services.meetings import MeetingService
+
+    closed: list[bool] = []
+    monkeypatch.setattr(MeetingService, "shutdown", lambda self: closed.append(True))
+
+    def fake_opener(
+        *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+    ) -> None:
+        return None
+
+    paths = AppPaths.under(tmp_path / "home")
+    assert (
+        run_app(
+            dev=False, debug=False, paths=paths, web_dir=_built_ui(tmp_path), opener=fake_opener
+        )
+        == 0
+    )
+    assert closed == [True]

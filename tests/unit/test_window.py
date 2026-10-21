@@ -68,13 +68,20 @@ def test_webview_profile_lives_in_given_dir_not_temp(
     from evra.bridge.api import BridgeApi
     from evra.bridge.events import EventBus
     from evra.ui.window import open_main_window
+    from tests.unit.test_bridge import StubControl
 
     fake = _patch_webview(monkeypatch)
     bus = EventBus()
     storage = tmp_path / "data" / "webview"
     open_main_window(
         url="file:///x/index.html",
-        api=BridgeApi(app_name="Evra", version="0", bus=bus),
+        api=BridgeApi(
+            app_name="Evra",
+            version="0",
+            bus=bus,
+            control=StubControl(),
+            db_path=tmp_path / "evra.db",
+        ),
         bus=bus,
         debug=False,
         storage_dir=storage,
@@ -92,13 +99,20 @@ def test_open_main_window_refuses_local_path_urls(
     from evra.bridge.api import BridgeApi
     from evra.bridge.events import EventBus
     from evra.ui.window import open_main_window
+    from tests.unit.test_bridge import StubControl
 
     fake = _patch_webview(monkeypatch)
     bus = EventBus()
     with pytest.raises(RuntimeError, match="HTTP server"):
         open_main_window(
             url="web/index.html",
-            api=BridgeApi(app_name="Evra", version="0", bus=bus),
+            api=BridgeApi(
+                app_name="Evra",
+                version="0",
+                bus=bus,
+                control=StubControl(),
+                db_path=tmp_path / "evra.db",
+            ),
             bus=bus,
             debug=False,
             storage_dir=tmp_path / "webview",

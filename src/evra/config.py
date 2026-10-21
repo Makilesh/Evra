@@ -39,6 +39,7 @@ class Settings(BaseModel):
 
     default_mode: Mode = "one_on_one"
     default_situation: Situation = "call_headphones"
+    mic_name: str = ""  # chosen in the window, by name ("" = Windows default; M3c)
     live_transcript: bool = True
     audio_retention: Retention = "30d"
     theme: Theme = "system"
