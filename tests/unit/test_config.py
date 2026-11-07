@@ -1,6 +1,7 @@
+import tomllib
 from pathlib import Path
 
-from evra.config import Settings, debug_enabled, load_settings, save_settings
+from evra.config import LlmSettings, Settings, debug_enabled, load_settings, save_settings
 
 
 def test_missing_file_gives_defaults(tmp_path: Path) -> None:
@@ -60,3 +61,12 @@ def test_the_microphone_defaults_to_windows_default_and_round_trips(tmp_path: Pa
     path = tmp_path / "settings.toml"
     save_settings(path, Settings(mic_name="Headset (realme Buds Air7)"))
     assert load_settings(path).mic_name == "Headset (realme Buds Air7)"
+
+
+def test_only_changed_values_are_saved_so_new_defaults_still_apply(tmp_path: Path) -> None:
+    path = tmp_path / "settings.toml"
+    save_settings(path, Settings(mic_name="Headset (Buds)"))
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == {"mic_name": "Headset (Buds)"}
+    assert load_settings(path) == Settings(mic_name="Headset (Buds)")
+    save_settings(path, Settings(llm=LlmSettings(model="qwen3.5:9b")))
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == {"llm": {"model": "qwen3.5:9b"}}

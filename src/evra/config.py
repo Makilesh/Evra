@@ -61,10 +61,11 @@ def load_settings(path: Path) -> Settings:
 
 
 def save_settings(path: Path, settings: Settings) -> None:
-    """Write atomically: temp file, then replace."""
+    """Write atomically: temp file, then replace. Only values that differ from the defaults are
+    written, so a later change to a default still reaches settings the user never touched."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".toml.tmp")
-    tmp.write_text(tomli_w.dumps(settings.model_dump()), encoding="utf-8")
+    tmp.write_text(tomli_w.dumps(settings.model_dump(exclude_defaults=True)), encoding="utf-8")
     tmp.replace(path)
 
 
