@@ -61,7 +61,7 @@ def test_prompt_carries_meeting_template_and_empty_blocks() -> None:
         template=load_template("one_on_one"),
         schema=SCHEMA,
     )
-    assert prompt.prompt_version == "a1-v1"
+    assert prompt.prompt_version == "a1-v2"
     assert '{"type":"object"}' in prompt.system
     assert "Write in English." in prompt.system
     for expected in [
