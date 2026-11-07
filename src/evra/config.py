@@ -27,7 +27,8 @@ class LlmSettings(BaseModel):
     model: str = "gemma4:12b"  # M3 bake-off, DECISIONS.md 2026-09-28
     ollama_url: str = "http://127.0.0.1:11434"
     num_ctx: int = Field(default=32768, ge=2048)  # never Ollama's 4k default: it truncates
-    context_budget: int = Field(default=24000, ge=1000)  # estimated prompt tokens per pass
+    # estimated prompt tokens per pass; just under num_ctx - max_output_tokens (28,672)
+    context_budget: int = Field(default=28000, ge=1000)
     max_output_tokens: int = Field(default=4096, ge=256)
     keep_alive: str = "30s"  # short: the GPU is shared (BUILD.md §8.3)
     timeout_s: float = Field(default=600.0, gt=0)

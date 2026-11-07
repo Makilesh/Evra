@@ -17,7 +17,9 @@ from evra.store.meetings import Utterance
 from evra.transcribe.cli import format_ms
 from evra.transcribe.labels import PARTICIPANTS_1ON1, speaker_label
 
-CHARS_PER_TOKEN = 3.5  # conservative for English; Ollama's real count is recorded afterwards
+# Measured on gemma4:12b: transcript lines run ~2.7 characters a token (their ids and times are
+# digits), the rules' prose ~3.4. The transcript rate keeps long calls, where it matters, exact.
+CHARS_PER_TOKEN = 2.7
 NONE = "(none)"
 LOOKALIKE_LT, LOOKALIKE_GT = chr(0x2039), chr(0x203A)  # single angle quotation marks
 EN_DASH = chr(0x2013)

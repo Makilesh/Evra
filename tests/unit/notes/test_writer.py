@@ -103,6 +103,16 @@ def test_too_long_is_refused_before_calling() -> None:
     assert provider.calls == []
 
 
+def test_a_prompt_bigger_than_the_models_room_is_refused_before_calling() -> None:
+    provider = FakeProvider([GOOD])  # Ollama's prompt cache can hide a cut prompt on a retry
+    long = [utt(str(i), i % 2, i * 1000, i * 1000 + 900, "word " * 40, seq=i) for i in range(100)]
+    settings = LlmSettings(num_ctx=4096, max_output_tokens=1024, context_budget=24000)
+    with pytest.raises(NoteTooLong) as caught:
+        write(provider, settings, long)
+    assert caught.value.limit == 4096 - 1024
+    assert provider.calls == []
+
+
 def test_a_truncated_prompt_is_detected() -> None:
     provider = FakeProvider([GOOD], tokens_in=32768 - 4096)
     with pytest.raises(NoteTooLong):
