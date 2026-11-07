@@ -3,6 +3,7 @@ from collections.abc import Callable
 
 import numpy as np
 import pytest
+import structlog
 
 from evra.audio.frames import MIC, SYSTEM, Frames
 from evra.capture.fake import FakeEvent, FakeSource
@@ -223,3 +224,17 @@ def test_slow_device_close_does_not_stretch_the_padded_channel() -> None:
     sys_s = health.channels["system"].seconds  # type: ignore[attr-defined]
     assert abs(mic_s - sys_s) < 0.2
     assert health.ok  # type: ignore[attr-defined]
+
+
+def test_the_stop_log_says_why_a_recording_was_not_ok() -> None:
+    mic, system = _sources(1.0, (FakeEvent("dropout", 0.3, 0.3),))
+    system.pads_silence = False
+    mic.overflows = 2
+    with structlog.testing.capture_logs() as logs:
+        _run(CaptureSession(mic, system), mic, system)
+    stopped = next(e for e in logs if e["event"] == "capture_stopped")
+    assert stopped["ok"] is False
+    assert (stopped["mic_overflows"], stopped["mic_dropouts"]) == (2, 0)
+    assert stopped["system_dropouts"] == 1
+    assert 200 <= stopped["system_dropout_ms"] <= 400  # the 0.3 s hole
+    assert stopped["system_dropped_chunks"] == 0

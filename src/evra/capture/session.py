@@ -65,6 +65,29 @@ def _channel_health(source: AudioSource, stats: ChannelStats) -> ChannelHealth:
     return ChannelHealth(device=source.name, overflows=source.overflows, **fields)
 
 
+def _stop_fields(health: CaptureHealth, failure: str | None) -> dict[str, Any]:
+    """Counts and levels only, so a recording that was not OK can be explained from the log."""
+    fields: dict[str, Any] = {"ok": health.ok, "drift_ms": health.inter_channel_drift_ms}
+    for label, ch in health.channels.items():
+        dropouts = [g for g in ch.gaps if g["cause"] == "dropout"]
+        fields |= {
+            f"{label}_seconds": round(ch.seconds, 1),
+            f"{label}_rms_dbfs": round(ch.rms_dbfs, 1),
+            f"{label}_padded_pct": round(100 * ch.padded_ms / (ch.seconds * 1000))
+            if ch.seconds
+            else 0,
+            f"{label}_dropouts": len(dropouts),
+            f"{label}_dropout_ms": sum(g["duration_ms"] for g in dropouts),
+            f"{label}_overflows": ch.overflows,
+            f"{label}_dropped_chunks": ch.dropped_chunks,
+        }
+    return fields | {
+        "device_changes": health.device_changes,
+        "stream_restarts": health.stream_restarts,
+        "failure": failure,
+    }
+
+
 class CaptureSession:
     def __init__(
         self,
@@ -126,7 +149,7 @@ class CaptureSession:
             except Exception as exc:  # the frame consumer failed while flushing
                 self._fail(exc)
         health = self.health()
-        log.info("capture_stopped", ok=health.ok, drift_ms=health.inter_channel_drift_ms)
+        log.info("capture_stopped", **_stop_fields(health, self._failure))
         return health
 
     def health(self) -> CaptureHealth:
