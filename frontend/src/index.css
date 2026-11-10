@@ -1,36 +1,435 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* A short window (the 720×480 minimum) tightens the rail so the meetings keep room. */
+@custom-variant short (@media (max-height: 600px));
 
-:root {
-  --paper: #faf9f6;
-  --ink: #1c1b19;
-  --muted-ink: #6b6760;
-  --accent: #0f6e6e;
-  --rec: #d64545;
-  --line: #e7e4dd;
+/* Faces (D19 replaced, 2026-11-10): bundled, Latin only, never fetched. */
+@font-face {
+  font-family: "Libre Franklin Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../node_modules/@fontsource-variable/libre-franklin/files/libre-franklin-latin-wght-normal.woff2")
+    format("woff2-variations");
 }
 
+@font-face {
+  font-family: "Sofia Sans Extra Condensed Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 1 1000;
+  src: url("../node_modules/@fontsource-variable/sofia-sans-extra-condensed/files/sofia-sans-extra-condensed-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+/* Steno pad: a pale green pad, a tan chipboard rail, a deep green rule, navy ink. */
+:root {
+  --pad: #e7efdb;
+  --band: #d6e4c6;
+  --band-deep: #c2d8ae;
+  --chip: #d3c8b3;
+  --chip-edge: #bdb19a;
+  --chip-well: #e2d9c8;
+  --chip-ink: #5a5041;
+  --ink: #1b2433;
+  --muted: #536052;
+  --rule: #2e6b4b;
+  --rule-ink: #24563c;
+  --you: #23407a;
+  --them: #7a4a1e;
+  --rec: #e0352b;
+  --rec-fill: #b42a21;
+  --on-rec: #fff7f2;
+  --rail-w: 264px;
+  --gutter: 44px;
+}
+
+/* The same pad at night: the green goes almost black, the chipboard goes brown. */
 .dark {
-  --paper: #161514;
-  --ink: #edeae4;
-  --muted-ink: #9a958c;
-  --accent: #4fb3ae;
-  --rec: #f06a6a;
-  --line: #2a2826;
+  --pad: #131a15;
+  --band: #1e2a21;
+  --band-deep: #2a3d2e;
+  --chip: #2a251e;
+  --chip-edge: #3b342a;
+  --chip-well: #352f26;
+  --chip-ink: #bdb29e;
+  --ink: #e3eadb;
+  --muted: #a2ae9b;
+  --rule: #74c394;
+  --rule-ink: #74c394;
+  --you: #9db8f2;
+  --them: #e0b07e;
+  --rec: #ff5a4e;
+  --rec-fill: #b83026;
+  --on-rec: #fff7f2;
+}
+
+@media (max-width: 860px) {
+  :root {
+    --rail-w: 232px;
+    --gutter: 24px;
+  }
 }
 
 @theme inline {
-  --color-paper: var(--paper);
+  --color-pad: var(--pad);
+  --color-band: var(--band);
+  --color-band-deep: var(--band-deep);
+  --color-chip: var(--chip);
+  --color-chip-edge: var(--chip-edge);
+  --color-chip-well: var(--chip-well);
+  --color-chip-ink: var(--chip-ink);
   --color-ink: var(--ink);
-  --color-muted-ink: var(--muted-ink);
-  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-rule-ink: var(--rule-ink);
+  --color-you: var(--you);
+  --color-them: var(--them);
   --color-rec: var(--rec);
-  --color-line: var(--line);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Newsreader", "Source Serif 4", ui-serif, Georgia, serif;
+  --color-rec-fill: var(--rec-fill);
+  --color-on-rec: var(--on-rec);
+  --font-sans: "Libre Franklin Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Sofia Sans Extra Condensed Variable", "Arial Narrow", sans-serif;
 }
 
-body {
-  @apply bg-paper text-ink font-sans antialiased;
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--pad);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 23px;
+    -webkit-font-smoothing: antialiased;
+    caret-color: var(--rule);
+    scrollbar-color: color-mix(in oklab, var(--rule) 45%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  ::selection {
+    background: var(--band-deep);
+    color: var(--ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--rule);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button {
+    appearance: none;
+  }
+}
+
+@layer components {
+  /* Condensed capitals: titles, section heads, speakers, labels. */
+  .caps {
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .kbd {
+    font: 500 13px/1 var(--font-sans);
+    padding: 2px 5px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* Meeting tabs on a heavy ink rule. */
+  /* Fixed height: the rule never moves when Copy comes and goes between states. */
+  /* Both rules are painted backgrounds, not inset shadows: at 150% display scaling an inset
+     shadow leaves a hairline down a tab's side wherever its edge falls between two pixels. */
+  .tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 28px;
+    min-height: 42px;
+    background: linear-gradient(var(--ink), var(--ink)) bottom / 100% 2px no-repeat;
+  }
+
+  .tab {
+    padding-bottom: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .tab[aria-selected="true"] {
+    color: var(--ink);
+    background: linear-gradient(var(--ink), var(--ink)) bottom / 100% 5px no-repeat;
+  }
+
+  /* The timed centre rule: one 2px line drawn by every row's middle cell. */
+  .on-rule {
+    background: linear-gradient(var(--rule), var(--rule)) center / 2px 100% no-repeat;
+  }
+
+  .detent {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    background: var(--rule);
+  }
+
+  .time-tab {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 18px;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--rule);
+    background: var(--pad);
+    border: 1.5px solid var(--rule);
+    border-radius: 4px;
+    padding: 2px 7px;
+    transition:
+      background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Focus reads like hover: the tab fills, no second ring. */
+  .time-tab:hover,
+  .time-tab:focus-visible {
+    background: var(--rule);
+    color: var(--pad);
+    outline-offset: 0;
+  }
+
+  /* The note sheet: point | rule | where it came from. Folds below 600px. */
+  .sheet {
+    container-type: inline-size;
+  }
+
+  .sheet-row {
+    display: grid;
+    grid-template-columns: 4.75rem minmax(0, 1fr);
+    grid-template-areas:
+      "mid point"
+      "mid quotes";
+    border-radius: 8px;
+    transition: background-color 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sheet-point {
+    grid-area: point;
+    padding: 7px 14px 2px 10px;
+  }
+
+  .sheet-mid {
+    grid-area: mid;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 0;
+  }
+
+  .sheet-quotes {
+    grid-area: quotes;
+    padding: 0 14px 8px 10px;
+  }
+
+  .sheet-heads {
+    display: none;
+  }
+
+  @container (min-width: 600px) {
+    .sheet-row {
+      grid-template-columns: minmax(0, 1fr) 5.75rem minmax(0, 0.9fr);
+      grid-template-areas: "point mid quotes";
+    }
+
+    .sheet-point {
+      padding: 7px 22px 7px 10px;
+    }
+
+    .sheet-quotes {
+      padding: 8px 14px 8px 20px;
+    }
+
+    .sheet-heads {
+      display: grid;
+    }
+  }
+
+  .point-row:hover,
+  .point-row:focus-within {
+    background: var(--band);
+  }
+
+  .point-row:hover .time-tab:not(:hover, :focus-visible),
+  .point-row:focus-within .time-tab:not(:hover, :focus-visible) {
+    background: var(--band);
+  }
+
+  .point-row:hover .quote,
+  .point-row:focus-within .quote {
+    color: var(--ink);
+  }
+
+  .quote {
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    overflow: hidden;
+    transition: color 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .quote + .quote {
+    margin-top: 5px;
+  }
+
+  .quote q {
+    quotes: "\201C" "\201D";
+  }
+
+  /* The transcript on the same rule: a detent wherever the speaker changes. */
+  .line-row {
+    display: grid;
+    grid-template-columns: 4.75rem minmax(0, 1fr);
+    border-radius: 8px;
+  }
+
+  /* A turn's extra space sits inside the cells, so the rule runs through it unbroken. */
+  .line-row[data-turn] .line-body {
+    padding-top: 15px;
+  }
+
+  .line-mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-top: 4px;
+  }
+
+  .line-time {
+    font: 500 13px/16px var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    background: var(--pad);
+    padding: 0 4px;
+  }
+
+  .line-body {
+    padding: 2px 14px 3px 10px;
+  }
+
+  .line-row[data-highlighted] {
+    background: var(--band);
+  }
+
+  .line-row[data-highlighted] .line-time {
+    background: var(--band);
+    color: var(--ink);
+  }
+
+  .stamp {
+    display: grid;
+    gap: 3px;
+    padding: 9px 13px 8px;
+    border: 2px solid var(--rule);
+    border-radius: 7px;
+    color: var(--rule);
+    transform: rotate(-1.2deg);
+    flex-shrink: 0;
+  }
+
+  /* A narrow window keeps the mark but lays it flat, wrapping inside the pad. */
+  @media (max-width: 860px) {
+    .stamp {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 2px 10px;
+      padding: 5px 10px;
+      transform: none;
+      flex-shrink: 1;
+      min-width: 0;
+      max-width: 100%;
+    }
+  }
+
+  .meter-fill {
+    transform-origin: left center;
+    transition: transform 100ms linear;
+  }
+
+  /* While a note is written, a short stretch of rule runs down a faint one. */
+  .progress-mid {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(
+        color-mix(in oklab, var(--rule) 35%, transparent),
+        color-mix(in oklab, var(--rule) 35%, transparent)
+      )
+      center / 2px 100% no-repeat;
+  }
+
+  .progress-mid > span {
+    position: absolute;
+    top: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+    height: 28px;
+    background: var(--rule);
+  }
+}
+
+/* Land and settle: what just arrived lands emphasised, then comes to rest. */
+@keyframes settle {
+  from {
+    font-weight: 640;
+  }
+  to {
+    font-weight: 400;
+  }
+}
+
+@keyframes land {
+  from {
+    background-color: var(--band-deep);
+  }
+  to {
+    background-color: var(--band);
+  }
+}
+
+@keyframes run-down {
+  from {
+    top: -28px;
+  }
+  to {
+    top: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .line-row[data-fresh] .line-text {
+    animation: settle 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .line-row[data-highlighted],
+  .line-row[data-highlighted] .line-time {
+    animation: land 1400ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .progress-mid > span {
+    animation: run-down 1600ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
 }

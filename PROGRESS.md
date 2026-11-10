@@ -2,6 +2,27 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-10 — Main window redesign: "Steno pad" (branch `ui-redesign`)
+
+- **Tools for UI work** installed at user scope (outside the repo): Impeccable, Taste Skill, GSAP skills, Playwright CLI, transitions.dev skills, designlang; React Bits is reachable as a shadcn registry (`frontend/components.json`).
+- **Direction round:** `PRODUCT.md` written; Impeccable dealt a direction (Operate mode) plus catalog challengers; four first-viewport sketches built from the synthetic 1:1 fixture went on a local decision page (Steno pad, Mission transcript, Catalog sleeve, the category standard). The owner chose **Steno pad**; D19 replaced (DECISIONS).
+- **Built** (`15a4b64` + fixes):
+  - A chipboard rail holds the wordmark, the Record block (it turns red while recording, with the timer and both levels side by side), search (`Ctrl K`), meetings grouped by day, and the microphone.
+  - The meeting header has a condensed title, a date line and a provenance stamp (model + points checked against the transcript), then the tabs with Copy as Markdown.
+  - The note is a sheet: each point, a timed centre rule whose time tabs open the transcript at that line, and the quoted lines on the same row; it folds below 600px.
+  - The transcript sits on the same rule, with a detent at each speaker turn; live lines land heavier and settle.
+  - Note progress and failures are band rows on the sheet. A first-run welcome and a night version round it out.
+- **Faces:** Libre Franklin and Sofia Sans Extra Condensed (OFL-1.1, Latin only) replace Inter and Newsreader. The built `index.html` is 390 kB and inlines both faces; loading it makes exactly one request, the page itself.
+- **Checked** in Edge (WebView2's engine) with a fake bridge and synthetic data at 1100×720, 720×480 and 1600×900, in light and dark, across every state (note, hover, keyboard focus, `Ctrl K`, cited line, recording, writing, failure, empty, long title).
+  - Impeccable detector: no findings.
+  - Fresh finish reviewer: **fix**, with 7 material fixes (red only for recording, no label above a heading, a fixed tab-bar height, one reading size, focus that fills like hover, note states as bands, a tighter short-window rail), all applied. A verdict pass found one regression from the batch (the narrow stamp clipped at 720px); it was fixed, then **ship**.
+- Frontend tests: 77 (Rail, meetings by day, `Ctrl K`, stamp, Copy as Markdown and its failure, sheet rows, missing cited lines, speaker-turn detents, live-only settle, note helpers, day labels). `DESIGN.md` + `.impeccable/design.json` written from the built window.
+- **Checked in the real window** (`uv run evra run` on a separate test data folder, WebView2 at 150% display scaling). Two recordings went end to end: the owner's own one-minute recording, and a two-voice test call played through the speakers. Covered: live lines from both sides, both meters, Stop, the note being written, the stamp, a jump to a quoted line, Copy as Markdown from `file://`, rename, light and dark. Three fixes followed:
+  - The tab underlines are now painted backgrounds. An inset shadow left a hairline beside the selected tab at 150% scaling.
+  - Dates and times in a title never break at a hyphen. A default title had wrapped as `Recording 2026-` / `11-10 18:09`.
+  - The window's own background is the pad colour for the Windows theme, not the old off-white that flashed in dark mode.
+  - Tests: 78 frontend, plus 4 for the window background.
+
 ## 2026-11-07 — M3 finish: real-length 1:1s (branch `one-on-one-polish`)
 
 - **60-minute test call:** `tools/make_long_fixture.py` has gemma4:12b write a synthetic 1:1 in 24 parts, with 13 facts planted word for word from minute 5 to 58 (the model said all of them itself). 840 lines, 9,616 words: about the density of the owner's real call (158 words a minute).

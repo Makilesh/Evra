@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { MeetingDetail } from "@/bridge";
+import { copyText } from "@/clipboard";
+import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
 import { NoteView } from "@/components/NoteView";
+import { Stamp } from "@/components/Stamp";
 import { TranscriptView } from "@/components/TranscriptView";
-import { formatDate, formatDuration } from "@/format";
-import { cn } from "@/lib/utils";
+import { meetingLine } from "@/format";
+import { noteToMarkdown, pointCount } from "@/note";
 import { strings } from "@/strings";
 import type { NoteStatus } from "@/useEvra";
 
@@ -29,7 +32,9 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
     setSeenStage(stage);
     if (stage) setTab("note");
   }
-  const { meeting } = detail;
+  const { meeting, note, utterances } = detail;
+  const line = [meetingLine(meeting), strings.oneOnOne].join(" · ");
+  const settled = note !== null && !stage;
 
   function cite(utteranceId: string) {
     setHighlight(utteranceId);
@@ -38,41 +43,96 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-line px-6 pt-4">
-        <Title title={meeting.title} onRename={onRename} />
-        <p className="mt-1 text-xs text-muted-ink">
-          {[formatDate(meeting.started_at), formatDuration(meeting.duration_ms), strings.oneOnOne].filter(Boolean).join(" · ")}
-        </p>
-        {hints && hints.length > 0 && (
-          <ul aria-label={strings.captureNotes} className="mt-2 space-y-0.5 text-xs text-muted-ink">
-            {hints.map((hint) => (
-              <li key={hint}>{hint}</li>
-            ))}
-          </ul>
-        )}
-        <div role="tablist" aria-label={strings.meetingTabs} className="mt-3 flex gap-5">
-          {(["note", "transcript"] as const).map((name) => (
-            <button
-              key={name}
-              type="button"
-              role="tab"
-              aria-selected={tab === name}
-              onClick={() => setTab(name)}
-              className={cn("border-b-2 pb-2 text-sm", tab === name ? "border-accent text-ink" : "border-transparent text-muted-ink")}
-            >
-              {name === "note" ? strings.noteTab : strings.transcriptTab}
-            </button>
-          ))}
+      <div className="shrink-0 px-[var(--gutter)] pt-[30px]">
+        <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
+          <div className="min-w-0 flex-[1_1_20rem]">
+            <Title title={meeting.title} onRename={onRename} />
+            <p className="mt-2 text-[13px] leading-5 text-muted tabular-nums">{line}</p>
+            {hints && hints.length > 0 && (
+              <ul aria-label={strings.captureNotes} className="mt-2 space-y-0.5 text-[13px] leading-5 text-muted">
+                {hints.map((hint) => (
+                  <li key={hint}>{hint}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {settled && <Stamp model={note.model} points={pointCount(note)} />}
+        </header>
+        <div role="tablist" aria-label={strings.meetingTabs} className="tabs mt-6">
+          <button type="button" role="tab" aria-selected={tab === "note"} onClick={() => setTab("note")} className="tab">
+            {strings.noteTab}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "transcript"}
+            onClick={() => setTab("transcript")}
+            className="tab"
+          >
+            {strings.transcriptTab}
+            <span aria-hidden="true" className="ml-1.5 text-[13px] font-medium tabular-nums">
+              {strings.lineCount(utterances.length)}
+            </span>
+          </button>
+          <span className="flex-1" />
+          {tab === "note" && settled && <CopyButton text={() => noteToMarkdown(meeting.title, line, note)} />}
         </div>
       </div>
       <div role="tabpanel" className="min-h-0 flex-1">
         {tab === "note" ? (
-          <NoteView note={detail.note} status={noteStatus} canWrite={canWrite} onWrite={onWrite} onCite={cite} />
+          <NoteView
+            note={note}
+            utterances={utterances}
+            status={noteStatus}
+            canWrite={canWrite}
+            onWrite={onWrite}
+            onCite={cite}
+          />
         ) : (
-          <TranscriptView utterances={detail.utterances} follow={isLive} highlightId={highlight} />
+          <TranscriptView utterances={utterances} follow={isLive} highlightId={highlight} />
         )}
       </div>
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: () => string }) {
+  const [result, setResult] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    if (result === "idle") return;
+    const timer = window.setTimeout(() => setResult("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [result]);
+
+  async function copy() {
+    setResult((await copyText(text())) ? "copied" : "failed");
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className="mb-[9px] inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-band px-3 py-1.5 text-[13px] leading-5 font-semibold transition-colors hover:bg-band-deep"
+    >
+      {result === "copied" ? <CheckIcon /> : <CopyIcon />}
+      <span aria-live="polite">
+        {result === "copied" ? strings.copied : result === "failed" ? strings.copyFailed : strings.copyMarkdown}
+      </span>
+    </button>
+  );
+}
+
+// Dates and times never break at a hyphen or colon: "Recording 2026-11-10 18:09" wraps
+// between words, never as "Recording 2026-" over "11-10 18:09".
+function keepNumbersWhole(text: string): ReactNode[] {
+  return text.split(/(\d+(?:[-:./]\d+)+)/).map((part, index) =>
+    index % 2 === 1 ? (
+      <span key={index} className="whitespace-nowrap">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 
@@ -86,8 +146,10 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
 
   if (!editing) {
     return (
-      <h2 className="flex items-center gap-2 font-serif text-2xl">
-        {title}
+      <div className="flex items-start gap-2">
+        <h1 className="line-clamp-2 min-w-0 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[0.95] font-extrabold text-balance">
+          {keepNumbersWhole(title)}
+        </h1>
         <button
           type="button"
           aria-label={strings.renameMeeting}
@@ -95,11 +157,11 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
             setDraft(title);
             setEditing(true);
           }}
-          className="text-base text-muted-ink hover:text-accent"
+          className="mt-[0.15em] inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-band hover:text-ink"
         >
-          ✎
+          <PencilIcon />
         </button>
-      </h2>
+      </div>
     );
   }
   return (
@@ -114,7 +176,7 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
         if (event.key === "Escape") setEditing(false);
       }}
       onBlur={() => setEditing(false)}
-      className="w-full rounded-md border border-line bg-paper px-2 py-1 font-serif text-2xl"
+      className="w-full rounded-lg bg-band px-2 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.1] font-extrabold"
     />
   );
 }

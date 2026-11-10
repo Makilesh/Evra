@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { MeetingList } from "@/components/MeetingList";
@@ -24,7 +24,35 @@ it("marks the open meeting and the one being recorded, and opens a meeting on cl
   expect(onSelect).toHaveBeenCalledWith("m3");
 });
 
-it("says how to start when there are no meetings", () => {
+it("says Writing note… for a meeting whose note is being written", () => {
+  render(<MeetingList meetings={LIST} selectedId={null} liveId={null} writingIds={["m3"]} onSelect={vi.fn()} />);
+  expect(within(screen.getByRole("button", { name: /Design review/ })).getByText("Writing note…")).toBeInTheDocument();
+  expect(within(screen.getByRole("button", { name: /Weekly 1:1/ })).getByText("13:51 · 12 min")).toBeInTheDocument();
+});
+
+it("groups meetings under Today, Yesterday and their date", () => {
+  const now = new Date(2026, 10, 10, 15, 0).getTime();
+  const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 0).getTime();
+  const meetings = [
+    { ...MEETING, id: "a", title: "Weekly 1:1", started_at: at(10, 14) },
+    { ...MEETING, id: "b", title: "Design review", started_at: at(10, 10) },
+    { ...MEETING, id: "c", title: "Hiring sync", started_at: at(9, 16) },
+    { ...MEETING, id: "d", title: "Sprint planning", started_at: at(3, 9) },
+  ];
+  render(<MeetingList meetings={meetings} selectedId={null} liveId={null} onSelect={vi.fn()} now={() => now} />);
+  const headings = screen.getAllByRole("heading").map((h) => h.textContent);
+  expect(headings).toEqual(["Today", "Yesterday", "Tue 3 Nov"]);
+  expect(within(screen.getByRole("region", { name: "Today" })).getAllByRole("button")).toHaveLength(2);
+  expect(within(screen.getByRole("region", { name: "Tue 3 Nov" })).getByRole("button")).toHaveTextContent("Sprint planning");
+});
+
+it("Ctrl K focuses the search", () => {
+  render(<MeetingList meetings={LIST} selectedId={null} liveId={null} onSelect={vi.fn()} />);
+  fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+  expect(screen.getByRole("searchbox", { name: "Search meetings" })).toHaveFocus();
+});
+
+it("says when there are no meetings yet", () => {
   render(<MeetingList meetings={[]} selectedId={null} liveId={null} onSelect={vi.fn()} />);
-  expect(screen.getByText("No meetings yet. Press Record to start one.")).toBeInTheDocument();
+  expect(screen.getByText("No meetings yet.")).toBeInTheDocument();
 });
