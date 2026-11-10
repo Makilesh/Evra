@@ -51,7 +51,7 @@ export function MeetingList({ meetings, selectedId, liveId, writingIds = [], onS
 
   return (
     <nav aria-label={strings.meetings} className="flex min-h-0 flex-1 flex-col">
-      <div className="relative mx-[18px] mt-3">
+      <div className="relative mx-[18px] mt-3 short:mt-2.5">
         <SearchIcon className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-chip-ink" />
         <input
           ref={search}
@@ -60,7 +60,7 @@ export function MeetingList({ meetings, selectedId, liveId, writingIds = [], onS
           placeholder={strings.searchMeetings}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          className="h-10 w-full rounded-[10px] bg-chip-well pr-16 pl-9 text-[14px] text-ink placeholder:text-chip-ink max-[860px]:pr-3"
+          className="h-10 w-full rounded-[10px] bg-chip-well pr-16 pl-9 text-ink placeholder:text-chip-ink max-[860px]:pr-3"
         />
         <span
           aria-hidden="true"
@@ -70,14 +70,14 @@ export function MeetingList({ meetings, selectedId, liveId, writingIds = [], onS
         </span>
       </div>
       {meetings.length === 0 ? (
-        <p className="px-[18px] pt-4 text-[14px] leading-[21px] text-chip-ink">{strings.noMeetings}</p>
+        <p className="px-[18px] pt-4 text-chip-ink">{strings.noMeetings}</p>
       ) : shown.length === 0 ? (
-        <p className="px-[18px] pt-4 text-[14px] leading-[21px] text-chip-ink">{strings.noMatches}</p>
+        <p className="px-[18px] pt-4 text-chip-ink">{strings.noMatches}</p>
       ) : (
         <div className="mt-1 min-h-0 flex-1 overflow-y-auto pb-7 pl-3 [mask-image:linear-gradient(to_bottom,black_calc(100%-28px),transparent)]">
           {groups.map((group) => (
             <section key={group.label} aria-label={group.label}>
-              <h2 className="caps px-1.5 pt-4 pb-1.5 text-[14px] leading-4 text-chip-ink">{group.label}</h2>
+              <h2 className="caps px-1.5 pt-4 pb-1.5 text-[14px] leading-4 text-chip-ink short:pt-3">{group.label}</h2>
               <ul>
                 {group.meetings.map((meeting) => {
                   const selected = meeting.id === selectedId;
@@ -116,12 +116,16 @@ function MeetingMeta({ meeting, live, writing }: { meeting: MeetingSummary; live
       </span>
     );
   }
+  const when = [formatTime(meeting.started_at), formatDuration(meeting.duration_ms)].filter(Boolean).join(" · ");
   if (writing) {
-    return <span className="text-[13px] leading-[18px] font-semibold text-rule-ink">{strings.writingNote}</span>;
+    // The rail's green block and the pad already say it in words; here a green pip is enough.
+    return (
+      <span className="flex items-center gap-1.5 text-[13px] leading-[18px] text-chip-ink tabular-nums">
+        <span aria-hidden="true" className="size-2 rounded-full bg-rule" />
+        <span className="sr-only">{strings.writingNote}</span>
+        {when}
+      </span>
+    );
   }
-  return (
-    <span className="text-[13px] leading-[18px] text-chip-ink tabular-nums">
-      {[formatTime(meeting.started_at), formatDuration(meeting.duration_ms)].filter(Boolean).join(" · ")}
-    </span>
-  );
+  return <span className="text-[13px] leading-[18px] text-chip-ink tabular-nums">{when}</span>;
 }

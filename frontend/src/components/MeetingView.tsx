@@ -47,7 +47,7 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
         <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 flex-[1_1_20rem]">
             <Title title={meeting.title} onRename={onRename} />
-            <p className="mt-2 text-[14px] leading-5 text-muted tabular-nums">{line}</p>
+            <p className="mt-2 text-[13px] leading-5 text-muted tabular-nums">{line}</p>
             {hints && hints.length > 0 && (
               <ul aria-label={strings.captureNotes} className="mt-2 space-y-0.5 text-[13px] leading-5 text-muted">
                 {hints.map((hint) => (
@@ -70,7 +70,7 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
             className="tab"
           >
             {strings.transcriptTab}
-            <span aria-hidden="true" className="ml-1.5 text-[12.5px] font-medium tabular-nums">
+            <span aria-hidden="true" className="ml-1.5 text-[13px] font-medium tabular-nums">
               {strings.lineCount(utterances.length)}
             </span>
           </button>
@@ -112,7 +112,7 @@ function CopyButton({ text }: { text: () => string }) {
     <button
       type="button"
       onClick={() => void copy()}
-      className="mb-[9px] inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-band px-3 py-1.5 text-[13.5px] leading-5 font-semibold transition-colors hover:bg-band-deep"
+      className="mb-[9px] inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-band px-3 py-1.5 text-[13px] leading-5 font-semibold transition-colors hover:bg-band-deep"
     >
       {result === "copied" ? <CheckIcon /> : <CopyIcon />}
       <span aria-live="polite">

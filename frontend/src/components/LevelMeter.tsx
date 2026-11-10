@@ -9,7 +9,7 @@ export function LevelMeter({ label, value }: LevelMeterProps) {
   const level = Math.min(1, Math.max(0, value));
   return (
     <div className="flex items-center gap-2">
-      <span aria-hidden="true" className="caps w-10 text-[12px] leading-none">
+      <span aria-hidden="true" className="caps w-8 shrink-0 text-[12px] leading-none">
         {label}
       </span>
       <div

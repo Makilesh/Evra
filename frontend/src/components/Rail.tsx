@@ -61,14 +61,14 @@ export function Rail({
 
   return (
     <aside className="flex h-full min-h-0 flex-col bg-chip shadow-[inset_-1px_0_0_var(--chip-edge)]">
-      <div className="px-[18px] pt-[22px]">
+      <div className="px-[18px] pt-[22px] short:pt-3.5">
         <p className="font-display text-[30px] leading-none font-extrabold">{appName}</p>
-        <p className="mt-1.5 text-[12.5px] leading-[18px] text-chip-ink">{strings.claim}</p>
+        <p className="mt-1.5 text-[13px] leading-[18px] text-chip-ink short:sr-only">{strings.claim}</p>
       </div>
 
-      <div className="px-[18px] pt-5">
+      <div className="px-[18px] pt-5 short:pt-3.5">
         {phase === "recording" ? (
-          <div className="rounded-[11px] bg-rec-fill p-3 text-on-rec">
+          <div className="rounded-[11px] bg-rec-fill p-3 text-on-rec short:py-2.5">
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="caps flex items-center gap-1.5 text-[13px] leading-4">
@@ -91,7 +91,7 @@ export function Rail({
                 {strings.stop}
               </button>
             </div>
-            <div className="mt-3 grid gap-2">
+            <div className="mt-2.5 grid grid-cols-2 gap-3">
               <LevelMeter label={strings.you} value={levels.you} />
               <LevelMeter label={strings.them} value={levels.them} />
             </div>
@@ -100,7 +100,7 @@ export function Rail({
           <button
             type="button"
             onClick={() => onStart(chosen)}
-            className="flex h-12 w-full items-center gap-3 rounded-[11px] bg-ink px-4 text-[16px] font-semibold text-pad transition-colors hover:bg-ink/88"
+            className="flex h-12 w-full items-center gap-3 rounded-[11px] bg-ink px-4 font-semibold text-pad transition-colors hover:bg-ink/88 short:h-11"
           >
             <span aria-hidden="true" className="size-3 rounded-full bg-rec" />
             {strings.record}
@@ -110,7 +110,7 @@ export function Rail({
             type="button"
             disabled
             className={
-              "flex h-12 w-full items-center gap-3 rounded-[11px] px-4 text-[16px] font-semibold text-pad " +
+              "flex h-12 w-full items-center gap-3 rounded-[11px] px-4 font-semibold text-pad short:h-11 " +
               (phase === "processing" ? "bg-rule" : "bg-ink")
             }
           >
@@ -127,18 +127,18 @@ export function Rail({
 
       {children}
 
-      <div className="px-[18px] pt-3 pb-4 shadow-[inset_0_1px_0_var(--chip-edge)]">
-        <label htmlFor={micId} className="caps block text-[13px] leading-4 text-chip-ink">
+      <div className="px-[18px] pt-3 pb-4 shadow-[inset_0_1px_0_var(--chip-edge)] short:pt-2.5 short:pb-3">
+        <label htmlFor={micId} className="caps block text-[13px] leading-4 text-chip-ink short:sr-only">
           {strings.microphone}
         </label>
-        <div className="relative mt-1.5">
+        <div className="relative mt-1.5 short:mt-0">
           <select
             id={micId}
             value={chosen}
             disabled={phase !== "idle"}
             onChange={(event) => setPicked(event.target.value)}
             onFocus={onRefreshMics}
-            className="h-10 w-full appearance-none truncate rounded-[10px] bg-chip-well pr-8 pl-3 text-[14px] text-ink disabled:text-chip-ink"
+            className="h-10 w-full appearance-none truncate rounded-[10px] bg-chip-well pr-8 pl-3 text-ink disabled:text-chip-ink"
           >
             <option value="">{strings.windowsDefault(mics?.default ?? "")}</option>
             {chosen !== "" && !known.includes(chosen) && <option value={chosen}>{strings.notConnected(chosen)}</option>}
