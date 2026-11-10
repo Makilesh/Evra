@@ -143,3 +143,6 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - Templates (M5), hotkeys and start with Windows (M6), People (M4).
 - Live transcript off for slow PCs: record now, transcribe after. `live_transcript` is already in the settings file.
 - After a theme switch, WebView2's background behind a resizing window keeps the startup colour until the next start.
+
+## Flaky test (2026-11-10)
+- `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` times a simulated 0.2 s loopback start against the real clock. It failed once while the PC was busy (five research agents running) and passed alone 5 of 5 times. Give it a fake clock, or a tolerance for scheduling delay.
