@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { MeetingView } from "@/components/MeetingView";
@@ -66,6 +66,13 @@ it("shows the title, then the day, time, length and kind of meeting", () => {
   view();
   expect(screen.getByRole("heading", { level: 1, name: "Weekly 1:1" })).toBeInTheDocument();
   expect(screen.getByText(/^Mon 28 Sept? · 13:51 · 12 min · 1:1$/)).toBeInTheDocument();
+});
+
+it("never breaks a date or time in the title", () => {
+  view({ detail: { ...DETAIL, meeting: { ...DETAIL.meeting, title: "Recording 2026-11-10 18:09" } } });
+  const heading = screen.getByRole("heading", { level: 1, name: "Recording 2026-11-10 18:09" });
+  expect(within(heading).getByText("2026-11-10")).toHaveClass("whitespace-nowrap");
+  expect(within(heading).getByText("18:09")).toHaveClass("whitespace-nowrap");
 });
 
 it("shows where and how the note was written", () => {

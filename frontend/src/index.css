@@ -150,12 +150,14 @@
 
   /* Meeting tabs on a heavy ink rule. */
   /* Fixed height: the rule never moves when Copy comes and goes between states. */
+  /* Both rules are painted backgrounds, not inset shadows: at 150% display scaling an inset
+     shadow leaves a hairline down a tab's side wherever its edge falls between two pixels. */
   .tabs {
     display: flex;
     align-items: flex-end;
     gap: 28px;
     min-height: 42px;
-    box-shadow: inset 0 -2px 0 var(--ink);
+    background: linear-gradient(var(--ink), var(--ink)) bottom / 100% 2px no-repeat;
   }
 
   .tab {
@@ -167,7 +169,7 @@
 
   .tab[aria-selected="true"] {
     color: var(--ink);
-    box-shadow: inset 0 -5px 0 var(--ink);
+    background: linear-gradient(var(--ink), var(--ink)) bottom / 100% 5px no-repeat;
   }
 
   /* The timed centre rule: one 2px line drawn by every row's middle cell. */

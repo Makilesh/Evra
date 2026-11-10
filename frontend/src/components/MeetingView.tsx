@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { MeetingDetail } from "@/bridge";
 import { copyText } from "@/clipboard";
 import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
@@ -122,6 +122,20 @@ function CopyButton({ text }: { text: () => string }) {
   );
 }
 
+// Dates and times never break at a hyphen or colon: "Recording 2026-11-10 18:09" wraps
+// between words, never as "Recording 2026-" over "11-10 18:09".
+function keepNumbersWhole(text: string): ReactNode[] {
+  return text.split(/(\d+(?:[-:./]\d+)+)/).map((part, index) =>
+    index % 2 === 1 ? (
+      <span key={index} className="whitespace-nowrap">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
 function Title({ title, onRename }: { title: string; onRename: (title: string) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
@@ -134,7 +148,7 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
     return (
       <div className="flex items-start gap-2">
         <h1 className="line-clamp-2 min-w-0 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[0.95] font-extrabold text-balance">
-          {title}
+          {keepNumbersWhole(title)}
         </h1>
         <button
           type="button"

@@ -1,9 +1,19 @@
+import re
 from pathlib import Path
 
 import pytest
 from webview.util import is_local_url
 
-from evra.ui.window import DEV_SERVER_URL, UiNotBuiltError, resolve_ui_url
+from evra.paths import REPO_ROOT
+from evra.ui.window import (
+    DEV_SERVER_URL,
+    PAD_DARK,
+    PAD_LIGHT,
+    UiNotBuiltError,
+    apps_use_light_theme,
+    resolve_ui_url,
+    window_background,
+)
 
 
 def test_dev_mode_uses_vite_dev_server() -> None:
@@ -91,6 +101,50 @@ def test_webview_profile_lives_in_given_dir_not_temp(
     assert fake.started["private_mode"] is True
     assert not fake.started.get("http_server")
     assert storage.is_dir()
+
+
+def test_window_background_follows_the_windows_app_theme() -> None:
+    assert window_background(0) == PAD_DARK
+    assert window_background(1) == PAD_LIGHT
+    assert window_background(None) == PAD_LIGHT
+
+
+def test_window_background_is_the_pages_pad_colour() -> None:
+    css = (REPO_ROOT / "frontend" / "src" / "index.css").read_text(encoding="utf-8")
+    light, dark = re.findall(r"--pad:\s*(#[0-9a-fA-F]{6})", css)[:2]
+    assert (light.upper(), dark.upper()) == (PAD_LIGHT, PAD_DARK)
+
+
+def test_reading_the_app_theme_never_fails() -> None:
+    assert apps_use_light_theme() in (0, 1, None)
+
+
+def test_a_dark_windows_theme_opens_the_window_on_the_dark_pad(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import evra.ui.window as window
+    from evra.bridge.api import BridgeApi
+    from evra.bridge.events import EventBus
+    from tests.unit.test_bridge import StubControl
+
+    fake = _patch_webview(monkeypatch)
+    monkeypatch.setattr(window, "apps_use_light_theme", lambda: 0)
+    bus = EventBus()
+    window.open_main_window(
+        url="file:///x/index.html",
+        api=BridgeApi(
+            app_name="Evra",
+            version="0",
+            bus=bus,
+            control=StubControl(),
+            db_path=tmp_path / "evra.db",
+        ),
+        bus=bus,
+        debug=False,
+        storage_dir=tmp_path / "webview",
+    )
+    assert fake.created is not None
+    assert fake.created["background_color"] == PAD_DARK
 
 
 def test_open_main_window_refuses_local_path_urls(

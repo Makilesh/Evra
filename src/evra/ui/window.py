@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from evra.bridge.api import BridgeApi
@@ -10,7 +11,30 @@ from evra.constants import APP_NAME
 
 DEV_SERVER_URL = "http://127.0.0.1:5173"
 WEB_DIR = Path(__file__).parent / "web"
-PAPER = "#FAF9F6"
+# The pad (`--pad` in frontend/src/index.css). WebView2 shows this colour until the page paints
+# and while the window resizes, so it follows the theme the page is about to pick.
+PAD_LIGHT = "#E7EFDB"
+PAD_DARK = "#131A15"
+_PERSONALIZE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+
+def apps_use_light_theme() -> int | None:
+    """Windows' app theme (0 = dark), the setting WebView2 reports as `prefers-color-scheme`.
+    None when it cannot be read."""
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PERSONALIZE_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+    except OSError:
+        return None
+    return value if isinstance(value, int) else None
+
+
+def window_background(light_theme: int | None) -> str:
+    return PAD_DARK if light_theme == 0 else PAD_LIGHT
 
 
 class UiNotBuiltError(RuntimeError):
@@ -45,7 +69,7 @@ def open_main_window(
         width=1100,
         height=720,
         min_size=(720, 480),
-        background_color=PAPER,
+        background_color=window_background(apps_use_light_theme()),
     )
     if window is None:
         raise RuntimeError("pywebview did not create a window")

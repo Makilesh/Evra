@@ -17,6 +17,11 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - Impeccable detector: no findings.
   - Fresh finish reviewer: **fix**, with 7 material fixes (red only for recording, no label above a heading, a fixed tab-bar height, one reading size, focus that fills like hover, note states as bands, a tighter short-window rail), all applied. A verdict pass found one regression from the batch (the narrow stamp clipped at 720px); it was fixed, then **ship**.
 - Frontend tests: 77 (Rail, meetings by day, `Ctrl K`, stamp, Copy as Markdown and its failure, sheet rows, missing cited lines, speaker-turn detents, live-only settle, note helpers, day labels). `DESIGN.md` + `.impeccable/design.json` written from the built window.
+- **Checked in the real window** (`uv run evra run` on a separate test data folder, WebView2 at 150% display scaling). Two recordings went end to end: the owner's own one-minute recording, and a two-voice test call played through the speakers. Covered: live lines from both sides, both meters, Stop, the note being written, the stamp, a jump to a quoted line, Copy as Markdown from `file://`, rename, light and dark. Three fixes followed:
+  - The tab underlines are now painted backgrounds. An inset shadow left a hairline beside the selected tab at 150% scaling.
+  - Dates and times in a title never break at a hyphen. A default title had wrapped as `Recording 2026-` / `11-10 18:09`.
+  - The window's own background is the pad colour for the Windows theme, not the old off-white that flashed in dark mode.
+  - Tests: 78 frontend, plus 4 for the window background.
 
 ## 2026-11-07 — M3 finish: real-length 1:1s (branch `one-on-one-polish`)
 

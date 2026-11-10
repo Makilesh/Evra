@@ -321,16 +321,6 @@
     },
     "shadows": [
       {
-        "name": "tab-rule",
-        "value": "inset 0 -2px 0 var(--ink)",
-        "purpose": "The heavy ink rule under the Note and Transcript tabs (a line, not elevation)."
-      },
-      {
-        "name": "tab-selected",
-        "value": "inset 0 -5px 0 var(--ink)",
-        "purpose": "The bar under the selected tab."
-      },
-      {
         "name": "rail-edge",
         "value": "inset -1px 0 0 var(--chip-edge)",
         "purpose": "Where the chipboard rail meets the pad; also inset 0 1px 0 above the microphone."
@@ -438,7 +428,7 @@
       "refersTo": "tab-selected",
       "description": "Note and Transcript on a heavy ink rule, Copy as Markdown at its end.",
       "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-on\">Note</button><button class=\"ds-tab\">Transcript <small>27 lines</small></button><span style=\"flex:1\"></span><button class=\"ds-copy\">Copy as Markdown</button></div>",
-      "css": ".ds-tabs{display:flex;align-items:flex-end;gap:28px;min-height:42px;box-shadow:inset 0 -2px 0 var(--ink);background:var(--pad);padding:0 8px}.ds-tab{padding:0 0 10px;border:0;background:none;color:var(--muted);font:600 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer}.ds-tab small{font-size:13px;font-weight:500;margin-left:6px}.ds-tab.ds-on{color:var(--ink);box-shadow:inset 0 -5px 0 var(--ink)}.ds-tab:focus-visible,.ds-copy:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-copy{margin-bottom:9px;padding:6px 12px;border:0;border-radius:8px;background:var(--band);color:var(--ink);font:600 13px/20px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-copy:hover{background:var(--band-deep)}"
+      "css": ".ds-tabs{display:flex;align-items:flex-end;gap:28px;min-height:42px;background:linear-gradient(var(--ink),var(--ink)) bottom/100% 2px no-repeat var(--pad);padding:0 8px}.ds-tab{padding:0 0 10px;border:0;background:none;color:var(--muted);font:600 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer}.ds-tab small{font-size:13px;font-weight:500;margin-left:6px}.ds-tab.ds-on{color:var(--ink);background:linear-gradient(var(--ink),var(--ink)) bottom/100% 5px no-repeat}.ds-tab:focus-visible,.ds-copy:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-copy{margin-bottom:9px;padding:6px 12px;border:0;border-radius:8px;background:var(--band);color:var(--ink);font:600 13px/20px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-copy:hover{background:var(--band-deep)}"
     },
     {
       "name": "Note Sheet Row",

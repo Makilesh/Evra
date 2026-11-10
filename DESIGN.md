@@ -264,7 +264,7 @@ The note sheet is a container-queried grid. At 600px of sheet or wider each row 
 
 ## Elevation & Depth
 
-Flat. There are no drop shadows anywhere. Depth comes from tonal areas: the chipboard rail against the pad, wells cut a step lighter into the rail, band greens over the pad. Inset box-shadows are used only to draw lines: the 2px ink rule under the tabs, the 5px ink bar under the selected tab, the 1px chipboard edge on the rail and above the microphone.
+Flat. There are no drop shadows anywhere. Depth comes from tonal areas: the chipboard rail against the pad, wells cut a step lighter into the rail, band greens over the pad. Lines are drawn, never shadowed into depth. The 2px ink rule under the tabs and the 5px ink bar under the selected tab are painted backgrounds (a gradient sized to the bottom edge), because at 150% display scaling an inset shadow leaves a hairline down a tab's side. The 1px chipboard edge on the rail and above the microphone is an inset box-shadow; those edges sit on whole pixels.
 
 ### Named Rules
 **The Flat Pad Rule.** Nothing floats. If something needs to stand out, it gets an area of colour or a line, not a shadow.

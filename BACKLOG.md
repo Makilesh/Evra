@@ -125,3 +125,4 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Stamp: the time the note was written; needs the note view to carry its generation time.
 - Record button: show `Ctrl Alt R` once the global hotkey exists (M6); `Ctrl K` grows into the palette (M6).
 - Frontend end-to-end checks (BUILD.md §9.2): the fake bridge used to look at the redesign (`window.pywebview` injected before load, synthetic fixture) can become a Playwright suite in `frontend/e2e/`.
+- Jumping from a time tab to the transcript leaves keyboard focus on the page body (it did before the redesign too); move focus to the highlighted line.
