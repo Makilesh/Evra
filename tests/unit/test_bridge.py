@@ -238,13 +238,14 @@ def test_settings_show_the_theme_note_model_folder_and_version(tmp_path: Path) -
     }
 
 
-def test_the_theme_is_light_or_dark_only(tmp_path: Path) -> None:
+def test_the_theme_is_light_dark_or_match_windows(tmp_path: Path) -> None:
     control = StubControl()
     api, _ = _api(tmp_path, control=control)
     assert api.set_theme("dark") == {"ok": True}
-    assert api.set_theme("system") == {"ok": False}
+    assert api.set_theme("system") == {"ok": True}
+    assert api.set_theme("sepia") == {"ok": False}
     assert api.set_theme(1) == {"ok": False}  # type: ignore[arg-type]
-    assert control.calls == [("set_theme", "dark")]
+    assert control.calls == [("set_theme", "dark"), ("set_theme", "system")]
 
 
 def test_note_model_names_are_checked_before_they_are_saved(tmp_path: Path) -> None:

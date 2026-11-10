@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -16,19 +18,39 @@ WEB_DIR = Path(__file__).parent / "web"
 # and while the window resizes, so it is the pad of the theme the page opens in.
 PAD_LIGHT = "#E7EFDB"
 PAD_DARK = "#131A15"
+_PERSONALIZE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 
 
-def window_background(theme: Theme) -> str:
-    return PAD_DARK if theme == "dark" else PAD_LIGHT
+def windows_prefers_dark() -> bool:
+    """Windows' app mode (AppsUseLightTheme = 0 is dark): the setting WebView2 reports to the
+    page as `prefers-color-scheme`. False when it cannot be read."""
+    if sys.platform != "win32":
+        return False
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PERSONALIZE_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+    except OSError:
+        return False
+    return bool(value == 0)
+
+
+def window_background(
+    theme: Theme, *, windows_dark: Callable[[], bool] = windows_prefers_dark
+) -> str:
+    dark = theme == "dark" or (theme == "system" and windows_dark())
+    return PAD_DARK if dark else PAD_LIGHT
 
 
 def themed_url(url: str, theme: Theme) -> str:
-    """The page reads `#theme=dark` before its first paint, so a dark window never flashes
-    light. Light is the page's default and needs nothing. A fragment, not a query: pywebview
-    hands the URL to .NET's System.Uri, which escapes a file URL's "?" into the file name."""
-    if theme != "dark":
+    """The page reads `#theme=dark` or `#theme=system` before its first paint, so it never
+    flashes the wrong theme. Light is the page's default and needs nothing. A fragment, not a
+    query: pywebview hands the URL to .NET's System.Uri, which escapes a file URL's "?" into
+    the file name."""
+    if theme == "light":
         return url
-    return urlunsplit(urlsplit(url)._replace(fragment="theme=dark"))
+    return urlunsplit(urlsplit(url)._replace(fragment=f"theme={theme}"))
 
 
 class UiNotBuiltError(RuntimeError):
@@ -70,7 +92,7 @@ def open_main_window(
         width=1100,
         height=720,
         min_size=(720, 480),
-        background_color=window_background(theme),
+        background_color=window_background(theme, windows_dark=windows_prefers_dark),
     )
     if window is None:
         raise RuntimeError("pywebview did not create a window")

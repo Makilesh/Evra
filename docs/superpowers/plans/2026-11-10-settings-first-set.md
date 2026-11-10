@@ -13,7 +13,7 @@
 ## Global Constraints
 - At most four or five settings; changes apply at once; an unavailable setting is disabled with its reason.
 - No setting before its feature exists; the microphone stays in the rail.
-- Light is the default. Dark is saved as `theme = "dark"`, and an unknown value reads as light without a reset.
+- Light is the default. Dark and Match Windows are saved as `theme = "dark"` / `"system"`, and an unknown value reads as light without a reset.
 - Evra opens no listener: Open folder starts Explorer, and model names are checked against a strict pattern.
 
 ## Tasks

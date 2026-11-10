@@ -11,7 +11,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - Microsoft, Apple and NN/g guidance on settings screens and theme defaults.
   - Result: the most-requested settings belong to features Evra doesn't have yet, and the defaults people complain about (bots, auto-sharing) don't exist here.
 - **Built:** Settings on the pad, opened from the foot of the rail or with `Ctrl ,`.
-  - Theme: Light by default, or Dark, each shown as the window in miniature.
+  - Theme: Light by default, Dark, or Match Windows (follows Windows' light or dark mode live), each shown as the window in miniature.
   - Note model: the models installed in Ollama, with the default marked "recommended".
     - Disabled, with the reason and Check again, while Ollama doesn't answer.
     - A pull hint when the chosen model isn't installed.
@@ -24,8 +24,9 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - With Ollama off, the reason shows; with it on, its 9 models are listed.
   - Choosing a model and Dark wrote `settings.toml`, and a restart opened dark with the model kept.
   - Open folder opened Explorer on the folder.
+  - With Match Windows saved, the window opened at `#theme=system` and was dark from its first frame, matching this PC's dark Windows mode.
   - It also caught a bug: .NET's `Uri` turned `index.html?theme=dark` into `index.html%3Ftheme=dark`, so a dark window showed an error page. Fixed with a fragment, plus a test that uses .NET's own `Uri`.
-- Tests: Python 450 (+15), frontend 94 (+16).
+- Tests: Python 453 (+18), frontend 95 (+17).
 
 ## 2026-11-10 — Main window redesign: "Steno pad" (branch `ui-redesign`)
 

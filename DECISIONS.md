@@ -171,17 +171,19 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - The direction contract is `.impeccable/surfaces/frontend-src-app-tsx.md`; the design system is `DESIGN.md` with `.impeccable/design.json`.
 - **Consequences:** Inter and Newsreader are removed. GSAP, React Bits components and transitions.dev snippets are not used: CSS carries the motion inside the recording CPU budget, and their licences (GSAP's standard no-charge licence, MIT + Commons Clause, custom) would each need a licence-policy decision first; the React Bits registry stays configured in `components.json` for later. The `Ctrl+K` palette and `Ctrl+Alt+R` stay M6. Per-meeting talk-rhythm marks and the note's written-at time need new bridge fields (BACKLOG).
 
-## Theme: light by default, Dark in Settings (2026-11-10)
-- **Context:** D19 "Steno pad" followed the Windows light/dark setting. The owner asked for a light window by default, with Dark as a choice.
+## Theme: light by default; Dark or Match Windows in Settings (2026-11-10)
+- **Context:** D19 "Steno pad" followed the Windows light/dark setting. The owner asked for a light window by default with Dark as a choice, then for Microsoft's "Use system setting" as a third, non-default option.
 - **Evidence:** research notes in `private/research/` (2026-11-10):
   - Microsoft's app-settings guidance lets an app set its own theme, though its documented default follows Windows.
   - Lab readability studies mostly favour dark text on light backgrounds (Piepenbrock 2013, Dobres 2017), and NN/g (2020) advises against a dark default for a general audience.
   - Comparable local-first apps usually offer Light / Dark / System with System as the default.
 - **Decision:**
-  - The window opens light unless Dark is chosen in Settings. The choice is saved in `settings.toml` as `theme = "dark"`; an old or unknown value (the earlier `"system"` default) reads as light without resetting the other settings.
-  - Python opens a dark window as `index.html#theme=dark` with the dark pad as WebView2's background, so the page never flashes light. It is a fragment, not a query: pywebview hands the URL to .NET's `System.Uri`, which escapes a file URL's `?` into the file name, and WebView2 then shows an error page. The real-window check caught this, and `tests/unit/test_window.py` now checks it with .NET's own `Uri`.
+  - The window opens light unless Dark or Match Windows is chosen in Settings. The choice is saved in `settings.toml` as `theme = "dark"` or `theme = "system"`.
+  - Match Windows is Microsoft's "Use system setting", given a label that fits the theme tile. It follows Windows' app mode live, which WebView2 reports as `prefers-color-scheme`.
+  - An unknown value reads as light without resetting the other settings.
+  - Python opens the window as `index.html#theme=dark` (or `#theme=system`) with the matching pad as WebView2's background, so the page never flashes the wrong theme. For Match Windows, the pad is chosen from Windows' `AppsUseLightTheme` setting. It is a fragment, not a query: pywebview hands the URL to .NET's `System.Uri`, which escapes a file URL's `?` into the file name, and WebView2 then shows an error page. The real-window check caught this, and `tests/unit/test_window.py` now checks it with .NET's own `Uri`.
 - **Consequences:**
-  - Evra no longer follows the Windows dark setting on its own; a "Use system setting" option can be added later if wanted.
+  - Evra follows Windows only when Match Windows is chosen.
   - After a switch while Evra runs, WebView2's background behind a resizing window keeps the startup colour until the next start.
 
 ## Settings, first set (2026-11-10)

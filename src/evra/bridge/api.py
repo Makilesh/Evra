@@ -29,7 +29,7 @@ log = structlog.get_logger(__name__)
 
 # An Ollama model name ("gemma4:12b", "hf.co/user/model:Q4_K_M"): no spaces, no control characters.
 MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}")
-THEMES: tuple[Theme, ...] = ("light", "dark")
+THEMES: dict[str, Theme] = {"light": "light", "dark": "dark", "system": "system"}
 
 
 def open_folder(path: Path) -> None:
@@ -154,9 +154,10 @@ class BridgeApi:
         }
 
     def set_theme(self, theme: str) -> dict[str, Any]:
-        if theme not in THEMES:
+        chosen = THEMES.get(theme) if isinstance(theme, str) else None
+        if chosen is None:
             return {"ok": False}
-        return {"ok": self._control.set_theme("dark" if theme == "dark" else "light")}
+        return {"ok": self._control.set_theme(chosen)}
 
     def set_note_model(self, model: str) -> dict[str, Any]:
         if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):

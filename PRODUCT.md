@@ -29,7 +29,7 @@ Recording, transcript and note never leave the PC, and every point in the note l
 
 - During a call, Evra sits beside the call window: the user glances to check both sides are being heard, reads the live transcript, and may type a rough note.
 - After the call, the note is written automatically by a local model through Ollama (about 20–60 s for a 1:1). The user reads it, checks a point by jumping to the moment it cites, and copies action items elsewhere.
-- Modes: **1:1** (default, the main use) and **Meeting**. English only in Phase 1. Light by default; Dark can be chosen in Settings.
+- Modes: **1:1** (default, the main use) and **Meeting**. English only in Phase 1. Light by default; Dark or Match Windows can be chosen in Settings.
 
 ## Capabilities and Constraints
 

@@ -111,7 +111,8 @@ export interface NoteFailed {
   model?: string;
 }
 
-export type Theme = "light" | "dark";
+/** "system" is Match Windows: it follows Windows' light or dark app mode. */
+export type Theme = "light" | "dark" | "system";
 
 export interface SettingsInfo {
   theme: Theme;

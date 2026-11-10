@@ -18,7 +18,7 @@ interface SettingsViewProps {
   onClose: () => void;
 }
 
-const THEMES: Theme[] = ["light", "dark"];
+const THEMES: Theme[] = ["light", "dark", "system"];
 
 // Settings: a short page on the same timed rule as the note, one detent per setting.
 // Every change applies at once; there is no Save button.
@@ -69,7 +69,7 @@ export function SettingsView({
         )}
 
         <ol className="mt-8 max-w-[42rem]">
-          <Row id={`${ids}-theme`} title={strings.theme}>
+          <Row id={`${ids}-theme`} title={strings.theme} help={strings.themeHelp}>
             <ThemePicker labelledBy={`${ids}-theme`} theme={settings.theme} onTheme={onTheme} />
           </Row>
           <Row id={`${ids}-model`} title={strings.noteModel} help={strings.noteModelHelp}>
@@ -158,13 +158,26 @@ function ThemePicker({ labelledBy, theme, onTheme }: { labelledBy: string; theme
   );
 }
 
+// Match Windows shows both looks, split on a diagonal.
+function ThemePreview({ theme }: { theme: Theme }) {
+  if (theme !== "system") return <MiniWindow scope={theme} />;
+  return (
+    <span aria-hidden="true" className="relative block h-[78px] w-[138px]">
+      <MiniWindow scope="light" />
+      <span className="absolute inset-0 [clip-path:polygon(60%_0,100%_0,100%_100%,40%_100%)]">
+        <MiniWindow scope="dark" />
+      </span>
+    </span>
+  );
+}
+
 // The window in miniature, drawn in that theme's own tokens: the chipboard rail with Record,
 // then the pad with a title, the timed rule and a point on a band.
-function ThemePreview({ theme }: { theme: Theme }) {
+function MiniWindow({ scope }: { scope: "light" | "dark" }) {
   return (
     <span
       aria-hidden="true"
-      className={`${theme} flex h-[78px] w-[138px] overflow-hidden rounded-[9px] border border-ink/15 bg-pad`}
+      className={`${scope} flex h-[78px] w-[138px] overflow-hidden rounded-[9px] border border-ink/15 bg-pad`}
     >
       <span className="flex w-[36px] shrink-0 flex-col gap-[5px] bg-chip px-[6px] pt-[7px]">
         <span className="h-[5px] w-[15px] rounded-[2px] bg-ink" />

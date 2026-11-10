@@ -13,6 +13,7 @@ from evra.ui.window import (
     resolve_ui_url,
     themed_url,
     window_background,
+    windows_prefers_dark,
 )
 
 
@@ -104,8 +105,14 @@ def test_webview_profile_lives_in_given_dir_not_temp(
 
 
 def test_window_background_follows_the_chosen_theme() -> None:
-    assert window_background("light") == PAD_LIGHT
-    assert window_background("dark") == PAD_DARK
+    assert window_background("light", windows_dark=lambda: True) == PAD_LIGHT
+    assert window_background("dark", windows_dark=lambda: False) == PAD_DARK
+    assert window_background("system", windows_dark=lambda: True) == PAD_DARK
+    assert window_background("system", windows_dark=lambda: False) == PAD_LIGHT
+
+
+def test_reading_the_windows_app_mode_never_fails() -> None:
+    assert windows_prefers_dark() in (True, False)
 
 
 def test_window_background_is_the_pages_pad_colour() -> None:
@@ -118,6 +125,7 @@ def test_the_page_learns_a_dark_theme_from_its_url() -> None:
     page = "file:///D:/GEN%20AI/Evra/src/evra/ui/web/index.html"
     assert themed_url(page, "light") == page
     assert themed_url(page, "dark") == page + "#theme=dark"
+    assert themed_url(page, "system") == page + "#theme=system"
     assert themed_url(DEV_SERVER_URL, "dark") == DEV_SERVER_URL + "#theme=dark"
     assert not is_local_url(themed_url(page, "dark"))
 
@@ -166,6 +174,17 @@ def test_a_dark_window_opens_dark_with_no_light_flash(
     created = _open(tmp_path, monkeypatch, "dark")
     assert created["background_color"] == PAD_DARK
     assert created["url"] == "file:///x/index.html#theme=dark"
+
+
+def test_a_window_that_matches_windows_opens_on_its_pad(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import evra.ui.window as window
+
+    monkeypatch.setattr(window, "windows_prefers_dark", lambda: True)
+    created = _open(tmp_path, monkeypatch, "system")
+    assert created["background_color"] == PAD_DARK
+    assert created["url"] == "file:///x/index.html#theme=system"
 
 
 def test_a_light_window_opens_on_the_light_pad(

@@ -33,12 +33,15 @@ it("opens with focus on its heading", () => {
   expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toHaveFocus();
 });
 
-it("offers light and dark, with the current theme chosen", async () => {
+it("offers Light, Dark and Match Windows, with the current theme chosen", async () => {
   const { props } = view();
+  expect(screen.getAllByRole("radio")).toHaveLength(3);
   expect(screen.getByRole("radio", { name: "Light" })).toBeChecked();
   expect(screen.getByRole("radio", { name: "Dark" })).not.toBeChecked();
   await userEvent.click(screen.getByRole("radio", { name: "Dark" }));
   expect(props.onTheme).toHaveBeenCalledWith("dark");
+  await userEvent.click(screen.getByRole("radio", { name: "Match Windows" }));
+  expect(props.onTheme).toHaveBeenCalledWith("system");
 });
 
 it("lists the models in Ollama, marks the recommended one and saves a choice", async () => {

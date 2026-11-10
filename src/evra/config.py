@@ -17,7 +17,8 @@ log = structlog.get_logger(__name__)
 Mode = Literal["one_on_one", "meeting"]
 Situation = Literal["call_headphones", "call_speakers", "in_person", "hybrid"]
 Retention = Literal["7d", "30d", "90d", "forever"]
-Theme = Literal["light", "dark"]  # light by default; Dark in Settings (DECISIONS 2026-11-10)
+# Light by default; Dark or Match Windows ("system") in Settings (DECISIONS 2026-11-10)
+Theme = Literal["light", "dark", "system"]
 
 
 class LlmSettings(BaseModel):
@@ -49,9 +50,8 @@ class Settings(BaseModel):
     @field_validator("theme", mode="before")
     @classmethod
     def _known_theme(cls, value: object) -> object:
-        """The old "system" default, or any unknown value, means light: one stale value never
-        resets the whole file."""
-        return value if value in ("light", "dark") else "light"
+        """An unknown value means light: one stale value never resets the whole file."""
+        return value if value in ("light", "dark", "system") else "light"
 
 
 def load_settings(path: Path) -> Settings:

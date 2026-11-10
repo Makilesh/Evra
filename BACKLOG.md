@@ -130,7 +130,6 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 ## Settings, later (2026-11-10)
 
 Each one arrives with its feature, never before it (DECISIONS: Settings, first set).
-- A third theme option, "Use system setting", if wanted. It is Microsoft's pattern, and most local-first apps default to it.
 - Note language: the most-requested setting in this category (Phase 1 is English only).
 - Choosing the meetings folder, which means moving the database and audio safely.
 - Retention (D13, M5). Shortening it deletes data, so it must be confirmed with the consequence named ("Delete audio older than 7 days").
