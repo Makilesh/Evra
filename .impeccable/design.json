@@ -1,0 +1,527 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T00:00:00Z",
+  "title": "Design System: Evra",
+  "extensions": {
+    "colorMeta": {
+      "rule": {
+        "role": "primary",
+        "displayName": "Steno Rule Green",
+        "canonical": "#2e6b4b",
+        "oklch": "oklch(47.8% 0.082 158)",
+        "dark": "#74c394",
+        "tonalRamp": [
+          "oklch(15% 0.040 158)",
+          "oklch(26% 0.052 158)",
+          "oklch(37% 0.064 158)",
+          "oklch(48% 0.075 158)",
+          "oklch(59% 0.078 158)",
+          "oklch(70% 0.067 158)",
+          "oklch(82% 0.054 158)",
+          "oklch(95% 0.040 158)"
+        ]
+      },
+      "rule-ink": {
+        "role": "primary",
+        "displayName": "Deep Rule Green",
+        "canonical": "#24563c",
+        "oklch": "oklch(41.1% 0.070 158)",
+        "dark": "#74c394",
+        "tonalRamp": [
+          "oklch(15% 0.034 158)",
+          "oklch(26% 0.044 158)",
+          "oklch(37% 0.054 158)",
+          "oklch(48% 0.064 158)",
+          "oklch(59% 0.067 158)",
+          "oklch(70% 0.057 158)",
+          "oklch(82% 0.046 158)",
+          "oklch(95% 0.034 158)"
+        ]
+      },
+      "rec": {
+        "role": "secondary",
+        "displayName": "Recording Red",
+        "canonical": "#e0352b",
+        "oklch": "oklch(59.5% 0.209 29)",
+        "dark": "#ff5a4e",
+        "tonalRamp": [
+          "oklch(15% 0.102 29)",
+          "oklch(26% 0.132 29)",
+          "oklch(37% 0.161 29)",
+          "oklch(48% 0.190 29)",
+          "oklch(59% 0.198 29)",
+          "oklch(70% 0.169 29)",
+          "oklch(82% 0.137 29)",
+          "oklch(95% 0.102 29)"
+        ]
+      },
+      "rec-fill": {
+        "role": "secondary",
+        "displayName": "Recording Fill",
+        "canonical": "#b42a21",
+        "oklch": "oklch(50.7% 0.176 29)",
+        "dark": "#b83026",
+        "tonalRamp": [
+          "oklch(15% 0.086 29)",
+          "oklch(26% 0.111 29)",
+          "oklch(37% 0.136 29)",
+          "oklch(48% 0.160 29)",
+          "oklch(59% 0.167 29)",
+          "oklch(70% 0.142 29)",
+          "oklch(82% 0.115 29)",
+          "oklch(95% 0.086 29)"
+        ]
+      },
+      "on-rec": {
+        "role": "secondary",
+        "displayName": "Warm White",
+        "canonical": "#fff7f2",
+        "oklch": "oklch(98.1% 0.011 55)",
+        "dark": "#fff7f2",
+        "tonalRamp": [
+          "oklch(15% 0.005 55)",
+          "oklch(26% 0.007 55)",
+          "oklch(37% 0.008 55)",
+          "oklch(48% 0.010 55)",
+          "oklch(59% 0.010 55)",
+          "oklch(70% 0.009 55)",
+          "oklch(82% 0.007 55)",
+          "oklch(95% 0.005 55)"
+        ]
+      },
+      "you": {
+        "role": "tertiary",
+        "displayName": "Navy Speaker Ink",
+        "canonical": "#23407a",
+        "oklch": "oklch(38.2% 0.105 263)",
+        "dark": "#9db8f2",
+        "tonalRamp": [
+          "oklch(15% 0.051 263)",
+          "oklch(26% 0.066 263)",
+          "oklch(37% 0.081 263)",
+          "oklch(48% 0.095 263)",
+          "oklch(59% 0.099 263)",
+          "oklch(70% 0.085 263)",
+          "oklch(82% 0.069 263)",
+          "oklch(95% 0.051 263)"
+        ]
+      },
+      "them": {
+        "role": "tertiary",
+        "displayName": "Umber Speaker Ink",
+        "canonical": "#7a4a1e",
+        "oklch": "oklch(45.6% 0.087 60)",
+        "dark": "#e0b07e",
+        "tonalRamp": [
+          "oklch(15% 0.043 60)",
+          "oklch(26% 0.055 60)",
+          "oklch(37% 0.067 60)",
+          "oklch(48% 0.080 60)",
+          "oklch(59% 0.083 60)",
+          "oklch(70% 0.071 60)",
+          "oklch(82% 0.057 60)",
+          "oklch(95% 0.043 60)"
+        ]
+      },
+      "pad": {
+        "role": "neutral",
+        "displayName": "Steno Pad",
+        "canonical": "#e7efdb",
+        "oklch": "oklch(94.1% 0.028 125)",
+        "dark": "#131a15",
+        "tonalRamp": [
+          "oklch(15% 0.014 125)",
+          "oklch(26% 0.018 125)",
+          "oklch(37% 0.021 125)",
+          "oklch(48% 0.025 125)",
+          "oklch(59% 0.026 125)",
+          "oklch(70% 0.023 125)",
+          "oklch(82% 0.018 125)",
+          "oklch(95% 0.014 125)"
+        ]
+      },
+      "band": {
+        "role": "neutral",
+        "displayName": "Pad Band",
+        "canonical": "#d6e4c6",
+        "oklch": "oklch(90.0% 0.043 128)",
+        "dark": "#1e2a21",
+        "tonalRamp": [
+          "oklch(15% 0.021 128)",
+          "oklch(26% 0.027 128)",
+          "oklch(37% 0.033 128)",
+          "oklch(48% 0.039 128)",
+          "oklch(59% 0.041 128)",
+          "oklch(70% 0.035 128)",
+          "oklch(82% 0.028 128)",
+          "oklch(95% 0.021 128)"
+        ]
+      },
+      "band-deep": {
+        "role": "neutral",
+        "displayName": "Deep Band",
+        "canonical": "#c2d8ae",
+        "oklch": "oklch(85.5% 0.061 130)",
+        "dark": "#2a3d2e",
+        "tonalRamp": [
+          "oklch(15% 0.030 130)",
+          "oklch(26% 0.039 130)",
+          "oklch(37% 0.047 130)",
+          "oklch(48% 0.056 130)",
+          "oklch(59% 0.058 130)",
+          "oklch(70% 0.050 130)",
+          "oklch(82% 0.040 130)",
+          "oklch(95% 0.030 130)"
+        ]
+      },
+      "chip": {
+        "role": "neutral",
+        "displayName": "Chipboard",
+        "canonical": "#d3c8b3",
+        "oklch": "oklch(83.6% 0.031 84)",
+        "dark": "#2a251e",
+        "tonalRamp": [
+          "oklch(15% 0.015 84)",
+          "oklch(26% 0.020 84)",
+          "oklch(37% 0.024 84)",
+          "oklch(48% 0.028 84)",
+          "oklch(59% 0.029 84)",
+          "oklch(70% 0.025 84)",
+          "oklch(82% 0.020 84)",
+          "oklch(95% 0.015 84)"
+        ]
+      },
+      "chip-edge": {
+        "role": "neutral",
+        "displayName": "Chipboard Edge",
+        "canonical": "#bdb19a",
+        "oklch": "oklch(76.4% 0.035 84)",
+        "dark": "#3b342a",
+        "tonalRamp": [
+          "oklch(15% 0.017 84)",
+          "oklch(26% 0.022 84)",
+          "oklch(37% 0.027 84)",
+          "oklch(48% 0.032 84)",
+          "oklch(59% 0.033 84)",
+          "oklch(70% 0.028 84)",
+          "oklch(82% 0.023 84)",
+          "oklch(95% 0.017 84)"
+        ]
+      },
+      "chip-well": {
+        "role": "neutral",
+        "displayName": "Chipboard Well",
+        "canonical": "#e2d9c8",
+        "oklch": "oklch(88.8% 0.025 83)",
+        "dark": "#352f26",
+        "tonalRamp": [
+          "oklch(15% 0.012 83)",
+          "oklch(26% 0.016 83)",
+          "oklch(37% 0.019 83)",
+          "oklch(48% 0.023 83)",
+          "oklch(59% 0.024 83)",
+          "oklch(70% 0.020 83)",
+          "oklch(82% 0.016 83)",
+          "oklch(95% 0.012 83)"
+        ]
+      },
+      "chip-ink": {
+        "role": "neutral",
+        "displayName": "Chipboard Ink",
+        "canonical": "#5a5041",
+        "oklch": "oklch(43.7% 0.027 78)",
+        "dark": "#bdb29e",
+        "tonalRamp": [
+          "oklch(15% 0.013 78)",
+          "oklch(26% 0.017 78)",
+          "oklch(37% 0.021 78)",
+          "oklch(48% 0.025 78)",
+          "oklch(59% 0.026 78)",
+          "oklch(70% 0.022 78)",
+          "oklch(82% 0.018 78)",
+          "oklch(95% 0.013 78)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Navy Ink",
+        "canonical": "#1b2433",
+        "oklch": "oklch(25.9% 0.031 260)",
+        "dark": "#e3eadb",
+        "tonalRamp": [
+          "oklch(15% 0.015 260)",
+          "oklch(26% 0.020 260)",
+          "oklch(37% 0.024 260)",
+          "oklch(48% 0.028 260)",
+          "oklch(59% 0.030 260)",
+          "oklch(70% 0.025 260)",
+          "oklch(82% 0.020 260)",
+          "oklch(95% 0.015 260)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Green-Grey",
+        "canonical": "#536052",
+        "oklch": "oklch(47.3% 0.027 143)",
+        "dark": "#a2ae9b",
+        "tonalRamp": [
+          "oklch(15% 0.013 143)",
+          "oklch(26% 0.017 143)",
+          "oklch(37% 0.021 143)",
+          "oklch(48% 0.025 143)",
+          "oklch(59% 0.026 143)",
+          "oklch(70% 0.022 143)",
+          "oklch(82% 0.018 143)",
+          "oklch(95% 0.013 143)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Meeting title and welcome title."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "App name at the top of the rail."
+      },
+      "timer": {
+        "displayName": "Timer",
+        "purpose": "Elapsed time on the red record block."
+      },
+      "caps-head": {
+        "displayName": "Caps Head",
+        "purpose": "Note section heads, stamp first line, writing and failed row titles."
+      },
+      "caps-speaker": {
+        "displayName": "Caps Speaker",
+        "purpose": "Speaker names, the quotes column head, rail day heads."
+      },
+      "caps-label": {
+        "displayName": "Caps Label",
+        "purpose": "Small rail labels (Microphone, Recording)."
+      },
+      "time-tab": {
+        "displayName": "Time Tab",
+        "purpose": "Clickable times on the note's centre rule."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All reading text: points, quotes, transcript lines, notices."
+      },
+      "body-strong": {
+        "displayName": "Body Strong",
+        "purpose": "Tabs, buttons, meeting names."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Date line, times and durations, counts, Copy button, transcript times."
+      }
+    },
+    "shadows": [
+      {
+        "name": "tab-rule",
+        "value": "inset 0 -2px 0 var(--ink)",
+        "purpose": "The heavy ink rule under the Note and Transcript tabs (a line, not elevation)."
+      },
+      {
+        "name": "tab-selected",
+        "value": "inset 0 -5px 0 var(--ink)",
+        "purpose": "The bar under the selected tab."
+      },
+      {
+        "name": "rail-edge",
+        "value": "inset -1px 0 0 var(--chip-edge)",
+        "purpose": "Where the chipboard rail meets the pad; also inset 0 1px 0 above the microphone."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "State changes (140ms background and colour on rows, tabs, quotes) and the land and settle animations."
+      },
+      {
+        "name": "state",
+        "value": "140ms",
+        "purpose": "Hover and focus fills."
+      },
+      {
+        "name": "settle",
+        "value": "900ms, font-weight 640 to 400",
+        "purpose": "A newly arrived transcript line lands heavier and settles."
+      },
+      {
+        "name": "land",
+        "value": "1400ms, band-deep to band",
+        "purpose": "A cited transcript line lands highlighted and settles."
+      },
+      {
+        "name": "run-down",
+        "value": "1600ms cubic-bezier(0.65, 0, 0.35, 1) infinite",
+        "purpose": "A 28px stretch of rule runs down the faint rule while a note is written."
+      },
+      {
+        "name": "meter",
+        "value": "100ms linear transform",
+        "purpose": "Level meter fill, scaled with transform, never width."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: no-preference",
+        "purpose": "All keyframe animations run only when motion is allowed."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "max-width: 860px",
+        "purpose": "Rail 232px, gutter 24px, stamp laid flat and wrapping, search hint hidden."
+      },
+      {
+        "name": "short",
+        "value": "max-height: 600px",
+        "purpose": "Tighter rail: less top padding, 44px record button, claim and microphone label screen-reader only."
+      },
+      {
+        "name": "sheet-wide",
+        "value": "@container min-width: 600px",
+        "purpose": "Note rows become point | rule | quotes; narrower, quotes fold beneath the point."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ink-filled action: Write note, Retry, banner action.",
+      "html": "<button class=\"ds-btn-primary\">Write note</button>",
+      "css": ".ds-btn-primary{background:var(--ink);color:var(--pad);font:600 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;padding:8px 16px;border:0;border-radius:8px;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-btn-primary:hover{background:color-mix(in oklab,var(--ink) 88%,transparent)}.ds-btn-primary:focus-visible{outline:2px solid var(--rule);outline-offset:2px}"
+    },
+    {
+      "name": "Record Button",
+      "kind": "button",
+      "refersTo": "record-button",
+      "description": "Full-width record control in the rail, red dot then the word.",
+      "html": "<div class=\"ds-rail\"><button class=\"ds-record\"><span class=\"ds-dot\"></span>Record</button></div>",
+      "css": ".ds-rail{background:var(--chip);padding:18px;width:228px}.ds-record{display:flex;align-items:center;gap:12px;width:100%;height:48px;padding:0 16px;background:var(--ink);color:var(--pad);font:600 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;border:0;border-radius:11px;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-record:hover{background:color-mix(in oklab,var(--ink) 88%,transparent)}.ds-record:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-dot{width:12px;height:12px;border-radius:50%;background:var(--rec)}"
+    },
+    {
+      "name": "Recording Block",
+      "kind": "custom",
+      "refersTo": "recording-block",
+      "description": "The record control while recording: red fill, timer, Stop, two meters.",
+      "html": "<div class=\"ds-recblock\"><div class=\"ds-recrow\"><div><p class=\"ds-live\"><span class=\"ds-pip\"></span>Live now</p><p class=\"ds-timer\">12:04</p></div><button class=\"ds-stop\">Stop</button></div><div class=\"ds-meters\"><div class=\"ds-meter\"><span>You</span><i><b style=\"transform:scaleX(.6)\"></b></i></div><div class=\"ds-meter\"><span>Them</span><i><b style=\"transform:scaleX(.35)\"></b></i></div></div></div>",
+      "css": ".ds-recblock{width:228px;background:var(--rec-fill);color:var(--on-rec);border-radius:11px;padding:12px}.ds-recrow{display:flex;align-items:center;gap:12px;justify-content:space-between}.ds-live{display:flex;align-items:center;gap:6px;margin:0;font:700 13px/16px 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:.05em}.ds-pip{width:8px;height:8px;border-radius:50%;background:var(--on-rec)}.ds-timer{margin:0;font:700 28px/32px 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;font-variant-numeric:tabular-nums}.ds-stop{height:36px;padding:0 16px;background:var(--on-rec);color:var(--rec-fill);font:600 15px 'Libre Franklin Variable','Segoe UI',sans-serif;border:0;border-radius:8px;cursor:pointer}.ds-stop:hover{background:color-mix(in oklab,var(--on-rec) 90%,transparent)}.ds-stop:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-meters{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}.ds-meter{display:flex;align-items:center;gap:8px}.ds-meter span{width:32px;font:700 12px/1 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:.05em}.ds-meter i{flex:1;height:6px;border-radius:999px;overflow:hidden;background:color-mix(in oklab,var(--on-rec) 25%,transparent)}.ds-meter b{display:block;height:100%;background:var(--on-rec);transform-origin:left center}"
+    },
+    {
+      "name": "Search Well",
+      "kind": "input",
+      "refersTo": "search-well",
+      "description": "A well cut into the rail, with the Ctrl K hint.",
+      "html": "<div class=\"ds-rail\"><div class=\"ds-search\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\"><circle cx=\"7\" cy=\"7\" r=\"4.5\"/><path d=\"M10.25 10.25L13.5 13.5\"/></svg><input type=\"search\" placeholder=\"Search meetings\"><span class=\"ds-kbd\">Ctrl K</span></div></div>",
+      "css": ".ds-rail{background:var(--chip);padding:18px;width:228px}.ds-search{position:relative;display:flex;align-items:center;color:var(--chip-ink)}.ds-search svg{position:absolute;left:12px}.ds-search input{width:100%;height:40px;padding:0 64px 0 36px;background:var(--chip-well);color:var(--ink);font:400 15px 'Libre Franklin Variable','Segoe UI',sans-serif;border:0;border-radius:10px}.ds-search input::placeholder{color:var(--chip-ink)}.ds-search input:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-kbd{position:absolute;right:12px;font:500 13px/1 'Libre Franklin Variable','Segoe UI',sans-serif;padding:2px 5px;border:1px solid currentColor;border-radius:4px}"
+    },
+    {
+      "name": "Meeting List",
+      "kind": "nav",
+      "refersTo": "meeting-item-selected",
+      "description": "Meetings by day in the rail; the selected one merges into the pad.",
+      "html": "<div class=\"ds-split\"><nav class=\"ds-list\"><h2>Today</h2><button class=\"ds-item ds-sel\"><b>Weekly 1:1</b><small>11:23 · 4 min</small></button><button class=\"ds-item\"><b>Design review</b><small>09:13 · 31 min</small></button></nav><div class=\"ds-padarea\"></div></div>",
+      "css": ".ds-split{display:grid;grid-template-columns:240px 80px}.ds-list{background:var(--chip);padding:8px 0 16px 12px}.ds-list h2{margin:0;padding:16px 6px 6px;font:700 14px/16px 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--chip-ink)}.ds-item{display:grid;width:100%;text-align:left;padding:9px 18px 9px 6px;border:0;background:transparent;border-radius:11px 0 0 11px;color:var(--ink);font:600 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-item small{font:400 13px/18px 'Libre Franklin Variable','Segoe UI',sans-serif;color:var(--chip-ink);font-variant-numeric:tabular-nums}.ds-item:hover{background:var(--chip-well)}.ds-item.ds-sel{background:var(--pad)}.ds-item:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-padarea{background:var(--pad)}"
+    },
+    {
+      "name": "Tabs",
+      "kind": "nav",
+      "refersTo": "tab-selected",
+      "description": "Note and Transcript on a heavy ink rule, Copy as Markdown at its end.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-on\">Note</button><button class=\"ds-tab\">Transcript <small>27 lines</small></button><span style=\"flex:1\"></span><button class=\"ds-copy\">Copy as Markdown</button></div>",
+      "css": ".ds-tabs{display:flex;align-items:flex-end;gap:28px;min-height:42px;box-shadow:inset 0 -2px 0 var(--ink);background:var(--pad);padding:0 8px}.ds-tab{padding:0 0 10px;border:0;background:none;color:var(--muted);font:600 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer}.ds-tab small{font-size:13px;font-weight:500;margin-left:6px}.ds-tab.ds-on{color:var(--ink);box-shadow:inset 0 -5px 0 var(--ink)}.ds-tab:focus-visible,.ds-copy:focus-visible{outline:2px solid var(--rule);outline-offset:2px}.ds-copy{margin-bottom:9px;padding:6px 12px;border:0;border-radius:8px;background:var(--band);color:var(--ink);font:600 13px/20px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-copy:hover{background:var(--band-deep)}"
+    },
+    {
+      "name": "Note Sheet Row",
+      "kind": "custom",
+      "refersTo": "point-row-hover",
+      "description": "A point, its time tabs on the centre rule, and its quote; hover fills the row band green.",
+      "html": "<div class=\"ds-sheet\"><div class=\"ds-row\"><p class=\"ds-point\">Launch moves to October 14.</p><span class=\"ds-mid\"><button class=\"ds-tt\">00:47</button></span><p class=\"ds-quote\"><span class=\"ds-them\">Them</span> “Let’s move the date to October 14.”</p></div></div>",
+      "css": ".ds-sheet{background:var(--pad);padding:12px 0;width:640px}.ds-row{display:grid;grid-template-columns:minmax(0,1fr) 5.75rem minmax(0,.9fr);border-radius:8px;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-point{margin:0;padding:7px 22px 7px 10px;font:400 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;color:var(--ink)}.ds-mid{display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 0;background:linear-gradient(var(--rule),var(--rule)) center/2px 100% no-repeat}.ds-tt{font:700 14px/18px 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;letter-spacing:.03em;font-variant-numeric:tabular-nums;color:var(--rule);background:var(--pad);border:1.5px solid var(--rule);border-radius:4px;padding:2px 7px;cursor:pointer;transition:background-color 140ms cubic-bezier(0.16,1,0.3,1),color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-tt:hover,.ds-tt:focus-visible{background:var(--rule);color:var(--pad);outline-offset:0}.ds-quote{margin:0;padding:8px 14px 8px 20px;font:400 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif;color:var(--muted);transition:color 140ms cubic-bezier(0.16,1,0.3,1)}.ds-them{font:700 14px 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--them);margin-right:6px}.ds-row:hover,.ds-row:focus-within{background:var(--band)}.ds-row:hover .ds-quote,.ds-row:focus-within .ds-quote{color:var(--ink)}.ds-row:hover .ds-tt:not(:hover,:focus-visible),.ds-row:focus-within .ds-tt:not(:hover,:focus-visible){background:var(--band)}"
+    },
+    {
+      "name": "Stamp",
+      "kind": "custom",
+      "refersTo": "stamp",
+      "description": "Provenance as one rotated rule-green mark.",
+      "html": "<div class=\"ds-pad\"><div class=\"ds-stamp\"><p class=\"ds-caps\">Written on this PC</p><p>model name</p><p>11 points checked against the transcript</p></div></div>",
+      "css": ".ds-pad{background:var(--pad);padding:24px}.ds-stamp{display:inline-grid;gap:3px;padding:9px 13px 8px;border:2px solid var(--rule);border-radius:7px;color:var(--rule);transform:rotate(-1.2deg)}.ds-stamp p{margin:0;font:500 13px/16px 'Libre Franklin Variable','Segoe UI',sans-serif}.ds-stamp .ds-caps{font:700 15px/16px 'Sofia Sans Extra Condensed Variable','Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:.05em}"
+    },
+    {
+      "name": "Banner",
+      "kind": "card",
+      "refersTo": "banner",
+      "description": "A notice filling its row in band-deep; red is kept for recording.",
+      "html": "<div class=\"ds-banner\"><div><p class=\"ds-msg\">The microphone could not start.</p><p class=\"ds-hint\">Check it is plugged in, then try again.</p></div><button class=\"ds-act\">Retry</button></div>",
+      "css": ".ds-banner{display:flex;align-items:flex-start;gap:12px;max-width:480px;background:var(--band-deep);color:var(--ink);border-radius:10px;padding:12px 16px;font:400 15px/23px 'Libre Franklin Variable','Segoe UI',sans-serif}.ds-banner p{margin:0}.ds-msg{font-weight:600}.ds-banner .ds-hint{margin-top:4px;color:color-mix(in oklab,var(--ink) 80%,transparent)}.ds-act{flex-shrink:0;padding:4px 12px;border:0;border-radius:8px;background:var(--ink);color:var(--pad);font:600 15px 'Libre Franklin Variable','Segoe UI',sans-serif;cursor:pointer}.ds-act:hover{background:color-mix(in oklab,var(--ink) 88%,transparent)}.ds-act:focus-visible{outline:2px solid var(--rule);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Steno Pad",
+    "overview": "Evra's main window is a reporter's steno pad. A pale green pad holds the open meeting; a tan chipboard rail owns the left edge with the record control, the meetings by day and the microphone; one deep green rule runs down the middle of the note and the transcript, with the point on one side and the words it came from on the other. Navy ink carries the text. Checking a note takes a glance, because every point and its quote share a row across that rule.\n\nThe system is flat and quiet. Colour is laid down as whole areas: a darker green band fills a row when it is hovered, focused, being written or has failed; the selected meeting takes the pad's own colour and merges into it; recording turns the record block red. Type is two faces doing two jobs: condensed capitals for titles, section heads, speakers and labels, and one plain sans for everything that is read. Motion is short and purposeful: what just arrived lands emphasised and settles.\n\nThe world runs in light and dark. At night the pad goes almost black-green, the chipboard goes brown, the rule and ink brighten; the roles and structure do not change.",
+    "keyCharacteristics": [
+      "A chipboard rail (264px) beside a pale green pad, no other panels.",
+      "One timed centre rule (2px, rule green) drawn row by row, with square detents at section heads and speaker changes.",
+      "State shown as filled areas in band greens, never as outlines.",
+      "Red only while recording.",
+      "Condensed uppercase display face for structure; Libre Franklin at 15px for reading and 13px for metadata.",
+      "Provenance as one rotated rubber-stamp mark."
+    ],
+    "rules": [
+      {
+        "name": "The Red Is Recording Rule",
+        "body": "Red appears only for recording: the Record dot, the red record block with its meters, and the live pip in the rail. Errors and failures are not red; they fill with Deep Band.",
+        "section": "colors"
+      },
+      {
+        "name": "The Colour As Area Rule",
+        "body": "A state fills the whole row or block it applies to (band on hover, focus and writing; band-deep on failure and notices; pad for the selected meeting). It is never a thin coloured border.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Sizes Rule",
+        "body": "Libre Franklin runs at two sizes only: 15px for anything read and 13px for metadata. Hierarchy comes from the condensed caps and from weight, not from more text sizes.",
+        "section": "typography"
+      },
+      {
+        "name": "The Caps Are Structure Rule",
+        "body": "The condensed face is always uppercase, bold and tracked (0.05em), and is used for names of things: titles, heads, speakers, labels. It never sets a sentence.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Rule Rule",
+        "body": "The centre rule is drawn by every row's middle cell (a 2px rule-green line), so it is continuous across sections and turns. Square 10px detents mark section heads on the note and speaker changes in the transcript.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Pad Rule",
+        "body": "Nothing floats. If something needs to stand out, it gets an area of colour or a line, not a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do put every note point on the same row as the words it came from, across the 2px rule-green centre rule.",
+      "Do show hover, focus, progress, failure and selection by filling the whole row or block (band, band-deep, pad).",
+      "Do keep Libre Franklin at 15px/23px for reading and 13px for metadata, and use the condensed bold uppercase face (0.05em) for titles, heads, speakers and labels.",
+      "Do use tabular figures for every time, duration and count.",
+      "Do keep motion on cubic-bezier(0.16, 1, 0.3, 1) at 140ms for state changes, and wrap anything longer in a reduced-motion check.",
+      "Do give every token its dark value under the same name, and check both modes."
+    ],
+    "donts": [
+      "Don't use red for anything but recording; errors and failures fill band-deep.",
+      "Don't mark state with a thin outline; the only outlines are the focus ring and the rule-green marks drawn in the rule's own line (time tabs, stamp, keyboard hint).",
+      "Don't add drop shadows or floating cards.",
+      "Don't put a small label above a heading.",
+      "Don't add text sizes between 13px and 15px or above 15px for reading text."
+    ]
+  }
+}

@@ -19,7 +19,7 @@ OWN-WORLD: A reporter's steno pad: pale green pad (#E7EFDB), darker green bands 
 
 STORY: The owner presses Record, watches lines land, presses Stop; the note arrives once, they check any point by reading its quote on the same row, then copy it as Markdown. A developer trusts it because the stamp says where and how it was written.
 
-FIRST VIEWPORT: 264px chipboard rail: wordmark, full-width ink Record button with red dot, search well (Ctrl K), meetings grouped by day, the selected one merging into the pad, microphone at the foot. Right: the pad: condensed title (~56px), date line beneath, provenance stamp top right, Note/Transcript tabs on a heavy ink rule with Copy as Markdown at its end, then THE NOTE | timed centre rule | WHERE IT CAME FROM. Under 640px of pad the quotes fold beneath each point.
+FIRST VIEWPORT: 264px chipboard rail: wordmark, full-width ink Record button with red dot, search well (Ctrl K), meetings grouped by day, the selected one merging into the pad, microphone at the foot. Right: the pad: condensed title (~56px), date line beneath, provenance stamp top right, Note/Transcript tabs on a heavy ink rule with Copy as Markdown at its end, then THE NOTE | timed centre rule | WHERE IT CAME FROM. Under 600px of sheet the quotes fold beneath each point.
 
 FORM: Steno pad, 3rd of 7 on my list, assigned by the roll. Raises kept: one reading size (timetable); rule from the real layout, detents at speaker changes (centre rail); provenance as one mark (annual); colour as area (garden map); a live line lands heavier and settles (specimen). Signature interaction: hover or focus a point and its whole row fills band green; a time tab opens the transcript at that line, filled the same. seed:69e0e32cb6b181a2
 
