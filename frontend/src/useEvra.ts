@@ -237,17 +237,13 @@ export function useEvra() {
   const setTheme = useCallback(
     async (theme: Theme) => {
       applyTheme(theme);
-      const api = await getApi();
-      await saveSetting({ theme }, () => api.set_theme(theme));
+      await saveSetting({ theme }, async () => (await getApi()).set_theme(theme));
     },
     [saveSetting],
   );
 
   const setNoteModel = useCallback(
-    async (model: string) => {
-      const api = await getApi();
-      await saveSetting({ note_model: model }, () => api.set_note_model(model));
-    },
+    (model: string) => saveSetting({ note_model: model }, async () => (await getApi()).set_note_model(model)),
     [saveSetting],
   );
 
