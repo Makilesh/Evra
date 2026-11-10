@@ -134,6 +134,12 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - Note language: the most-requested setting in this category (Phase 1 is English only).
 - Choosing the meetings folder, which means moving the database and audio safely.
 - Retention (D13, M5). Shortening it deletes data, so it must be confirmed with the consequence named ("Delete audio older than 7 days").
+  - Add **Don't keep** to the choices. Make it the default if the audio serves nothing once the note exists (no replay, no re-transcription).
+  - Keep it to audio only: deleting transcripts would stop notes from being regenerated.
+- In the recording flow, not in Settings:
+  - A non-blocking reminder when recording starts, telling the other person they are being recorded, with notice text to copy (no bot ever tells them).
+  - An automatic stop after a long silence, with no setting. Granola stops after 15 minutes, and a Meetily user's forgotten recording ran for about 24 hours.
+- About: links to the licences and the repository.
 - Templates (M5), hotkeys and start with Windows (M6), People (M4).
 - Live transcript off for slow PCs: record now, transcribe after. `live_transcript` is already in the settings file.
 - After a theme switch, WebView2's background behind a resizing window keeps the startup colour until the next start.
