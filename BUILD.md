@@ -91,7 +91,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D16 | Note delivery | Transcript shown immediately; note appears once, complete with speaker names, after visible stage progress (no draft-then-replace) | 2026-09-24 |
 | D17 | Embeddings | Qwen3-Embedding-0.6B in the torch worker, used for note alignment (Phase 1) and search (Phase 2) | 2026-09-24 |
 | D18 | Modes | **1:1** (default, main use case, fastest path), **Meeting** (full pipeline) in Phase 1; **Solo** (voice conversation with Evra as a thinking partner) as the first Phase 3 deliverable | 2026-09-24 |
-| D19 | Visual style | "Quiet paper": shadcn/ui + Tailwind, serif for content + Inter for UI, one teal accent, light/dark, Ctrl+K palette | 2026-09-24 |
+| D19 | Visual style | "Steno pad" (replaced "Quiet paper", see DECISIONS): green pad, chipboard rail, deep green rule; Sofia Sans Extra Condensed + Libre Franklin; the note as point · timed rule · quoted line; light/dark; Ctrl+K palette | 2026-11-10 |
 | D20 | Repository | Public GitHub repo; no private data, secrets or weights committed; gitleaks; Windows CI from the start (§9.3–9.4) | 2026-09-24 |
 | D21 | Code licence | Evra's own code under **FSL-1.1-ALv2** (`LICENSE.md`): source-available, no competing commercial use, each release becomes Apache-2.0 after two years | 2026-09-24 |
 | D22 | Git workflow | After each completed feature/update: `tools/check.py` + gitleaks pass → Conventional Commit → push to `origin` on the working branch. No force-push, no history rewrite, no push to `main` unless asked | 2026-09-24 |
@@ -491,14 +491,15 @@ CREATE INDEX job_ready ON job(state, priority, run_after);
 - **Early spike:** confirm pywebview can open the meeting window always-on-top **without stealing focus** on Windows; if not, find the Win32 workaround (`WS_EX_NOACTIVATE`) and record it.
 - Every control has an accessible name; all strings go through one i18n layer for later localisation.
 
-### 8.5 Visual style — "Quiet paper" (D19)
+### 8.5 Visual style — "Steno pad" (D19, replaced 2026-11-10)
 
-- **Mood:** calm like Granola, fast and keyboard-first like Linear.
-- **Colour:** light "paper" `#FAF9F6`, dark charcoal `#161514`; near-black ink; one accent (deep teal); red reserved for recording; muted, readable speaker colours. Follows the Windows light/dark setting.
-- **Type:** Newsreader or Source Serif 4 for note and transcript text; Inter for UI. All SIL OFL, bundled locally (no web font fetches).
-- **Feel:** generous whitespace; controls appear on hover; subtle motion only (progress stages, recording pulse).
-- **Components:** shadcn/ui (MIT, Radix primitives) + Tailwind; Lucide icons (ISC).
-- Refine with real screens once the UI exists.
+- **World:** a reporter's steno pad. A pale green pad `#E7EFDB` with darker green bands for state, a tan chipboard rail `#D3C8B3` on the left, a deep green rule `#2E6B4B` for structure, navy ink `#1B2433`; red only for recording. A night version follows the Windows light/dark setting.
+- **Signature:** the note is a sheet: each point, a timed centre rule with its time tabs, and the transcript lines it came from on the same row. The transcript uses the same rule, with a detent wherever the speaker changes.
+- **Type:** Sofia Sans Extra Condensed (capitals) for titles, section heads, speakers and time tabs; Libre Franklin for all text at one reading size. Both SIL OFL, Latin only, bundled locally (no web font fetches).
+- **Colour as area:** state fills whole regions (the record block turns red while recording; a hovered point or cited line fills band green), never thin outlines.
+- **Motion:** one grammar, "land and settle": a live transcript line lands heavier and relaxes; a cited line lands deep green and settles. Off under reduced motion; nothing animates layout while recording.
+- **Components:** hand-built with Tailwind in the pad's vocabulary; authored SVG icons; shadcn/ui (MIT, Radix primitives) only where a complex control needs accessible primitives.
+- The design system is `DESIGN.md` (+ `.impeccable/design.json`); the direction contract is `.impeccable/surfaces/frontend-src-app-tsx.md`.
 
 ## 9. Errors, testing and quality targets
 
@@ -576,7 +577,7 @@ Ordered so the **main use case — a 1:1 call — works end to end as early as p
 | **M3** | **1:1 call end to end** | Worker supervisor + protocol; onnx worker (Parakeet); live transcript panel; fast pass; transcript store; `LlmProvider` + Ollama; A1 synthesis + validator (§7.5); main window, meeting window, transcript view, note view; LLM bake-off (2–3 models) recorded in `DECISIONS.md` | A real 1:1 call on headphones produces a cited note; §9.5 1:1 timing measured | **HC0** (Ollama), **HC3** |
 | **M4** | Speakers | Torch worker; pyannote per situation incl. in-person 1:1 (`num_speakers = 2`) and hybrid; enrolment in onboarding; voiceprints + identity + thresholds; word assignment; rename with three scopes; Forget this person | §6.6 acceptance | **HC0** (HF token), **HC4** |
 | **M5** | Notes complete | Timestamped notepad; Qwen3-Embedding in torch worker; aligner; templates; extraction A4–A7; map-reduce path; provenance + regeneration + version history; citation chips with audio playback; Opus re-encode + retention sweeper | §7.8 acceptance | **HC-DATA** |
-| **M6** | Daily-use ready | Onboarding, settings, tray, hotkeys, `Ctrl+K` palette, "Quiet paper" styling pass, Needs-attention list, error banners (§9.1), accessibility pass, `tools/eval_notes.py` run, README with screenshots | Every §9.5 target measured and recorded; one week of real daily use | **HC-WEEK** |
+| **M6** | Daily-use ready | Onboarding, settings, tray, hotkeys, `Ctrl+K` palette, "Steno pad" styling pass for the new screens, Needs-attention list, error banners (§9.1), accessibility pass, `tools/eval_notes.py` run, README with screenshots | Every §9.5 target measured and recorded; one week of real daily use | **HC-WEEK** |
 
 ### 10.1 Human checkpoint catalogue
 

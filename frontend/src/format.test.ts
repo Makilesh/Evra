@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, formatDate, formatDuration } from "@/format";
+import { dayLabel, formatClock, formatDuration, formatTime, meetingLine } from "@/format";
+import { MEETING } from "@/test/fakeApi";
 
 describe("formatClock", () => {
   it("shows minutes and seconds, and hours only when needed", () => {
@@ -18,11 +19,29 @@ describe("formatDuration", () => {
   });
 });
 
-describe("formatDate", () => {
-  it("shows the day, month and time", () => {
-    const text = formatDate(new Date(2026, 8, 28, 13, 51).getTime());
-    expect(text).toMatch(/28/);
-    expect(text).toMatch(/Sep/);
-    expect(text).toMatch(/13:51/);
+describe("formatTime", () => {
+  it("shows the 24-hour time", () => {
+    expect(formatTime(new Date(2026, 8, 28, 13, 51).getTime())).toBe("13:51");
+    expect(formatTime(new Date(2026, 8, 28, 9, 5).getTime())).toBe("09:05");
+  });
+});
+
+describe("dayLabel", () => {
+  const now = new Date(2026, 10, 10, 0, 30).getTime();
+
+  it("says Today and Yesterday across midnight", () => {
+    expect(dayLabel(new Date(2026, 10, 10, 0, 10).getTime(), now)).toBe("Today");
+    expect(dayLabel(new Date(2026, 10, 9, 23, 50).getTime(), now)).toBe("Yesterday");
+  });
+
+  it("gives older days their weekday and date", () => {
+    expect(dayLabel(new Date(2026, 10, 3, 9, 30).getTime(), now)).toBe("Tue 3 Nov");
+  });
+});
+
+describe("meetingLine", () => {
+  it("gives the day, the time and the length", () => {
+    expect(meetingLine(MEETING)).toMatch(/^Mon 28 Sept? · 13:51 · 12 min$/);
+    expect(meetingLine({ ...MEETING, duration_ms: null })).toMatch(/^Mon 28 Sept? · 13:51$/);
   });
 });

@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { MeetingView } from "@/components/MeetingView";
 import { DETAIL } from "@/test/fakeApi";
 
@@ -17,6 +17,15 @@ function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
   };
   return { props, ...render(<MeetingView {...props} />) };
 }
+
+function mockClipboard(writeText: (text: string) => Promise<void>) {
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(writeText) } });
+  return navigator.clipboard.writeText as ReturnType<typeof vi.fn>;
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(navigator, "clipboard");
+});
 
 it("opens a finished meeting on its note and a live one on its transcript", () => {
   view();
@@ -51,4 +60,48 @@ it("renames the meeting in place", async () => {
 it("shows the capture notes from the recording", () => {
   view({ hints: ["No system audio arrived."] });
   expect(screen.getByRole("list", { name: "Capture notes" })).toHaveTextContent("No system audio arrived.");
+});
+
+it("shows the title, then the day, time, length and kind of meeting", () => {
+  view();
+  expect(screen.getByRole("heading", { level: 1, name: "Weekly 1:1" })).toBeInTheDocument();
+  expect(screen.getByText(/^Mon 28 Sept? · 13:51 · 12 min · 1:1$/)).toBeInTheDocument();
+});
+
+it("shows where and how the note was written", () => {
+  view();
+  expect(screen.getByText("Written on this PC")).toBeInTheDocument();
+  expect(screen.getByText("gemma4:12b")).toBeInTheDocument();
+  expect(screen.getByText("2 points checked against the transcript")).toBeInTheDocument();
+});
+
+it("keeps the stamp and Copy away while a new note is written", () => {
+  view({ noteStatus: { stage: "writing" } });
+  expect(screen.queryByText("Written on this PC")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Copy as Markdown" })).toBeNull();
+});
+
+it("names the transcript tab without its line count", () => {
+  view();
+  const tab = screen.getByRole("tab", { name: "Transcript" });
+  expect(tab).toHaveTextContent("2 lines");
+});
+
+it("copies the note as Markdown", async () => {
+  const writeText = mockClipboard(async () => {});
+  view();
+  fireEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
+  expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  const text = writeText.mock.calls[0][0] as string;
+  expect(text).toMatch(/^# Weekly 1:1\nMon 28 Sept? · 13:51 · 12 min · 1:1\n\n## Summary\n/);
+  expect(text).toContain("- Launch moves to October 14. (01:05)");
+});
+
+it("says when the note could not be copied", async () => {
+  mockClipboard(async () => {
+    throw new Error("denied");
+  });
+  view();
+  fireEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
+  expect(await screen.findByRole("button", { name: "Couldn't copy" })).toBeInTheDocument();
 });

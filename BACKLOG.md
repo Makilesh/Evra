@@ -118,3 +118,10 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Short replies: if models keep citing only "Yeah, I can do that.", let the overlap check borrow the line just before a short reply.
 - Bake-off coverage matches keywords exactly ("hardware refresh" for "laptop refresh" is a miss): allow alternative keywords per fact.
 - About 20 s of the 58.5 s for an hour's note is loading gemma4:12b; start loading it when Stop is pressed, alongside the transcript drain.
+
+## Steno pad follow-ups (2026-11-10)
+
+- Rail: a small who-spoke-when mark per meeting (the chosen sketch had one); needs `list_meetings` to carry a short talk summary per meeting.
+- Stamp: the time the note was written; needs the note view to carry its generation time.
+- Record button: show `Ctrl Alt R` once the global hotkey exists (M6); `Ctrl K` grows into the palette (M6).
+- Frontend end-to-end checks (BUILD.md §9.2): the fake bridge used to look at the redesign (`window.pywebview` injected before load, synthetic fixture) can become a Playwright suite in `frontend/e2e/`.

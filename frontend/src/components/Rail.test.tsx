@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import type { MicList, RecordingState } from "@/bridge";
-import { TopBar } from "@/components/TopBar";
+import { Rail } from "@/components/Rail";
 
 const MICS: MicList = {
   default: "Headset (realme Buds Air7)",
@@ -10,7 +10,7 @@ const MICS: MicList = {
   chosen: "",
 };
 
-function bar(recording: RecordingState, extra: Partial<Parameters<typeof TopBar>[0]> = {}) {
+function rail(recording: RecordingState, extra: Partial<Parameters<typeof Rail>[0]> = {}) {
   const props = {
     appName: "Evra",
     recording,
@@ -23,12 +23,18 @@ function bar(recording: RecordingState, extra: Partial<Parameters<typeof TopBar>
     onRefreshMics: vi.fn(),
     ...extra,
   };
-  render(<TopBar {...props} />);
+  render(<Rail {...props} />);
   return props;
 }
 
+it("shows the app name and that everything stays on this PC", () => {
+  rail({ state: "idle" });
+  expect(screen.getByText("Evra")).toBeInTheDocument();
+  expect(screen.getByText("Everything stays on this PC")).toBeInTheDocument();
+});
+
 it("records with the chosen microphone", async () => {
-  const props = bar({ state: "idle" });
+  const props = rail({ state: "idle" });
   expect(screen.getByRole("option", { name: "Windows default (Headset (realme Buds Air7))" })).toBeInTheDocument();
   await userEvent.selectOptions(
     screen.getByRole("combobox", { name: "Microphone" }),
@@ -39,16 +45,16 @@ it("records with the chosen microphone", async () => {
 });
 
 it("keeps a remembered mic that is not connected visible", () => {
-  bar({ state: "idle" }, { mics: { ...MICS, chosen: "Headset (Mivi Roam 2)" } });
+  rail({ state: "idle" }, { mics: { ...MICS, chosen: "Headset (Mivi Roam 2)" } });
   expect(screen.getByRole("combobox", { name: "Microphone" })).toHaveValue("Headset (Mivi Roam 2)");
   expect(screen.getByRole("option", { name: "Headset (Mivi Roam 2) (not connected)" })).toBeInTheDocument();
 });
 
 it("shows Stop, the time and both levels while recording", async () => {
-  const props = bar({ state: "recording", meeting_id: "m", started_at: 1_000_000 }, { now: () => 1_065_000 });
-  expect(screen.getByLabelText("Recording time")).toHaveTextContent("01:05");
-  expect(screen.getByLabelText("You")).toHaveAttribute("aria-valuenow", "0.5");
-  expect(screen.getByLabelText("Them")).toHaveAttribute("aria-valuenow", "0.25");
+  const props = rail({ state: "recording", meeting_id: "m", started_at: 1_000_000 }, { now: () => 1_065_000 });
+  expect(screen.getByRole("timer", { name: "Recording time" })).toHaveTextContent("01:05");
+  expect(screen.getByRole("meter", { name: "You" })).toHaveAttribute("aria-valuenow", "0.5");
+  expect(screen.getByRole("meter", { name: "Them" })).toHaveAttribute("aria-valuenow", "0.25");
   expect(screen.getByRole("combobox", { name: "Microphone" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "Stop" }));
   expect(props.onStop).toHaveBeenCalled();
@@ -59,12 +65,12 @@ it.each([
   ["stopping", "Stopping…"],
   ["processing", "Writing note…"],
 ] as const)("is busy while %s", (state, label) => {
-  bar({ state });
+  rail({ state });
   expect(screen.getByRole("button", { name: label })).toBeDisabled();
 });
 
 it("shows why recording could not start, with its fix, until dismissed", async () => {
-  const props = bar(
+  const props = rail(
     { state: "idle" },
     { startError: { error: "microphone 'Headset' is not connected", hint: "Pick the microphone again." } },
   );
@@ -76,7 +82,12 @@ it("shows why recording could not start, with its fix, until dismissed", async (
 });
 
 it("lists the microphones again when the picker is opened", async () => {
-  const props = bar({ state: "idle" });
+  const props = rail({ state: "idle" });
   await userEvent.click(screen.getByRole("combobox", { name: "Microphone" }));
   expect(props.onRefreshMics).toHaveBeenCalled();
+});
+
+it("places the meetings list inside the rail", () => {
+  rail({ state: "idle" }, { children: <nav aria-label="Meetings" /> });
+  expect(screen.getByRole("navigation", { name: "Meetings" })).toBeInTheDocument();
 });
