@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-07 — M3 finish: real-length 1:1s (branch `one-on-one-polish`)
+
+- **60-minute test call:** `tools/make_long_fixture.py` has gemma4:12b write a synthetic 1:1 in 24 parts, with 13 facts planted word for word from minute 5 to 58 (the model said all of them itself). 840 lines, 9,616 words: about the density of the owner's real call (158 words a minute).
+- **§9.5 1:1 timing measured:** the note for a 60-minute 1:1 is ready 58.5 s after the call from a cold model (35–39 s warm; loading gemma4:12b takes ~20 s); target ≤ 1.5 min. The prompt is 27,878 tokens of the 28,672 the model has room for: an hour of dense talk fits in one pass, about 65 minutes does not.
+- **Note quality falls off with length.** Planted facts that reach a single-pass note: 15 min 1/2, 30 min 3/6, 45 min 2/8, 60 min 5–6/13. The model's citations stay accurate; the misses are facts it never wrote (an approved budget, a start date, a promotion deadline) and true points the checker drops. Long 1:1s need the per-window path (A2/A3).
+- **Note prompt a1-v2:** a summary of one to three bullets that doesn't repeat the sections; one specific point per bullet with no "Topic:" label; decisions only when explicit; both lines cited for a question and its short answer. Bake-off: short fixture 15 kept / 0 dropped (v1 14/1), 10/10 facts; the 60-minute fixture keeps 73–81% of points (v1 58–62%). On the owner's 8 Oct call: a one-line summary and specific discussion points; sorting into decisions / action items / next time is still unreliable (BACKLOG).
+- **Size check:** the estimate undercounted gemma4:12b's real prompt size by 23% on long calls; it now uses the measured 2.7 characters a token. The default budget is 28,000 (24,000 would refuse an hour-long 1:1 once the estimate is right), and a prompt larger than the model's room is refused before calling.
+- **Capture log:** the stop line carries per-channel counts and levels (dropouts, overflows, dropped chunks, seconds, rms, share of the call with no system audio), so a not-OK recording can be explained afterwards.
+- **Settings** save only values that differ from the defaults, so a new default reaches settings nobody changed.
+
 ## 2026-10-02 — M3c Main window (branch `main-window`)
 
 - Task 1: microphones listed and chosen by name on the default input's host API (Windows lists each mic per audio API; bare names were ambiguous); `mic_name` setting.

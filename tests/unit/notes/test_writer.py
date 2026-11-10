@@ -63,7 +63,7 @@ def test_a_valid_reply_becomes_a_checked_note() -> None:
     provider = FakeProvider([GOOD])
     result = write(provider)
     assert (result.note.kept, result.note.dropped, result.repaired) == (2, 0, False)
-    assert result.prompt_version == "a1-v1"
+    assert result.prompt_version == "a1-v2"
     assert (result.tokens_in, result.tokens_out) == (100, 50)
     assert result.template == "one_on_one"
     system, user = provider.calls[0]
@@ -80,7 +80,7 @@ def test_invalid_json_gets_one_repair() -> None:
     provider = FakeProvider(['{"summary": [', GOOD])
     result = write(provider)
     assert result.repaired
-    assert result.prompt_version == "a1-v1+a9-v1"
+    assert result.prompt_version == "a1-v2+a9-v1"
     assert result.tokens_in == 200
     repair_user = provider.calls[1][1].content
     assert "<error>" in repair_user and '{"summary": [' in repair_user
@@ -100,6 +100,16 @@ def test_too_long_is_refused_before_calling() -> None:
     with pytest.raises(NoteTooLong) as caught:
         write(provider, LlmSettings(context_budget=1000), long)
     assert caught.value.limit == 1000 and caught.value.estimated > 1000
+    assert provider.calls == []
+
+
+def test_a_prompt_bigger_than_the_models_room_is_refused_before_calling() -> None:
+    provider = FakeProvider([GOOD])  # Ollama's prompt cache can hide a cut prompt on a retry
+    long = [utt(str(i), i % 2, i * 1000, i * 1000 + 900, "word " * 40, seq=i) for i in range(100)]
+    settings = LlmSettings(num_ctx=4096, max_output_tokens=1024, context_budget=24000)
+    with pytest.raises(NoteTooLong) as caught:
+        write(provider, settings, long)
+    assert caught.value.limit == 4096 - 1024
     assert provider.calls == []
 
 

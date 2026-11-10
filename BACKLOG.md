@@ -96,13 +96,13 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Embedding-based support check (cosine ≥ 0.55, §7.5) once Qwen3-Embedding runs (M5).
 - Plain bullet-list fallback note after a failed repair (§9.1), built from extraction results (M5).
 - Spoken years ("twenty twenty-six") in the number check.
-- Map-reduce for meetings over the single-pass budget (A2/A3, M5).
+- Map-reduce (per-window notes, A2/A3) — needed from about 30 minutes, not only over the budget: planted facts reaching a single-pass note were 30 min 3/6, 60 min 5–6/13 (2026-11-07).
 - Flaky under heavy load: `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` failed once while a 14B model ran (timing-based); make its timing tolerant.
-- Final-review minors (M3b): record the prompt-token estimate and refuse when Ollama's `prompt_eval_count` is far below it (KV-cache reuse can hide truncation on re-runs); hints for Ollama HTTP 500 (out of memory) / 400 (`--think` on a non-thinking model); pass A9's `bad_output` through `as_data`; "Ollama is not running" should also say "or install it from ollama.com"; names that are also common words ("Will", "Mark") pass the name check; `FALLBACK_MODEL` in `notes/cli.py` duplicates the `llm.model` default.
+- Final-review minors (M3b): hints for Ollama HTTP 500 (out of memory) / 400 (`--think` on a non-thinking model); pass A9's `bad_output` through `as_data`; "Ollama is not running" should also say "or install it from ollama.com"; names that are also common words ("Will", "Mark") pass the name check; `FALLBACK_MODEL` in `notes/cli.py` duplicates the `llm.model` default.
 
 ## M3c follow-ups (2026-10-02)
 
-- Floating meeting window (always on top, never steals focus) after the M2 focus spike.
+- Floating meeting window (always on top, never steals focus) after the M2 focus spike. pywebview 6 already has `on_top` and `focus=False` (Windows: `WS_EX_NOACTIVATE`), but a no-activate window can't take typing, and the notepad needs it: the spike's real question is "appear without taking focus, take it when clicked".
 - Record while a note is still being written (today Record waits until the note is done).
 - Offer WASAPI-only microphones if one is ever missing from the picker.
 - Delete a meeting from the window (with its audio and keys, BUILD.md §8.2).
@@ -110,4 +110,11 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Note chips: two citations at the same second (one per speaker) show two identical time chips; label them You/Them or merge.
 - Final-review minors (M3c): closing during "Stopping…" should wait for the transcript to drain before stopping the ASR worker; closing while capture opens can keep an empty meeting; add a `seq` to `recording.state` so stale events are ignored; buffer live lines that arrive before the open meeting has loaded; restore note progress after a window reload; harden the service's `emit` and start the level ticker before announcing "recording"; give crash-recovered meetings a length from their last utterance; rename: keep edits on blur and say when a title is refused; avoid the brief "No note yet" flash after `note.ready`; check the mic name before first-use loading; catch bridge errors in Stop and Write note.
 - HC3 follow-ups (2026-10-02): when "No system audio arrived", log which render endpoint each app's audio session is on (device and process names only; `spikes/audio_sessions.py`) so a repeat of the 17:35 silent-loopback call can be diagnosed; teach speech recognition the owner's and contacts' names (sherpa-onnx hotwords / contextual biasing) — "Makilesh" was heard as "Maggie"/"Magiless".
-- HC3 follow-ups (2026-10-08): log the capture health counts at INFO (dropouts, overflows, dropped chunks per channel), not just `ok`, so a not-OK recording can be explained afterwards; A1 prompt: the summary must not restate the discussion section, only explicit agreements are decisions (tentative plans go to open questions or "For next time"), and topics to pick up next go to "For next time".
+
+## M3 finish follow-ups (2026-11-07)
+
+- Sorting into decisions / action items / next time is unreliable on gemma4:12b even with A1 v2 (a "maybe" filed as a decision; a promise left in Discussion; a topic for later dropped): BUILD.md's focused extraction calls (A4–A6) instead of one synthesis pass sorting everything.
+- Name check over long calls: a name said more than 3 lines before the cited line drops a true point (a project named once, then "the beta"; "her first week" after "Dana starts"). Consider a longer look-back for names that are not the owner of an action item.
+- Short replies: if models keep citing only "Yeah, I can do that.", let the overlap check borrow the line just before a short reply.
+- Bake-off coverage matches keywords exactly ("hardware refresh" for "laptop refresh" is a miss): allow alternative keywords per fact.
+- About 20 s of the 58.5 s for an hour's note is loading gemma4:12b; start loading it when Stop is pressed, alongside the transcript drain.

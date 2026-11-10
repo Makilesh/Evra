@@ -97,8 +97,10 @@ def write_note(
     prompt = build_note_prompt(
         meeting=meeting, utterances=utterances, template=template, schema=schema, gaps=gaps
     )
-    if prompt.estimated_tokens > settings.context_budget:
-        raise NoteTooLong(prompt.estimated_tokens, settings.context_budget)
+    room = settings.num_ctx - settings.max_output_tokens  # what the prompt may use
+    limit = min(settings.context_budget, room)
+    if prompt.estimated_tokens > limit:
+        raise NoteTooLong(prompt.estimated_tokens, limit)
     messages = [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)]
 
     def call(chat: list[ChatMessage]) -> ChatResult:
@@ -108,7 +110,6 @@ def write_note(
         return result
 
     calls: list[ChatResult] = [call(messages)]
-    room = settings.num_ctx - settings.max_output_tokens
     if calls[0].tokens_in >= room:  # Ollama cut the prompt to fit its context window
         raise NoteTooLong(calls[0].tokens_in, room)
     draft, error = _parse(calls[0].content)
