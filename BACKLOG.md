@@ -126,3 +126,14 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Record button: show `Ctrl Alt R` once the global hotkey exists (M6); `Ctrl K` grows into the palette (M6).
 - Frontend end-to-end checks (BUILD.md §9.2): the fake bridge used to look at the redesign (`window.pywebview` injected before load, synthetic fixture) can become a Playwright suite in `frontend/e2e/`.
 - Jumping from a time tab to the transcript leaves keyboard focus on the page body (it did before the redesign too); move focus to the highlighted line.
+
+## Settings, later (2026-11-10)
+
+Each one arrives with its feature, never before it (DECISIONS: Settings, first set).
+- A third theme option, "Use system setting", if wanted. It is Microsoft's pattern, and most local-first apps default to it.
+- Note language: the most-requested setting in this category (Phase 1 is English only).
+- Choosing the meetings folder, which means moving the database and audio safely.
+- Retention (D13, M5). Shortening it deletes data, so it must be confirmed with the consequence named ("Delete audio older than 7 days").
+- Templates (M5), hotkeys and start with Windows (M6), People (M4).
+- Live transcript off for slow PCs: record now, transcribe after. `live_transcript` is already in the settings file.
+- After a theme switch, WebView2's background behind a resizing window keeps the startup colour until the next start.

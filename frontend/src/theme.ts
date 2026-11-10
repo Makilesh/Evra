@@ -1,11 +1,12 @@
-export function applyTheme(dark: boolean, root: HTMLElement = document.documentElement): void {
-  root.classList.toggle("dark", dark);
+import type { Theme } from "@/bridge";
+
+// Light by default. Python opens a dark window as `#theme=dark` (a fragment: .NET escapes a
+// file URL's "?"), so the page is dark before its first paint; Settings switches it while the
+// app runs.
+export function initialTheme(hash: string = window.location.hash): Theme {
+  return new URLSearchParams(hash.replace(/^#/, "")).get("theme") === "dark" ? "dark" : "light";
 }
 
-export function followSystemTheme(): () => void {
-  const query = window.matchMedia("(prefers-color-scheme: dark)");
-  applyTheme(query.matches);
-  const onChange = (event: MediaQueryListEvent) => applyTheme(event.matches);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
+export function applyTheme(theme: Theme, root: HTMLElement = document.documentElement): void {
+  root.classList.toggle("dark", theme === "dark");
 }

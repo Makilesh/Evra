@@ -1,5 +1,5 @@
 // Every user-facing string in one place (BUILD.md §8.4: one i18n layer later).
-import type { NoteFailureReason } from "@/bridge";
+import type { NoteFailureReason, Theme } from "@/bridge";
 
 export const strings = {
   claim: "Everything stays on this PC",
@@ -53,6 +53,28 @@ export const strings = {
   jumpTo: (clock: string) => `Jump to ${clock} in the transcript`,
   stages: { writing: "Writing note…" } as Record<string, string>,
   bridgeDown: "Evra couldn't reach its Python side. Close the window and start Evra again.",
+  settings: "Settings",
+  settingsShortcut: "Ctrl ,",
+  closeSettings: "Close settings",
+  closeHint: "Close (Esc)",
+  theme: "Theme",
+  themeNames: { light: "Light", dark: "Dark" } as Record<Theme, string>,
+  noteModel: "Note model",
+  noteModelHelp: "The model in Ollama that writes each note, on this PC.",
+  recommended: (model: string) => `${model} (recommended)`,
+  findingModels: "Looking for models in Ollama…",
+  ollamaQuiet: "Ollama isn't answering, so its models can't be listed. Start Ollama, then check again.",
+  checkAgain: "Check again",
+  modelMissing: (model: string) => `${model} isn't installed in Ollama. Run:`,
+  pullCommand: (model: string) => `ollama pull ${model}`,
+  meetingsFolder: "Meetings folder",
+  meetingsFolderHelp: "Your meetings are kept here, and only here.",
+  openFolder: "Open folder",
+  folderNotOpened: "Couldn't open the folder.",
+  about: "About",
+  aboutHelp: "No accounts and no analytics: your meetings never leave this PC.",
+  appVersion: (name: string, version: string) => `${name} ${version}`,
+  settingNotSaved: "Couldn't save that change. It applies until Evra closes.",
 };
 
 export function noteFailureText(reason: NoteFailureReason, model?: string): string {

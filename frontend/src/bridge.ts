@@ -111,6 +111,21 @@ export interface NoteFailed {
   model?: string;
 }
 
+export type Theme = "light" | "dark";
+
+export interface SettingsInfo {
+  theme: Theme;
+  note_model: string;
+  default_note_model: string;
+  data_dir: string;
+  version: string;
+}
+
+export interface NoteModels {
+  ok: boolean;
+  models: string[];
+}
+
 export interface EvraApi {
   ping(message: string): Promise<PingReply>;
   app_info(): Promise<AppInfo>;
@@ -123,6 +138,11 @@ export interface EvraApi {
   write_note(meetingId: string): Promise<OkReply>;
   rename_meeting(meetingId: string, title: string): Promise<OkReply>;
   recording_state(): Promise<RecordingState>;
+  get_settings(): Promise<SettingsInfo>;
+  set_theme(theme: Theme): Promise<OkReply>;
+  set_note_model(model: string): Promise<OkReply>;
+  list_note_models(): Promise<NoteModels>;
+  open_data_folder(): Promise<OkReply>;
 }
 
 type Handler = (payload: unknown) => void;

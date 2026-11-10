@@ -8,6 +8,7 @@ import pytest
 from evra.bridge.api import BridgeApi
 from evra.bridge.events import EventBus, build_emit_script
 from evra.capture.devices import MicList
+from evra.config import Settings
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
@@ -42,6 +43,21 @@ class StubControl:
 
     def state(self) -> dict[str, Any]:
         return {"state": "idle"}
+
+    @property
+    def settings(self) -> Settings:
+        return Settings()
+
+    def set_theme(self, theme: str) -> bool:
+        self.calls.append(("set_theme", theme))
+        return True
+
+    def set_note_model(self, model: str) -> bool:
+        self.calls.append(("set_note_model", model))
+        return True
+
+    def note_models(self) -> dict[str, Any]:
+        return {"ok": True, "models": ["gemma4:12b", "qwen3.5:9b"]}
 
 
 def _api(tmp_path: Path, bus: EventBus | None = None, **kwargs: Any) -> tuple[BridgeApi, Path]:
@@ -82,12 +98,17 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
     assert public == [
         "app_info",
         "get_meeting",
+        "get_settings",
         "list_meetings",
         "list_mics",
+        "list_note_models",
+        "open_data_folder",
         "ping",
         "recording_state",
         "rename_meeting",
         "request_hello",
+        "set_note_model",
+        "set_theme",
         "start_recording",
         "stop_recording",
         "write_note",
@@ -204,3 +225,56 @@ def test_events_after_the_window_is_gone_are_dropped(tmp_path: Path) -> None:
 def test_event_text_cannot_close_the_script() -> None:
     script = build_emit_script("transcript.utterance", {"text": "</script><b>x</b>"})
     assert "</script>" not in script
+
+
+def test_settings_show_the_theme_note_model_folder_and_version(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    assert api.get_settings() == {
+        "theme": "light",
+        "note_model": "gemma4:12b",
+        "default_note_model": "gemma4:12b",
+        "data_dir": str(db.parent),
+        "version": "0.1.0",
+    }
+
+
+def test_the_theme_is_light_or_dark_only(tmp_path: Path) -> None:
+    control = StubControl()
+    api, _ = _api(tmp_path, control=control)
+    assert api.set_theme("dark") == {"ok": True}
+    assert api.set_theme("system") == {"ok": False}
+    assert api.set_theme(1) == {"ok": False}  # type: ignore[arg-type]
+    assert control.calls == [("set_theme", "dark")]
+
+
+def test_note_model_names_are_checked_before_they_are_saved(tmp_path: Path) -> None:
+    control = StubControl()
+    api, _ = _api(tmp_path, control=control)
+    assert api.set_note_model("qwen3.5:9b") == {"ok": True}
+    assert api.set_note_model("hf.co/someone/model:Q4_K_M") == {"ok": True}
+    for bad in ["", " gemma", "x" * 201, "rm -rf /", "a\nb", 5]:
+        assert api.set_note_model(bad) == {"ok": False}  # type: ignore[arg-type]
+    assert control.calls == [
+        ("set_note_model", "qwen3.5:9b"),
+        ("set_note_model", "hf.co/someone/model:Q4_K_M"),
+    ]
+
+
+def test_note_models_come_from_ollama_through_the_service(tmp_path: Path) -> None:
+    api, _ = _api(tmp_path)
+    assert api.list_note_models() == {"ok": True, "models": ["gemma4:12b", "qwen3.5:9b"]}
+
+
+def test_the_data_folder_opens_where_the_meetings_are(tmp_path: Path) -> None:
+    opened: list[Path] = []
+    api, db = _api(tmp_path, folder_opener=opened.append)
+    assert api.open_data_folder() == {"ok": True}
+    assert opened == [db.parent]
+
+
+def test_a_data_folder_that_cannot_open_says_so(tmp_path: Path) -> None:
+    def refuse(path: Path) -> None:
+        raise OSError("no explorer")
+
+    api, _ = _api(tmp_path, folder_opener=refuse)
+    assert api.open_data_folder() == {"ok": False}

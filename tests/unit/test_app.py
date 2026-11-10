@@ -38,7 +38,13 @@ def test_run_app_opens_window_with_file_url(tmp_path: Path) -> None:
     calls: list[tuple[str, Path]] = []
 
     def fake_opener(
-        *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+        *,
+        url: str,
+        api: BridgeApi,
+        bus: EventBus,
+        debug: bool,
+        storage_dir: Path,
+        theme: str,
     ) -> None:
         calls.append((url, storage_dir))
 
@@ -48,6 +54,30 @@ def test_run_app_opens_window_with_file_url(tmp_path: Path) -> None:
     [(url, storage_dir)] = calls
     assert url.startswith("file:///")
     assert storage_dir == paths.data_dir / "webview"
+
+
+def test_the_window_opens_in_the_saved_theme(tmp_path: Path) -> None:
+    from evra.config import Settings, save_settings
+
+    themes: list[str] = []
+
+    def fake_opener(
+        *,
+        url: str,
+        api: BridgeApi,
+        bus: EventBus,
+        debug: bool,
+        storage_dir: Path,
+        theme: str,
+    ) -> None:
+        themes.append(theme)
+
+    paths = AppPaths.under(tmp_path / "home")
+    save_settings(paths.settings_file, Settings(theme="dark"))
+    code = run_app(
+        dev=False, debug=False, paths=paths, web_dir=_built_ui(tmp_path), opener=fake_opener
+    )
+    assert (code, themes) == (0, ["dark"])
 
 
 def _built_ui(tmp_path: Path) -> Path:
@@ -61,7 +91,13 @@ def test_window_failure_is_logged_and_exits_1(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def broken_opener(
-        *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+        *,
+        url: str,
+        api: BridgeApi,
+        bus: EventBus,
+        debug: bool,
+        storage_dir: Path,
+        theme: str,
     ) -> None:
         raise RuntimeError("webview2 missing")
 
@@ -118,7 +154,13 @@ def test_closing_the_window_shuts_the_meeting_service_down(
     monkeypatch.setattr(MeetingService, "shutdown", lambda self: closed.append(True))
 
     def fake_opener(
-        *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+        *,
+        url: str,
+        api: BridgeApi,
+        bus: EventBus,
+        debug: bool,
+        storage_dir: Path,
+        theme: str,
     ) -> None:
         return None
 

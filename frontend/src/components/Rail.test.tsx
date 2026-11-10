@@ -21,11 +21,25 @@ function rail(recording: RecordingState, extra: Partial<Parameters<typeof Rail>[
     onStop: vi.fn(),
     onDismissError: vi.fn(),
     onRefreshMics: vi.fn(),
+    settingsOpen: false,
+    onOpenSettings: vi.fn(),
     ...extra,
   };
   render(<Rail {...props} />);
   return props;
 }
+
+it("opens Settings from the foot of the rail", async () => {
+  const props = rail({ state: "idle" });
+  expect(screen.getByRole("button", { name: "Settings" })).not.toHaveAttribute("aria-current");
+  await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(props.onOpenSettings).toHaveBeenCalled();
+});
+
+it("marks Settings while it is the open page", () => {
+  rail({ state: "idle" }, { settingsOpen: true });
+  expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+});
 
 it("shows the app name and that everything stays on this PC", () => {
   rail({ state: "idle" });

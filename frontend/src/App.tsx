@@ -1,14 +1,49 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Banner } from "@/components/Banner";
 import { MeetingList } from "@/components/MeetingList";
 import { MeetingView } from "@/components/MeetingView";
 import { Rail } from "@/components/Rail";
+import { SettingsView } from "@/components/SettingsView";
 import { strings } from "@/strings";
 import { useEvra } from "@/useEvra";
 
-// The main window: the chipboard rail on the left, the open meeting on the pad.
+// The main window: the chipboard rail on the left, the open meeting (or Settings) on the pad.
 export default function App() {
-  const { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError, refreshMics } =
-    useEvra();
+  const {
+    state,
+    select,
+    startRecording,
+    stopRecording,
+    writeNote,
+    rename,
+    dismissStartError,
+    refreshMics,
+    setTheme,
+    setNoteModel,
+    loadNoteModels,
+    openDataFolder,
+  } = useEvra();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButton = useRef<HTMLButtonElement>(null);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    settingsButton.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === ",") {
+        event.preventDefault();
+        setSettingsOpen(true);
+      } else if (event.key === "Escape" && settingsOpen) {
+        closeSettings();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [settingsOpen, closeSettings]);
+
   if (state.bridgeError) {
     return (
       <main className="grid h-full place-items-center p-10">
@@ -31,21 +66,42 @@ export default function App() {
         levels={state.levels}
         mics={state.mics}
         startError={state.startError}
-        onStart={(mic) => void startRecording(mic)}
+        onStart={(mic) => {
+          setSettingsOpen(false);
+          void startRecording(mic);
+        }}
         onStop={() => void stopRecording()}
         onDismissError={dismissStartError}
         onRefreshMics={() => void refreshMics()}
+        settingsOpen={settingsOpen}
+        onOpenSettings={() => setSettingsOpen(true)}
+        settingsButtonRef={settingsButton}
       >
         <MeetingList
           meetings={state.meetings}
-          selectedId={state.selectedId}
+          selectedId={settingsOpen ? null : state.selectedId}
           liveId={liveId}
           writingIds={writingIds}
-          onSelect={select}
+          onSelect={(id) => {
+            setSettingsOpen(false);
+            select(id);
+          }}
         />
       </Rail>
       <main className="min-h-0 min-w-0">
-        {detail ? (
+        {settingsOpen && state.settings ? (
+          <SettingsView
+            appName={state.appName}
+            settings={state.settings}
+            noteModels={state.noteModels}
+            error={state.settingsError}
+            onTheme={(theme) => void setTheme(theme)}
+            onNoteModel={(model) => void setNoteModel(model)}
+            onLoadModels={loadNoteModels}
+            onOpenFolder={openDataFolder}
+            onClose={closeSettings}
+          />
+        ) : detail ? (
           <MeetingView
             key={detail.meeting.id}
             detail={detail}

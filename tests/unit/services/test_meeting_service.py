@@ -402,6 +402,59 @@ def test_choosing_a_mic_keeps_settings_edited_while_the_app_runs(tmp_path: Path)
     events.wait_for("note.ready")
 
 
+def test_theme_and_note_model_are_saved_without_losing_other_settings(tmp_path: Path) -> None:
+    from evra.config import save_settings
+
+    service, _, _, paths = make(tmp_path)
+    save_settings(paths.settings_file, Settings(mic_name="Headset (realme Buds Air7)"))
+    assert service.set_theme("dark") is True
+    assert service.set_note_model("qwen3.5:9b") is True
+    saved = load_settings(paths.settings_file)
+    assert (saved.theme, saved.llm.model, saved.mic_name) == (
+        "dark",
+        "qwen3.5:9b",
+        "Headset (realme Buds Air7)",
+    )
+    assert service.settings == saved
+
+
+def test_the_next_note_is_written_by_the_chosen_model(tmp_path: Path) -> None:
+    used: list[str] = []
+
+    def provider(settings: LlmSettings) -> LlmProvider:
+        used.append(settings.model)
+        return FakeProvider([GOOD])
+
+    service, events, _, _ = make(tmp_path, provider=provider)
+    service.set_note_model("qwen3.5:9b")
+    mid = service.start("")["meeting_id"]
+    events.wait_for("transcript.utterance")
+    service.stop()
+    events.wait_for("note.ready", meeting_id=mid)
+    assert used == ["qwen3.5:9b"]
+
+
+def test_note_models_are_the_ones_installed_in_ollama(tmp_path: Path) -> None:
+    timeouts: list[float] = []
+
+    def provider(settings: LlmSettings) -> LlmProvider:
+        timeouts.append(settings.timeout_s)
+        return FakeProvider([])
+
+    service, *_ = make(tmp_path, provider=provider)
+    assert service.note_models() == {"ok": True, "models": ["fake:1b"]}
+    assert timeouts and timeouts[0] <= 5  # a settings list never waits minutes for Ollama
+
+
+def test_a_quiet_ollama_gives_no_note_models(tmp_path: Path) -> None:
+    class Quiet(FakeProvider):
+        def installed_models(self) -> list[str]:
+            raise LlmUnavailable("down")
+
+    service, *_ = make(tmp_path, provider=lambda settings: Quiet([]))
+    assert service.note_models() == {"ok": False, "models": []}
+
+
 def test_speech_recognition_is_unloaded_only_while_idle(tmp_path: Path) -> None:
     service, events, kit, _ = make(tmp_path, idle_check_s=0.03)
     time.sleep(0.2)

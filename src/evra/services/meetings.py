@@ -18,7 +18,7 @@ import structlog
 
 from evra.capture.devices import MicList, list_mics, refresh_devices
 from evra.capture.sources import CaptureError
-from evra.config import LlmSettings, Settings, load_settings, save_settings
+from evra.config import LlmSettings, Settings, Theme, load_settings, save_settings
 from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import LlmError, LlmModelMissing, LlmProvider
 from evra.modelstore import ModelError
@@ -36,6 +36,7 @@ log = structlog.get_logger(__name__)
 
 State = Literal["idle", "loading", "recording", "stopping", "processing"]
 Emit = Callable[[str, Mapping[str, Any]], object]
+LIST_MODELS_TIMEOUT_S = 3.0
 
 
 class Recording(Protocol):
@@ -88,6 +89,7 @@ class MeetingService:
         self._list_mics = mic_lister
         self._refresh_devices = device_refresher
         self._lock = threading.Lock()
+        self._settings_lock = threading.Lock()
         self._state: State = "idle"
         self._meeting_id: str | None = None
         self._started_at: int | None = None
@@ -103,6 +105,32 @@ class MeetingService:
     @property
     def mic_name(self) -> str:
         return self._settings.mic_name
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings
+
+    # --- settings --------------------------------------------------------------------------
+
+    def set_theme(self, theme: Theme) -> bool:
+        return self._change_settings(lambda s: s.model_copy(update={"theme": theme}))
+
+    def set_note_model(self, model: str) -> bool:
+        """The model for the next note; a note being written keeps the one it started with."""
+        return self._change_settings(
+            lambda s: s.model_copy(update={"llm": s.llm.model_copy(update={"model": model})})
+        )
+
+    def note_models(self) -> dict[str, Any]:
+        """The models installed in Ollama. Asked with a short timeout: a settings list must
+        never wait minutes for an Ollama that is starting or busy."""
+        quick = self._settings.llm.model_copy(update={"timeout_s": LIST_MODELS_TIMEOUT_S})
+        try:
+            models = self._provider_factory(quick).installed_models()
+        except LlmError as exc:
+            log.info("note_models_not_listed", reason=type(exc).__name__)
+            return {"ok": False, "models": []}
+        return {"ok": True, "models": models}
 
     def state(self) -> dict[str, Any]:
         with self._lock:
@@ -338,15 +366,20 @@ class MeetingService:
             log.warning("meeting_not_finished", error=type(exc).__name__)
 
     def _remember_mic(self, mic_name: str) -> None:
-        if mic_name == self._settings.mic_name:
-            return
-        # read the file again: settings edited while the app runs must not be overwritten
-        current = load_settings(self._paths.settings_file)
-        self._settings = current.model_copy(update={"mic_name": mic_name})
-        try:
-            save_settings(self._paths.settings_file, self._settings)
-        except OSError as exc:
-            log.warning("settings_not_saved", error=type(exc).__name__)
+        if mic_name != self._settings.mic_name:
+            self._change_settings(lambda s: s.model_copy(update={"mic_name": mic_name}))
+
+    def _change_settings(self, change: Callable[[Settings], Settings]) -> bool:
+        """Change one value and save. The file is read again first, so settings edited while
+        the app runs are kept; the lock keeps two changes from crossing."""
+        with self._settings_lock:
+            self._settings = change(load_settings(self._paths.settings_file))
+            try:
+                save_settings(self._paths.settings_file, self._settings)
+            except OSError as exc:
+                log.warning("settings_not_saved", error=type(exc).__name__)
+                return False
+            return True
 
     def _on_utterance(self, utterance: Utterance) -> None:  # the transcriber's thread
         self._emit(

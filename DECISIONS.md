@@ -170,3 +170,38 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - The top bar is gone: record, search (`Ctrl K` now focuses it), meetings by day and the microphone live in the rail.
   - The direction contract is `.impeccable/surfaces/frontend-src-app-tsx.md`; the design system is `DESIGN.md` with `.impeccable/design.json`.
 - **Consequences:** Inter and Newsreader are removed. GSAP, React Bits components and transitions.dev snippets are not used: CSS carries the motion inside the recording CPU budget, and their licences (GSAP's standard no-charge licence, MIT + Commons Clause, custom) would each need a licence-policy decision first; the React Bits registry stays configured in `components.json` for later. The `Ctrl+K` palette and `Ctrl+Alt+R` stay M6. Per-meeting talk-rhythm marks and the note's written-at time need new bridge fields (BACKLOG).
+
+## Theme: light by default, Dark in Settings (2026-11-10)
+- **Context:** D19 "Steno pad" followed the Windows light/dark setting. The owner asked for a light window by default, with Dark as a choice.
+- **Evidence:** research notes in `private/research/` (2026-11-10):
+  - Microsoft's app-settings guidance lets an app set its own theme, though its documented default follows Windows.
+  - Lab readability studies mostly favour dark text on light backgrounds (Piepenbrock 2013, Dobres 2017), and NN/g (2020) advises against a dark default for a general audience.
+  - Comparable local-first apps usually offer Light / Dark / System with System as the default.
+- **Decision:**
+  - The window opens light unless Dark is chosen in Settings. The choice is saved in `settings.toml` as `theme = "dark"`; an old or unknown value (the earlier `"system"` default) reads as light without resetting the other settings.
+  - Python opens a dark window as `index.html#theme=dark` with the dark pad as WebView2's background, so the page never flashes light. It is a fragment, not a query: pywebview hands the URL to .NET's `System.Uri`, which escapes a file URL's `?` into the file name, and WebView2 then shows an error page. The real-window check caught this, and `tests/unit/test_window.py` now checks it with .NET's own `Uri`.
+- **Consequences:**
+  - Evra no longer follows the Windows dark setting on its own; a "Use system setting" option can be added later if wanted.
+  - After a switch while Evra runs, WebView2's background behind a resizing window keeps the startup colour until the next start.
+
+## Settings, first set (2026-11-10)
+- **Context:**
+  - BUILD.md §8 planned Settings for M6 (devices, default mode and situation, LLM model, templates, retention, hotkeys, People).
+  - The owner asked for Settings now: only the settings that are needed, with the window kept clean.
+- **Evidence:** a research round over five angles; notes and report in `private/research/`.
+  - Microsoft's guidance: at most four or five settings, changes apply at once with no Save button, Settings at the foot of the navigation, About at the bottom of the page, and an unavailable setting disabled with the reason shown.
+  - The most-requested settings in this category (note language, speaker names, editable templates, choice of recordings folder, auto-detecting meetings) belong to features Evra doesn't have yet.
+  - The defaults users complain about (bots auto-joining, notes auto-shared) don't exist in Evra.
+- **Decision:**
+  - Settings opens on the pad from the foot of the rail or with `Ctrl ,`. Esc, the close button, a meeting or Record leave it.
+  - It holds four rows on the timed rule:
+    - Theme (Light / Dark).
+    - Note model: the models installed in Ollama, with the default marked "recommended", asked with a 3-second timeout.
+    - Meetings folder: where meetings are kept, with Open folder.
+    - About: the version; no accounts, no analytics.
+  - Changes apply at once.
+  - The microphone stays in the rail and is not duplicated.
+  - A setting arrives with its feature: retention and templates (M5), hotkeys and start with Windows (M6), People (M4), turning the live transcript off.
+- **Consequences:**
+  - `default_mode`, `default_situation`, `live_transcript` and `audio_retention` stay file-only until their features exist.
+  - New bridge calls: `get_settings`, `set_theme`, `set_note_model`, `list_note_models`, `open_data_folder`. Model names are checked against a strict pattern. Opening the folder starts Explorer and nothing is served.
