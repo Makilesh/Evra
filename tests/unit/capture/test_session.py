@@ -1,5 +1,6 @@
 import time
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pytest
@@ -118,20 +119,59 @@ def test_frame_consumer_failure_stops_capture_and_is_reported() -> None:
     assert any("OSError" in h for h in health.hints)
 
 
-def test_clean_start_needs_no_drift_corrections() -> None:
-    mic, system = _sources(2.5)
+class ManualClock:
+    def __init__(self) -> None:
+        self.t = 5_000_000_000  # any monotonic reading
 
-    class SlowStart(FakeSource):
-        def start(self) -> None:
-            time.sleep(0.2)  # a real loopback open can take this long
-            super().start()
+    def __call__(self) -> int:
+        return self.t
 
-    slow = SlowStart(system.audio, 48_000, name="slow out", pads_silence=True)
-    _frames, health = _run(CaptureSession(mic, slow), mic, slow)
-    for ch in ("mic", "system"):
-        assert health.channels[ch].corrections == 0  # type: ignore[attr-defined]
-        assert health.channels[ch].dropped_ms == 0  # type: ignore[attr-defined]
-        assert health.channels[ch].gaps == []  # type: ignore[attr-defined]
+
+class FedSource(FakeSource):
+    """A device the test feeds by hand on a manual clock: no playback thread, so how busy
+    the PC is cannot change what the pipeline sees."""
+
+    def __init__(
+        self, audio: np.ndarray, rate: int, *, clock: ManualClock, open_ms: int = 0, **kw: Any
+    ) -> None:
+        super().__init__(audio, rate, now_ns=clock, **kw)
+        self.clock, self.open_ms = clock, open_ms
+        self.opened_ns = 0
+
+    def start(self) -> None:
+        self.clock.t += self.open_ms * 1_000_000  # opening the device takes this long
+        self.opened_ns = self.clock.t
+
+    def stop(self) -> None:
+        pass
+
+    def feed_all(self) -> int:
+        """Deliver every 10 ms chunk when its last sample was captured; return that time."""
+        t = self.opened_ns
+        for t_s, chunk in self.chunks():
+            assert chunk is not None
+            t = self.opened_ns + round((t_s + len(chunk) / self.native_rate) * 1e9)
+            self.ring.put(chunk.copy(), t)
+        return t
+
+
+def test_a_slow_loopback_open_gets_leading_silence_not_a_correction() -> None:
+    # The timeline is anchored before the devices open (I3): a loopback that takes 200 ms
+    # to open starts with 200 ms of silence, the mic keeps its first 200 ms, and nothing
+    # is corrected later.
+    clock = ManualClock()
+    mic = FedSource(_sine(44_100, 1.5, 1), 44_100, clock=clock, name="fake mic")
+    slow = FedSource(
+        _sine(48_000, 1.5, 2), 48_000, clock=clock, open_ms=200, name="slow out", pads_silence=True
+    )
+    session = CaptureSession(mic, slow, now_ns=clock, tick_s=3600)  # steps only on stop
+    session.start(lambda f: None)
+    clock.t = max(mic.feed_all(), slow.feed_all())
+    health = session.stop()
+    for ch in health.channels.values():
+        assert (ch.corrections, ch.dropped_ms, ch.gaps) == (0, 0, [])
+    assert health.channels["system"].padded_ms == 200
+    assert health.channels["mic"].seconds == pytest.approx(1.5, abs=0.01)
 
 
 def test_start_failure_with_os_error_still_stops_the_mic() -> None:
