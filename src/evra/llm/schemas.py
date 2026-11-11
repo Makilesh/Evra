@@ -30,3 +30,11 @@ class NoteDraft(BaseModel):
     summary: list[NoteBullet] = Field(max_length=6)
     sections: list[NoteSection]
     language: str = "en"
+
+
+class MeetingTitle(BaseModel):
+    """A8. `evra.notes.title` tidies the title and checks its length."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = Field(max_length=120)

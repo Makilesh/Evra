@@ -207,3 +207,20 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Consequences:**
   - `default_mode`, `default_situation`, `live_transcript` and `audio_retention` stay file-only until their features exist.
   - New bridge calls: `get_settings`, `set_theme`, `set_note_model`, `list_note_models`, `open_data_folder`. Model names are checked against a strict pattern. Opening the folder starts Explorer and nothing is served.
+
+## Meetings are named from their note (A8) (2026-11-11)
+- **Context:**
+  - Every meeting was called "Recording <date> <time>" until it was renamed by hand, so a list of them didn't say which call was which.
+  - The owner asked for each meeting to be named once it is transcribed, the way ChatGPT and Claude name a chat.
+  - §7.4 planned a title (A8) "if the user didn't set one", written from "the first and most salient 5 minutes" of the transcript. Salience comes from topics (A7), which don't exist yet.
+- **Evidence:** live, gemma4:12b with the app's defaults on the synthetic 1:1: note 37.1 s, then the title in 1.0 s: "Search migration results and project launch planning" (7 words). `tests/integration/test_ollama_live.py` names a meeting with a real model (`-m hardware`).
+- **Decision:**
+  - Once a note is written (after a recording, or with Write note), the note's model names the meeting from the note's points, summary first, at most 4,000 characters. Prompt `a8-v1`: at most 8 words in sentence case; no dates, quotes or trailing punctuation; JSON `{"title": "..."}`.
+  - The note, not the transcript: its summary already says what the meeting was mainly about and is checked against the transcript; opening minutes are often small talk; a short input keeps the call to about a second.
+  - It runs after `note.ready` and after Record is back, so neither waits for it. The window gets `meeting.renamed` and shows the name in the list and the header; a rename being typed keeps its draft.
+  - Only a title that still matches `Recording YYYY-MM-DD HH:MM` is replaced, with a conditional update (`rename_meeting_if`), so a name the user gave, even one given while the model thinks, always wins.
+  - The call reuses the note's model, context size and thinking setting, so Ollama keeps the loaded model; it waits at most 60 s for at most 256 output tokens. Any failure keeps the placeholder without a message.
+  - `evra titles` names the meetings that have a note but still the placeholder: ones recorded before this, or noted with `evra note`.
+- **Consequences:**
+  - A meeting without a note keeps the placeholder. A named meeting is not renamed when its note is written again.
+  - Titles are meeting content: logs get a reason or a word count, never the title.

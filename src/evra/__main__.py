@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="let a thinking model think first (default: settings llm.think)",
     )
     note.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
+    titles = commands.add_parser(
+        "titles", help="name meetings that have a note but still a 'Recording ...' title"
+    )
+    titles.add_argument("--model", default=None, help="Ollama model (default: settings llm.model)")
+    titles.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
     return parser
 
 
@@ -94,11 +99,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         command = models_command if args.command == "models" else transcribe_command
         return command(args, resolve_paths(args.data_dir))
-    if args.command == "note":
-        from evra.notes.cli import note_command
+    if args.command in ("note", "titles"):
+        from evra.notes.cli import note_command, titles_command
         from evra.paths import resolve_paths
 
-        return note_command(args, resolve_paths(args.data_dir))
+        command = note_command if args.command == "note" else titles_command
+        return command(args, resolve_paths(args.data_dir))
     parser.print_help()
     return 0
 

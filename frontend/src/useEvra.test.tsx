@@ -78,6 +78,18 @@ it("tracks note progress and failure per meeting, and clears them when the note 
   expect(result.current.state.noteStatus.m1).toBeUndefined();
 });
 
+it("takes a meeting's new name from Python, in the list and the open meeting", async () => {
+  setApiForTests(makeFakeApi());
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => emit("meeting.renamed", { meeting_id: "m1", title: "Launch date and designer proposal" }));
+  expect(result.current.state.meetings.map((m) => m.title)).toEqual(["Launch date and designer proposal"]);
+  expect(result.current.state.detail?.meeting.title).toBe("Launch date and designer proposal");
+  act(() => emit("meeting.renamed", { meeting_id: "other", title: "Elsewhere" }));
+  expect(result.current.state.meetings.map((m) => m.title)).toEqual(["Launch date and designer proposal"]);
+  expect(result.current.state.detail?.meeting.title).toBe("Launch date and designer proposal");
+});
+
 it("keeps capture hints from the finished recording", async () => {
   setApiForTests(makeFakeApi());
   const { result } = renderHook(() => useEvra());

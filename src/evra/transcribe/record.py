@@ -16,6 +16,7 @@ from datetime import datetime
 from evra.capture.sources import CaptureError
 from evra.logging_setup import configure_logging
 from evra.modelstore import ModelError
+from evra.notes.title import placeholder_title
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import Utterance
@@ -76,7 +77,7 @@ def record_command(args: argparse.Namespace, paths: AppPaths) -> int:
         mic: int | str | None = int(args.mic) if args.mic and args.mic.isdigit() else args.mic
         recording = kit.new_recording(
             mic,
-            title=f"Recording {datetime.now():%Y-%m-%d %H:%M}",
+            title=placeholder_title(datetime.now()),
             situation=args.situation,
             on_utterance=_print_utterance,
         )

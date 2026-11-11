@@ -2,6 +2,17 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-11 — Meetings name themselves (branch `meeting-titles`)
+
+- **Merged** `settings` (PR #8) into `main`.
+- **Built:** once a meeting's note is written, the note's model names the meeting from that note (A8, prompt `a8-v1`), the way a chat app names a chat.
+  - Only the placeholder "Recording <date> <time>" is replaced. A name the user gave always wins, even one typed while the model runs.
+  - It runs after the note is shown and Record is back, so neither waits. The window gets `meeting.renamed` and updates the list and the header in place.
+  - If the model fails, the placeholder stays, with no message.
+  - `uv run evra titles` names older meetings that already have a note.
+- **Checked live** with gemma4:12b and the app's defaults on the synthetic 1:1: the note in 37.1 s, then the title in 1.0 s: "Search migration results and project launch planning".
+- Tests: Python 478 (+25), frontend 97 (+2); a live A8 test runs with `-m hardware`.
+
 ## 2026-11-10 — Settings, first set (branch `settings`)
 
 - **Merged** `one-on-one-polish` (PR #6) and `ui-redesign` (PR #7) into `main`.
