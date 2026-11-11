@@ -7,9 +7,11 @@ import pytest
 import structlog
 
 from evra.audio.frames import MIC, SYSTEM, Frames
+from evra.capture.awake import KeepAwake
 from evra.capture.fake import FakeEvent, FakeSource
 from evra.capture.session import CaptureSession
 from evra.capture.sources import CaptureError
+from tests.unit.capture.test_awake import CLEAR, HOLD, FakePower
 
 
 def _sine(rate: int, seconds: float, channels: int) -> np.ndarray:
@@ -172,6 +174,32 @@ def test_a_slow_loopback_open_gets_leading_silence_not_a_correction() -> None:
         assert (ch.corrections, ch.dropped_ms, ch.gaps) == (0, 0, [])
     assert health.channels["system"].padded_ms == 200
     assert health.channels["mic"].seconds == pytest.approx(1.5, abs=0.01)
+
+
+def test_capture_keeps_the_pc_awake_until_it_stops() -> None:
+    power = FakePower()
+    mic, system = _sources(0.3)
+    session = CaptureSession(mic, system, keep_awake=KeepAwake(power))
+    session.start(lambda f: None)
+    assert power.flags() == [HOLD]
+    assert mic.finished.wait(5) and system.finished.wait(5)
+    session.stop()
+    assert power.flags() == [HOLD, CLEAR]
+
+
+def test_a_capture_that_cannot_start_leaves_sleep_alone() -> None:
+    power = FakePower()
+    mic, _ = _sources(0.5)
+
+    class Broken(FakeSource):
+        def start(self) -> None:
+            raise CaptureError("no output", "plug something in")
+
+    broken = Broken(np.zeros((480, 2), dtype=np.float32), 48_000)
+    session = CaptureSession(mic, broken, keep_awake=KeepAwake(power))
+    with pytest.raises(CaptureError):
+        session.start(lambda f: None)
+    assert power.calls == []
 
 
 def test_start_failure_with_os_error_still_stops_the_mic() -> None:

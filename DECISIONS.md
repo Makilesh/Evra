@@ -224,3 +224,12 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Consequences:**
   - A meeting without a note keeps the placeholder. A named meeting is not renamed when its note is written again.
   - Titles are meeting content: logs get a reason or a word count, never the title.
+
+## Keep the PC awake while recording (2026-11-11)
+- **Context:** nothing stopped Windows from sleeping mid-recording (competitor review). A call app such as Teams usually keeps the PC awake, but an in-person 1:1 has nothing doing that.
+- **Evidence:** the spike `spikes/keep_awake_probe.py` asked the power manager (`CallNtPowerInformation`, SystemExecutionState): 0x0 before, ES_SYSTEM_REQUIRED (0x1) while held, even when a short-lived thread started it, and 0x0 after Stop.
+- **Decision:**
+  - From the moment capture's devices are open until they close, `CaptureSession` holds `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` (`capture/awake.py`). The system stays on; the screen may still turn off.
+  - A thread of its own holds the request, because Windows ties it to the calling thread and drops it when that thread ends, and bridge calls run on short-lived threads.
+  - Every capture path gets it: the window, `evra record` and `evra capture-test`.
+- **Consequences:** closing the lid or pressing the power button still sleeps the PC. Writing the note after Stop is not covered.
