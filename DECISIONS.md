@@ -224,3 +224,22 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Consequences:**
   - A meeting without a note keeps the placeholder. A named meeting is not renamed when its note is written again.
   - Titles are meeting content: logs get a reason or a word count, never the title.
+
+## Keep the PC awake while recording (2026-11-11)
+- **Context:** nothing stopped Windows from sleeping mid-recording (competitor review). A call app such as Teams usually keeps the PC awake, but an in-person 1:1 has nothing doing that.
+- **Evidence:** the spike `spikes/keep_awake_probe.py` asked the power manager (`CallNtPowerInformation`, SystemExecutionState): 0x0 before, ES_SYSTEM_REQUIRED (0x1) while held, even when a short-lived thread started it, and 0x0 after Stop.
+- **Decision:**
+  - From the moment capture's devices are open until they close, `CaptureSession` holds `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` (`capture/awake.py`). The system stays on; the screen may still turn off.
+  - A thread of its own holds the request, because Windows ties it to the calling thread and drops it when that thread ends, and bridge calls run on short-lived threads.
+  - Every capture path gets it: the window, `evra record` and `evra capture-test`.
+- **Consequences:** closing the lid or pressing the power button still sleeps the PC. Writing the note after Stop is not covered.
+
+## Load the note model when Stop is pressed (2026-11-11)
+- **Context:** about 20 s of the 58.5 s for an hour-long call's note was Ollama loading gemma4:12b, and it only began after the transcript had drained.
+- **Evidence:** live on the dev PC with the app's settings: a cold call took 7.5 s; after `load()` the same call took 0.5 s, and Ollama reported the model at context 32768, the size every note call asks for, so nothing was loaded twice.
+- **Decision:**
+  - Stop starts a background request (`LlmProvider.load`: a generate request with no prompt) for the note model at the notes' context size and `keep_alive`, then drains the transcript. Nothing waits for it; a failure is logged and the note loads the model itself.
+  - Speech recognition runs on the CPU, so the load does not break §8.3's one-GPU-job rule.
+- **Consequences:**
+  - When a recording has no speech, the model sits loaded for its 30 s `keep_alive` and then unloads.
+  - When M4's torch worker (diarization) runs after Stop, the load moves to after the worker frees the GPU (BUILD.md §8.3).

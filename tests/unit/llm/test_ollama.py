@@ -116,6 +116,27 @@ def test_missing_model_names_it() -> None:
     assert caught.value.model == "qwen3.5:9b"
 
 
+def test_load_asks_for_the_model_at_the_notes_context_size() -> None:
+    # Loaded at any other context size, the model would be loaded again by the note's call.
+    loaded = {"model": "gemma4:12b", "response": "", "done": True, "done_reason": "load"}
+    http = FakeHttp({"/api/generate": loaded})
+    _provider(http).load("gemma4:12b")
+    assert http.calls == [
+        (
+            "POST",
+            "/api/generate",
+            {"model": "gemma4:12b", "keep_alive": "30s", "options": {"num_ctx": 32768}},
+        )
+    ]
+
+
+def test_loading_a_missing_model_names_it() -> None:
+    http = FakeHttp(error=http_error(404, '{"error":"model not found"}'))
+    with pytest.raises(LlmModelMissing) as caught:
+        _provider(http).load("qwen9:404b")
+    assert caught.value.model == "qwen9:404b"
+
+
 def test_installed_models_are_sorted_names() -> None:
     http = FakeHttp({"/api/tags": {"models": [{"model": "qwen3.5:9b"}, {"model": "gemma4:12b"}]}})
     assert _provider(http).installed_models() == ["gemma4:12b", "qwen3.5:9b"]
