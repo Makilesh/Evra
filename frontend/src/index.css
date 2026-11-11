@@ -23,8 +23,11 @@
     format("woff2-variations");
 }
 
-/* Steno pad: a pale green pad, a tan chipboard rail, a deep green rule, navy ink. */
-:root {
+/* Steno pad: a pale green pad, a tan chipboard rail, a deep green rule, navy ink.
+   `.light` and `.dark` also scope a subtree, so the theme previews in Settings show both. */
+:root,
+.light {
+  color-scheme: light;
   --pad: #e7efdb;
   --band: #d6e4c6;
   --band-deep: #c2d8ae;
@@ -47,6 +50,7 @@
 
 /* The same pad at night: the green goes almost black, the chipboard goes brown. */
 .dark {
+  color-scheme: dark;
   --pad: #131a15;
   --band: #1e2a21;
   --band-deep: #2a3d2e;

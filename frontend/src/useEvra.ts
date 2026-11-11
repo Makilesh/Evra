@@ -9,10 +9,15 @@ import {
   type MicList,
   type NoteFailed,
   type NoteFailureReason,
+  type NoteModels,
   type RecordingFinished,
   type RecordingState,
+  type SettingsInfo,
+  type Theme,
   type Utterance,
 } from "@/bridge";
+import { strings } from "@/strings";
+import { applyTheme } from "@/theme";
 
 export interface NoteStatus {
   stage?: string;
@@ -37,6 +42,10 @@ export interface EvraState {
   noteStatus: Record<string, NoteStatus>;
   hints: Record<string, string[]>;
   startError: StartError | null;
+  settings: SettingsInfo | null;
+  /** null while Ollama is being asked. */
+  noteModels: NoteModels | null;
+  settingsError: string;
 }
 
 const QUIET: Levels = { you: 0, them: 0 };
@@ -54,6 +63,9 @@ const INITIAL: EvraState = {
   noteStatus: {},
   hints: {},
   startError: null,
+  settings: null,
+  noteModels: null,
+  settingsError: "",
 };
 
 function message(error: unknown): string {
@@ -143,14 +155,16 @@ export function useEvra() {
     ];
     getApi()
       .then(async (api) => {
-        const [info, recording, meetings, mics] = await Promise.all([
+        const [info, recording, meetings, mics, settings] = await Promise.all([
           api.app_info(),
           api.recording_state(),
           api.list_meetings(),
           api.list_mics(),
+          api.get_settings(),
         ]);
         if (!alive) return;
-        setState((s) => ({ ...s, appName: info.name, ready: true, recording, meetings, mics }));
+        applyTheme(settings.theme);
+        setState((s) => ({ ...s, appName: info.name, ready: true, recording, meetings, mics, settings }));
         const first = recording.meeting_id ?? meetings[0]?.id;
         if (first) select(first);
       })
@@ -208,5 +222,62 @@ export function useEvra() {
 
   const dismissStartError = useCallback(() => setState((s) => ({ ...s, startError: null })), []);
 
-  return { state, select, startRecording, stopRecording, writeNote, rename, dismissStartError, refreshMics };
+  // Settings apply at once (no Save button); a change that could not be saved says so.
+  const saveSetting = useCallback(async (change: Partial<SettingsInfo>, save: () => Promise<{ ok: boolean }>) => {
+    setState((s) => ({ ...s, settingsError: "", settings: s.settings && { ...s.settings, ...change } }));
+    let ok = false;
+    try {
+      ok = (await save()).ok;
+    } catch {
+      // reported below
+    }
+    if (!ok) setState((s) => ({ ...s, settingsError: strings.settingNotSaved }));
+  }, []);
+
+  const setTheme = useCallback(
+    async (theme: Theme) => {
+      applyTheme(theme);
+      await saveSetting({ theme }, async () => (await getApi()).set_theme(theme));
+    },
+    [saveSetting],
+  );
+
+  const setNoteModel = useCallback(
+    (model: string) => saveSetting({ note_model: model }, async () => (await getApi()).set_note_model(model)),
+    [saveSetting],
+  );
+
+  const loadNoteModels = useCallback(async () => {
+    setState((s) => ({ ...s, noteModels: null }));
+    let noteModels: NoteModels = { ok: false, models: [] };
+    try {
+      noteModels = await (await getApi()).list_note_models();
+    } catch {
+      // shown as Ollama not answering
+    }
+    setState((s) => ({ ...s, noteModels }));
+  }, []);
+
+  const openDataFolder = useCallback(async () => {
+    try {
+      return (await (await getApi()).open_data_folder()).ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  return {
+    state,
+    select,
+    startRecording,
+    stopRecording,
+    writeNote,
+    rename,
+    dismissStartError,
+    refreshMics,
+    setTheme,
+    setNoteModel,
+    loadNoteModels,
+    openDataFolder,
+  };
 }

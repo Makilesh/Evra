@@ -10,14 +10,15 @@ from typing import Literal
 
 import structlog
 import tomli_w
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 log = structlog.get_logger(__name__)
 
 Mode = Literal["one_on_one", "meeting"]
 Situation = Literal["call_headphones", "call_speakers", "in_person", "hybrid"]
 Retention = Literal["7d", "30d", "90d", "forever"]
-Theme = Literal["system", "light", "dark"]
+# Light by default; Dark or Match Windows ("system") in Settings (DECISIONS 2026-11-10)
+Theme = Literal["light", "dark", "system"]
 
 
 class LlmSettings(BaseModel):
@@ -43,8 +44,14 @@ class Settings(BaseModel):
     mic_name: str = ""  # chosen in the window, by name ("" = Windows default; M3c)
     live_transcript: bool = True
     audio_retention: Retention = "30d"
-    theme: Theme = "system"
+    theme: Theme = "light"
     llm: LlmSettings = Field(default_factory=LlmSettings)
+
+    @field_validator("theme", mode="before")
+    @classmethod
+    def _known_theme(cls, value: object) -> object:
+        """An unknown value means light: one stale value never resets the whole file."""
+        return value if value in ("light", "dark", "system") else "light"
 
 
 def load_settings(path: Path) -> Settings:

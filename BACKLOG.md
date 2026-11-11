@@ -126,3 +126,28 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Record button: show `Ctrl Alt R` once the global hotkey exists (M6); `Ctrl K` grows into the palette (M6).
 - Frontend end-to-end checks (BUILD.md §9.2): the fake bridge used to look at the redesign (`window.pywebview` injected before load, synthetic fixture) can become a Playwright suite in `frontend/e2e/`.
 - Jumping from a time tab to the transcript leaves keyboard focus on the page body (it did before the redesign too); move focus to the highlighted line.
+
+## Settings, later (2026-11-10)
+
+Each one arrives with its feature, never before it (DECISIONS: Settings, first set).
+- Note language: the most-requested setting in this category (Phase 1 is English only).
+- Choosing the meetings folder, which means moving the database and audio safely.
+- Retention (D13, M5). Shortening it deletes data, so it must be confirmed with the consequence named ("Delete audio older than 7 days").
+  - Add **Don't keep** to the choices. Make it the default if the audio serves nothing once the note exists (no replay, no re-transcription).
+  - Keep it to audio only: deleting transcripts would stop notes from being regenerated.
+- In the recording flow, not in Settings:
+  - A non-blocking reminder when recording starts, telling the other person they are being recorded, with notice text to copy (no bot ever tells them).
+  - An automatic stop after a long silence, with no setting. Granola stops after 15 minutes, and a Meetily user's forgotten recording ran for about 24 hours.
+- About: links to the licences and the repository.
+- Templates (M5), hotkeys and start with Windows (M6), People (M4).
+- Live transcript off for slow PCs: record now, transcribe after. `live_transcript` is already in the settings file.
+- After a theme switch, WebView2's background behind a resizing window keeps the startup colour until the next start.
+
+## Flaky test (2026-11-10)
+- `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` times a simulated 0.2 s loopback start against the real clock. It failed once while the PC was busy (five research agents running) and passed alone 5 of 5 times. Give it a fake clock, or a tolerance for scheduling delay.
+
+## From the competitor review (2026-11-10)
+The full list (100 features, with links) is in `private/research/reports/`.
+- **Keep the PC awake while recording.** Nothing stops Windows from sleeping mid-recording. A call app such as Teams or Zoom usually keeps it awake, but an in-person 1:1 has nothing doing that. Hold `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` from Record to Stop; the screen may still turn off.
+- **Switch the microphone during a recording.** The picker is locked while recording, so a headset that drops can't be swapped mid-call.
+- **Gaps with no plan yet** that comparable apps cover: one action-item list across meetings, exporting files (PDF, text, Markdown), importing an older audio file, and detecting a meeting and asking first.

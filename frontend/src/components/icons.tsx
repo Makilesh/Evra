@@ -65,6 +65,17 @@ export function ChevronIcon(props: IconProps) {
   );
 }
 
+// Two sliders: settings as adjustments, drawn in the same 1.5px stroke as the other icons.
+export function SettingsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 5h5.75M11.75 5h1.75M2.5 11h1.75M7.75 11h5.75" />
+      <circle cx="10" cy="5" r="1.75" />
+      <circle cx="6" cy="11" r="1.75" />
+    </Icon>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -20,6 +20,24 @@ def test_round_trip(tmp_path: Path) -> None:
     assert load_settings(path) == s
 
 
+def test_the_window_is_light_by_default() -> None:
+    assert Settings().theme == "light"
+
+
+def test_an_unknown_theme_becomes_light_and_keeps_the_rest(tmp_path: Path) -> None:
+    path = tmp_path / "settings.toml"
+    path.write_text('theme = "sepia"\nmic_name = "Headset"\n', encoding="utf-8")
+    s = load_settings(path)
+    assert (s.theme, s.mic_name) == ("light", "Headset")
+    assert not (tmp_path / "settings.toml.bad").exists()
+
+
+def test_match_windows_is_a_theme_choice(tmp_path: Path) -> None:
+    path = tmp_path / "settings.toml"
+    save_settings(path, Settings(theme="system"))
+    assert load_settings(path).theme == "system"
+
+
 def test_invalid_toml_resets_to_defaults_and_keeps_backup(tmp_path: Path) -> None:
     path = tmp_path / "settings.toml"
     path.write_text("this is = = not toml", encoding="utf-8")

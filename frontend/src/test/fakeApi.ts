@@ -52,6 +52,17 @@ export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
     write_note: vi.fn(async () => ({ ok: true })),
     rename_meeting: vi.fn(async () => ({ ok: true })),
     recording_state: vi.fn(async () => ({ state: "idle" as const })),
+    get_settings: vi.fn(async () => ({
+      theme: "light" as const,
+      note_model: "gemma4:12b",
+      default_note_model: "gemma4:12b",
+      data_dir: "D:\\Evra\\.data\\data",
+      version: "0.1.0",
+    })),
+    set_theme: vi.fn(async () => ({ ok: true })),
+    set_note_model: vi.fn(async () => ({ ok: true })),
+    list_note_models: vi.fn(async () => ({ ok: true, models: ["gemma4:12b", "qwen3.5:9b"] })),
+    open_data_folder: vi.fn(async () => ({ ok: true })),
     ...overrides,
   };
 }

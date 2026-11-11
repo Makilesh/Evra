@@ -10,9 +10,10 @@ from evra.ui.window import (
     PAD_DARK,
     PAD_LIGHT,
     UiNotBuiltError,
-    apps_use_light_theme,
     resolve_ui_url,
+    themed_url,
     window_background,
+    windows_prefers_dark,
 )
 
 
@@ -103,10 +104,15 @@ def test_webview_profile_lives_in_given_dir_not_temp(
     assert storage.is_dir()
 
 
-def test_window_background_follows_the_windows_app_theme() -> None:
-    assert window_background(0) == PAD_DARK
-    assert window_background(1) == PAD_LIGHT
-    assert window_background(None) == PAD_LIGHT
+def test_window_background_follows_the_chosen_theme() -> None:
+    assert window_background("light", windows_dark=lambda: True) == PAD_LIGHT
+    assert window_background("dark", windows_dark=lambda: False) == PAD_DARK
+    assert window_background("system", windows_dark=lambda: True) == PAD_DARK
+    assert window_background("system", windows_dark=lambda: False) == PAD_LIGHT
+
+
+def test_reading_the_windows_app_mode_never_fails() -> None:
+    assert windows_prefers_dark() in (True, False)
 
 
 def test_window_background_is_the_pages_pad_colour() -> None:
@@ -115,22 +121,36 @@ def test_window_background_is_the_pages_pad_colour() -> None:
     assert (light.upper(), dark.upper()) == (PAD_LIGHT, PAD_DARK)
 
 
-def test_reading_the_app_theme_never_fails() -> None:
-    assert apps_use_light_theme() in (0, 1, None)
+def test_the_page_learns_a_dark_theme_from_its_url() -> None:
+    page = "file:///D:/GEN%20AI/Evra/src/evra/ui/web/index.html"
+    assert themed_url(page, "light") == page
+    assert themed_url(page, "dark") == page + "#theme=dark"
+    assert themed_url(page, "system") == page + "#theme=system"
+    assert themed_url(DEV_SERVER_URL, "dark") == DEV_SERVER_URL + "#theme=dark"
+    assert not is_local_url(themed_url(page, "dark"))
 
 
-def test_a_dark_windows_theme_opens_the_window_on_the_dark_pad(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import evra.ui.window as window
+def test_dotnet_still_opens_the_page_when_the_theme_is_dark() -> None:
+    """pywebview loads the URL through System.Uri, which escapes a file URL's "?" into the file
+    name (WebView2 then shows an error page); a "#" fragment comes through untouched."""
+    pytest.importorskip("pythonnet")
+    import clr  # noqa: F401  (starts .NET, as pywebview does)
+    from System import Uri  # type: ignore[import-not-found]
+
+    uri = Uri(themed_url("file:///D:/GEN%20AI/Evra/src/evra/ui/web/index.html", "dark"))
+    assert uri.AbsolutePath.endswith("/index.html")
+    assert uri.Fragment == "#theme=dark"
+
+
+def _open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, theme: str) -> dict[str, object]:
     from evra.bridge.api import BridgeApi
     from evra.bridge.events import EventBus
+    from evra.ui.window import open_main_window
     from tests.unit.test_bridge import StubControl
 
     fake = _patch_webview(monkeypatch)
-    monkeypatch.setattr(window, "apps_use_light_theme", lambda: 0)
     bus = EventBus()
-    window.open_main_window(
+    open_main_window(
         url="file:///x/index.html",
         api=BridgeApi(
             app_name="Evra",
@@ -142,9 +162,37 @@ def test_a_dark_windows_theme_opens_the_window_on_the_dark_pad(
         bus=bus,
         debug=False,
         storage_dir=tmp_path / "webview",
+        theme=theme,  # type: ignore[arg-type]
     )
     assert fake.created is not None
-    assert fake.created["background_color"] == PAD_DARK
+    return fake.created
+
+
+def test_a_dark_window_opens_dark_with_no_light_flash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = _open(tmp_path, monkeypatch, "dark")
+    assert created["background_color"] == PAD_DARK
+    assert created["url"] == "file:///x/index.html#theme=dark"
+
+
+def test_a_window_that_matches_windows_opens_on_its_pad(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import evra.ui.window as window
+
+    monkeypatch.setattr(window, "windows_prefers_dark", lambda: True)
+    created = _open(tmp_path, monkeypatch, "system")
+    assert created["background_color"] == PAD_DARK
+    assert created["url"] == "file:///x/index.html#theme=system"
+
+
+def test_a_light_window_opens_on_the_light_pad(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = _open(tmp_path, monkeypatch, "light")
+    assert created["background_color"] == PAD_LIGHT
+    assert created["url"] == "file:///x/index.html"
 
 
 def test_open_main_window_refuses_local_path_urls(

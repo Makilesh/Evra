@@ -8,7 +8,10 @@ JavaScript: anything of the wrong type is refused, never trusted.
 from __future__ import annotations
 
 import contextlib
+import os
+import re
 import sqlite3
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Protocol, TypedDict
@@ -17,11 +20,23 @@ import structlog
 
 from evra.bridge.events import EventBus
 from evra.capture.devices import MicList, list_mics
+from evra.config import LlmSettings, Settings, Theme
 from evra.services.views import clean_title, meeting_detail, meeting_summary
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 
 log = structlog.get_logger(__name__)
+
+# An Ollama model name ("gemma4:12b", "hf.co/user/model:Q4_K_M"): no spaces, no control characters.
+MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}")
+THEMES: dict[str, Theme] = {"light": "light", "dark": "dark", "system": "system"}
+
+
+def open_folder(path: Path) -> None:
+    """Show a folder in Explorer: a local program, nothing is served or sent."""
+    if sys.platform != "win32":
+        raise OSError("folders open only on Windows")
+    os.startfile(path)
 
 
 class PingReply(TypedDict):
@@ -45,6 +60,15 @@ class Control(Protocol):
 
     def state(self) -> dict[str, Any]: ...
 
+    @property
+    def settings(self) -> Settings: ...
+
+    def set_theme(self, theme: Theme) -> bool: ...
+
+    def set_note_model(self, model: str) -> bool: ...
+
+    def note_models(self) -> dict[str, Any]: ...
+
 
 class BridgeApi:
     def __init__(
@@ -56,6 +80,7 @@ class BridgeApi:
         control: Control,
         db_path: Path,
         mic_lister: Callable[[], MicList] = list_mics,
+        folder_opener: Callable[[Path], None] = open_folder,
     ) -> None:
         self._app_name = app_name
         self._version = version
@@ -63,6 +88,7 @@ class BridgeApi:
         self._control = control
         self._db_path = db_path
         self._mic_lister = mic_lister
+        self._open_folder = folder_opener
 
     def ping(self, message: str) -> PingReply:
         return {"reply": f"pong: {message}"}
@@ -114,6 +140,40 @@ class BridgeApi:
 
     def recording_state(self) -> dict[str, Any]:
         return self._control.state()
+
+    # --- settings --------------------------------------------------------------------------
+
+    def get_settings(self) -> dict[str, Any]:
+        settings = self._control.settings
+        return {
+            "theme": settings.theme,
+            "note_model": settings.llm.model,
+            "default_note_model": LlmSettings().model,
+            "data_dir": str(self._db_path.parent),
+            "version": self._version,
+        }
+
+    def set_theme(self, theme: str) -> dict[str, Any]:
+        chosen = THEMES.get(theme) if isinstance(theme, str) else None
+        if chosen is None:
+            return {"ok": False}
+        return {"ok": self._control.set_theme(chosen)}
+
+    def set_note_model(self, model: str) -> dict[str, Any]:
+        if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):
+            return {"ok": False}
+        return {"ok": self._control.set_note_model(model)}
+
+    def list_note_models(self) -> dict[str, Any]:
+        return self._control.note_models()
+
+    def open_data_folder(self) -> dict[str, Any]:
+        try:
+            self._open_folder(self._db_path.parent)
+        except OSError as exc:
+            log.warning("data_folder_not_opened", error=type(exc).__name__)
+            return {"ok": False}
+        return {"ok": True}
 
     @contextlib.contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:

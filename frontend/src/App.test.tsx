@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it } from "vitest";
 import App from "@/App";
@@ -118,6 +118,45 @@ it("shows transcript and note text as text, never as HTML", async () => {
   expect(await screen.findByText(evil)).toBeInTheDocument();
   expect(document.querySelector("img")).toBeNull();
   expect(document.querySelector("b")).toBeNull();
+});
+
+it("opens Settings from the rail and with Ctrl+comma; Esc goes back to the meeting", async () => {
+  setApiForTests(makeFakeApi());
+  render(<App />);
+  await screen.findByText("Launch moves to October 14.");
+  await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+  expect(screen.queryByText("Launch moves to October 14.")).toBeNull();
+  expect(screen.getByRole("button", { name: /Weekly 1:1/ })).not.toHaveAttribute("aria-current");
+  await userEvent.keyboard("{Escape}");
+  expect(await screen.findByText("Launch moves to October 14.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
+  await userEvent.keyboard("{Control>},{/Control}");
+  expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Weekly 1:1/ }));
+  expect(await screen.findByText("Launch moves to October 14.")).toBeInTheDocument();
+});
+
+it("turns dark at once and saves it", async () => {
+  const api = makeFakeApi();
+  setApiForTests(api);
+  render(<App />);
+  await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  await userEvent.click(screen.getByRole("radio", { name: "Dark" }));
+  expect(document.documentElement).toHaveClass("dark");
+  expect(api.set_theme).toHaveBeenCalledWith("dark");
+  expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
+  document.documentElement.classList.remove("dark");
+});
+
+it("says when a setting could not be saved", async () => {
+  setApiForTests(makeFakeApi({ set_note_model: async () => ({ ok: false }) }));
+  render(<App />);
+  await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  const select = screen.getByRole("combobox", { name: "Note model" });
+  await waitFor(() => expect(select).toBeEnabled());
+  await userEvent.selectOptions(select, "qwen3.5:9b");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save that change.");
 });
 
 it("says so when Python can't be reached", async () => {

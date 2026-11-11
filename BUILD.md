@@ -483,7 +483,7 @@ CREATE INDEX job_ready ON job(state, priority, run_after);
 | **Note view** | Sections with citation chips (jump to transcript / play audio), edit in place, Regenerate, template switcher, version history, side-by-side choice for edited blocks |
 | **Transcript view** | Speaker colours, gap markers, rename speaker (3 scopes), "?" on suggested names, click a line to play it |
 | **Onboarding** | Mic permission, device test with meters, voice enrolment, Ollama check + model download, retention choice |
-| **Settings** | Devices, default mode and situation, LLM model, templates, retention, hotkeys, People (voiceprints, Forget this person) |
+| **Settings** | First set (DECISIONS 2026-11-10): theme (light by default, Dark, Match Windows), note model, meetings folder, About. With their features: templates, retention, hotkeys and start with Windows, People (voiceprints, Forget this person). The microphone stays in the rail |
 | **Tray** | Idle / recording / processing / error; Start/Stop, Open, Quit |
 | **Command palette** | `Ctrl+K`: new meeting, jump to meeting, regenerate, switch template, settings |
 
@@ -493,7 +493,7 @@ CREATE INDEX job_ready ON job(state, priority, run_after);
 
 ### 8.5 Visual style — "Steno pad" (D19, replaced 2026-11-10)
 
-- **World:** a reporter's steno pad. A pale green pad `#E7EFDB` with darker green bands for state, a tan chipboard rail `#D3C8B3` on the left, a deep green rule `#2E6B4B` for structure, navy ink `#1B2433`; red only for recording. A night version follows the Windows light/dark setting.
+- **World:** a reporter's steno pad. A pale green pad `#E7EFDB` with darker green bands for state, a tan chipboard rail `#D3C8B3` on the left, a deep green rule `#2E6B4B` for structure, navy ink `#1B2433`; red only for recording. Light by default; the night version is chosen in Settings, or follows Windows with Match Windows (DECISIONS 2026-11-10).
 - **Signature:** the note is a sheet: each point, a timed centre rule with its time tabs, and the transcript lines it came from on the same row. The transcript uses the same rule, with a detent wherever the speaker changes.
 - **Type:** Sofia Sans Extra Condensed (capitals) for titles, section heads, speakers and time tabs; Libre Franklin for all text at one reading size. Both SIL OFL, Latin only, bundled locally (no web font fetches).
 - **Colour as area:** state fills whole regions (the record block turns red while recording; a hovered point or cited line fills band green), never thin outlines.

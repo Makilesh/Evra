@@ -12,7 +12,7 @@ import structlog
 from evra import __version__
 from evra.bridge.api import BridgeApi
 from evra.bridge.events import EventBus
-from evra.config import Settings, debug_enabled, load_settings
+from evra.config import Settings, Theme, debug_enabled, load_settings
 from evra.constants import APP_NAME
 from evra.logging_setup import LOG_FILE_NAME, configure_logging
 from evra.paths import AppPaths, resolve_paths
@@ -28,7 +28,14 @@ log = structlog.get_logger(__name__)
 
 class WindowOpener(Protocol):
     def __call__(
-        self, *, url: str, api: BridgeApi, bus: EventBus, debug: bool, storage_dir: Path
+        self,
+        *,
+        url: str,
+        api: BridgeApi,
+        bus: EventBus,
+        debug: bool,
+        storage_dir: Path,
+        theme: Theme,
     ) -> None: ...
 
 
@@ -89,6 +96,7 @@ def run_app(
                 bus=app.bus,
                 debug=app.debug,
                 storage_dir=app.paths.data_dir / "webview",
+                theme=app.settings.theme,
             )
         finally:  # the window is closed: save a running recording, stop the workers
             app.bus.detach()

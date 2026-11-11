@@ -173,6 +173,16 @@ components:
     textColor: "{colors.rule}"
     rounded: "{rounded.stamp}"
     padding: "9px 13px 8px"
+  settings-row:
+    textColor: "{colors.rule}"
+    typography: "{typography.caps-head}"
+  theme-option-chosen:
+    backgroundColor: "{colors.band-deep}"
+    rounded: "14px"
+  rail-settings-current:
+    backgroundColor: "{colors.chip-well}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.well}"
 ---
 
 # Design System: Evra
@@ -185,7 +195,7 @@ Evra's main window is a reporter's steno pad. A pale green pad holds the open me
 
 The system is flat and quiet. Colour is laid down as whole areas: a darker green band fills a row when it is hovered, focused, being written or has failed; the selected meeting takes the pad's own colour and merges into it; recording turns the record block red. Type is two faces doing two jobs: condensed capitals for titles, section heads, speakers and labels, and one plain sans for everything that is read. Motion is short and purposeful: what just arrived lands emphasised and settles.
 
-The world runs in light and dark. At night the pad goes almost black-green, the chipboard goes brown, the rule and ink brighten; the roles and structure do not change.
+The world runs in light and dark. Light is the default; Dark, or Match Windows (which follows Windows' app mode), is chosen in Settings. At night the pad goes almost black-green, the chipboard goes brown, the rule and ink brighten; the roles and structure do not change.
 
 **Key Characteristics:**
 - A chipboard rail (264px) beside a pale green pad, no other panels.
@@ -291,6 +301,7 @@ Gently rounded, never pill-shaped except for dots and meters. Small marks (time 
 ### Navigation
 - **Meetings in the rail:** grouped under caps day heads; each item is the title (semibold) over a 13px meta line (time and duration). Hover fills chipboard-well; the selected item takes the pad colour and merges into the pad. A live meeting shows a red pip and "Recording"; a meeting whose note is being written shows a rule-green pip.
 - **Tabs:** Note and Transcript (with a line count) on a 2px ink rule; unselected muted, selected ink with a 5px ink bar.
+- **Settings in the rail:** at the foot, below the microphone, as Windows apps place it: the sliders icon, the word and a Ctrl , hint, in chipboard ink. Hover fills chipboard-well; while Settings is open it keeps that fill with ink text.
 
 ### The Note Sheet (signature)
 Each note point sits on a row with its time tabs on the centre rule and its quotes on the far side, each quote led by a coloured caps speaker name, clamped to four lines. Hovering or focusing a row fills it band green, brings the quotes from muted to ink, and keeps the time tabs on the band. A time tab is a small rule-green outlined tab on the pad; hover and keyboard focus both fill it rule green with pad text (no second ring). Pressing one opens the transcript at that line, filled the same band.
@@ -306,6 +317,9 @@ Provenance as one mark: a 2px rule-green bordered box, 7px radius, rotated -1.2d
 
 ### Banner
 A notice that fills its row in band-deep, 10px radius, 12px 16px: a semibold message, an optional hint in ink at 80%, at most one primary action and an optional close.
+
+### Settings
+A page on the pad, never a dialog: the display title with a close icon button at the top right, then one row per setting on the timed rule. Each row has a detent, a caps head in rule green, an optional 13px muted line and its control. Theme shows the window in miniature, drawn in each theme's own tokens (the `.light` and `.dark` scopes); Match Windows shows both, split on a diagonal. The chosen option fills band-deep with a check, hover fills band. The note model is a band-filled select; when Ollama can't be asked it is disabled, with the reason and a Check again link. Changes apply at once; one that could not be saved shows a banner. A setting appears only when its feature exists.
 
 ### Icons
 Authored inline SVG at 16px with a single 1.5px round-capped stroke in the text colour.

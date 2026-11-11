@@ -1,7 +1,7 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode, type Ref } from "react";
 import type { Levels, MicList, RecordingPhase, RecordingState } from "@/bridge";
 import { Banner } from "@/components/Banner";
-import { ChevronIcon } from "@/components/icons";
+import { ChevronIcon, SettingsIcon } from "@/components/icons";
 import { LevelMeter } from "@/components/LevelMeter";
 import { formatClock } from "@/format";
 import { strings } from "@/strings";
@@ -17,6 +17,9 @@ interface RailProps {
   onStop: () => void;
   onDismissError: () => void;
   onRefreshMics: () => void;
+  settingsOpen: boolean;
+  onOpenSettings: () => void;
+  settingsButtonRef?: Ref<HTMLButtonElement>;
   now?: () => number;
   /** The meetings list, placed between the record block and the microphone. */
   children?: ReactNode;
@@ -49,6 +52,9 @@ export function Rail({
   onStop,
   onDismissError,
   onRefreshMics,
+  settingsOpen,
+  onOpenSettings,
+  settingsButtonRef,
   now = Date.now,
   children,
 }: RailProps) {
@@ -150,6 +156,20 @@ export function Rail({
           </select>
           <ChevronIcon className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-chip-ink" />
         </div>
+        {/* Settings sits at the foot of the navigation, as Windows apps place it. */}
+        <button
+          ref={settingsButtonRef}
+          type="button"
+          onClick={onOpenSettings}
+          aria-current={settingsOpen ? "page" : undefined}
+          className="mt-2.5 -mx-1.5 flex h-9 w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-[10px] px-3 font-semibold text-chip-ink transition-colors hover:bg-chip-well hover:text-ink aria-[current=page]:bg-chip-well aria-[current=page]:text-ink short:mt-1.5 short:h-8"
+        >
+          <SettingsIcon />
+          {strings.settings}
+          <span aria-hidden="true" className="kbd ml-auto font-medium max-[860px]:hidden short:hidden">
+            {strings.settingsShortcut}
+          </span>
+        </button>
       </div>
     </aside>
   );

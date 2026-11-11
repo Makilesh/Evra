@@ -2,6 +2,32 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-10 — Settings, first set (branch `settings`)
+
+- **Merged** `one-on-one-polish` (PR #6) and `ui-redesign` (PR #7) into `main`.
+- **Research:** five angles run in parallel; notes and report are in `private/research/`.
+  - Comparable apps: Granola, Jamie, Bluedot, Notion and Krisp; Otter, Fireflies, Fathom, tl;dv, Zoom and Teams; MacWhisper, Anarlog, Meetily and other local-first apps.
+  - What users ask for and complain about.
+  - Microsoft, Apple and NN/g guidance on settings screens and theme defaults.
+  - Result: the most-requested settings belong to features Evra doesn't have yet, and the defaults people complain about (bots, auto-sharing) don't exist here.
+- **Built:** Settings on the pad, opened from the foot of the rail or with `Ctrl ,`.
+  - Theme: Light by default, Dark, or Match Windows (follows Windows' light or dark mode live), each shown as the window in miniature.
+  - Note model: the models installed in Ollama, with the default marked "recommended".
+    - Disabled, with the reason and Check again, while Ollama doesn't answer.
+    - A pull hint when the chosen model isn't installed.
+  - Meetings folder with Open folder, and About (the version; no accounts, no analytics).
+  - Changes apply at once and survive a restart. Settings edited in the file meanwhile are kept.
+  - The window opens in the saved theme with no flash: `#theme=dark`, and the dark pad as WebView2's background.
+- **Checked in Edge** with the fake bridge: light, dark, Ollama quiet, model missing, 720×480 and keyboard focus.
+- **Checked in the real window** at 150% scaling:
+  - It opens light on a dark Windows.
+  - With Ollama off, the reason shows; with it on, its 9 models are listed.
+  - Choosing a model and Dark wrote `settings.toml`, and a restart opened dark with the model kept.
+  - Open folder opened Explorer on the folder.
+  - With Match Windows saved, the window opened at `#theme=system` and was dark from its first frame, matching this PC's dark Windows mode.
+  - It also caught a bug: .NET's `Uri` turned `index.html?theme=dark` into `index.html%3Ftheme=dark`, so a dark window showed an error page. Fixed with a fragment, plus a test that uses .NET's own `Uri`.
+- Tests: Python 453 (+18), frontend 95 (+17).
+
 ## 2026-11-10 — Main window redesign: "Steno pad" (branch `ui-redesign`)
 
 - **Tools for UI work** installed at user scope (outside the repo): Impeccable, Taste Skill, GSAP skills, Playwright CLI, transitions.dev skills, designlang; React Bits is reachable as a shadcn registry (`frontend/components.json`).
