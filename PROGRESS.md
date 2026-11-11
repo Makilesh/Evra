@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-11 — Small fixes (branch `small-fixes`)
+
+- **Merged** `meeting-titles` (PR #9) into `main`; `evra titles` named the 6 older recordings that had a note.
+- **Fixed a false "dropout":** when nothing was playing as Record was pressed, the first system audio after the start-up silence was logged as a 100 ms dropout, which failed the recording's health check and showed an "audio lost" hint. The first audio now always aligns as first audio. The timing-sensitive test that caught this race now runs on a manual clock, and it checks the slow-start promise it was written for.
+- **The PC stays awake while recording:** `SetThreadExecutionState` on a thread of its own, from open devices to closed devices. The power manager confirmed the hold and its release.
+- **The note model loads when Stop is pressed,** while the transcript drains: live, a cold call took 7.5 s and the same call after the load 0.5 s.
+- **Not done here:** switching the microphone mid-recording. It needs a test with real devices, swapped during a live call.
+- Tests: Python 494 (+16), frontend 97.
+
 ## 2026-11-11 — Meetings name themselves (branch `meeting-titles`)
 
 - **Merged** `settings` (PR #8) into `main`.

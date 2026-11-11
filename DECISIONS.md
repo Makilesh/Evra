@@ -233,3 +233,13 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - A thread of its own holds the request, because Windows ties it to the calling thread and drops it when that thread ends, and bridge calls run on short-lived threads.
   - Every capture path gets it: the window, `evra record` and `evra capture-test`.
 - **Consequences:** closing the lid or pressing the power button still sleeps the PC. Writing the note after Stop is not covered.
+
+## Load the note model when Stop is pressed (2026-11-11)
+- **Context:** about 20 s of the 58.5 s for an hour-long call's note was Ollama loading gemma4:12b, and it only began after the transcript had drained.
+- **Evidence:** live on the dev PC with the app's settings: a cold call took 7.5 s; after `load()` the same call took 0.5 s, and Ollama reported the model at context 32768, the size every note call asks for, so nothing was loaded twice.
+- **Decision:**
+  - Stop starts a background request (`LlmProvider.load`: a generate request with no prompt) for the note model at the notes' context size and `keep_alive`, then drains the transcript. Nothing waits for it; a failure is logged and the note loads the model itself.
+  - Speech recognition runs on the CPU, so the load does not break §8.3's one-GPU-job rule.
+- **Consequences:**
+  - When a recording has no speech, the model sits loaded for its 30 s `keep_alive` and then unloads.
+  - When M4's torch worker (diarization) runs after Stop, the load moves to after the worker frees the GPU (BUILD.md §8.3).

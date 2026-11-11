@@ -117,7 +117,6 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Name check over long calls: a name said more than 3 lines before the cited line drops a true point (a project named once, then "the beta"; "her first week" after "Dana starts"). Consider a longer look-back for names that are not the owner of an action item.
 - Short replies: if models keep citing only "Yeah, I can do that.", let the overlap check borrow the line just before a short reply.
 - Bake-off coverage matches keywords exactly ("hardware refresh" for "laptop refresh" is a miss): allow alternative keywords per fact.
-- About 20 s of the 58.5 s for an hour's note is loading gemma4:12b; start loading it when Stop is pressed, alongside the transcript drain.
 
 ## Steno pad follow-ups (2026-11-10)
 

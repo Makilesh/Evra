@@ -58,6 +58,10 @@ class FakeProvider:
         self.tokens_in = tokens_in
         self.calls: list[list[ChatMessage]] = []
         self.models = ["fake:1b"]
+        self.loaded: list[str] = []
+
+    def load(self, model: str) -> None:
+        self.loaded.append(model)
 
     def chat_json(
         self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
