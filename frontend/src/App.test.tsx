@@ -104,6 +104,22 @@ it("renames a meeting", async () => {
   expect(api.rename_meeting).toHaveBeenCalledWith("m1", "Sync with Priya");
 });
 
+it("shows the name Evra gives a meeting, but never over a rename being typed", async () => {
+  setApiForTests(makeFakeApi());
+  render(<App />);
+  await screen.findByText("Launch moves to October 14.");
+  act(() => emit("meeting.renamed", { meeting_id: "m1", title: "Launch date and designer proposal" }));
+  expect(screen.getByRole("heading", { level: 1, name: "Launch date and designer proposal" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Launch date and designer proposal/ })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Rename meeting" }));
+  const input = screen.getByRole("textbox", { name: "Meeting title" });
+  await userEvent.clear(input);
+  await userEvent.type(input, "Sync with Priya");
+  act(() => emit("meeting.renamed", { meeting_id: "m1", title: "Something else" }));
+  expect(input).toHaveValue("Sync with Priya");
+});
+
 it("shows transcript and note text as text, never as HTML", async () => {
   const evil = "<img src=x onerror=alert(1)> </script><b>bold</b>";
   setApiForTests(

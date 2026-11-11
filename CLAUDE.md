@@ -17,6 +17,7 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 - Transcribe a file: `uv run evra transcribe FILE.wav`
 - Record + live transcript (1:1): `uv run evra record 60`
 - Write the note for the latest recording: `uv run evra note [--model gemma4:12b]` (needs Ollama running)
+- Name meetings that have a note but still a "Recording …" title: `uv run evra titles` (needs Ollama running)
 - Compare note models: `uv run python tools/bakeoff_notes.py gemma4:12b qwen3.5:9b ministral-3:14b --runs 2`
 - Regenerate the 60-minute test call: `uv run python tools/make_long_fixture.py gemma4:12b` (needs Ollama)
 

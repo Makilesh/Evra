@@ -99,6 +99,15 @@ class MeetingStore:
         )
         return cursor.rowcount == 1
 
+    def rename_meeting_if(self, meeting_id: str, title: str, *, expected: str) -> bool:
+        """Rename only while the title is still `expected`, in one statement, so a rename
+        made in between is never overwritten."""
+        cursor = self._conn.execute(
+            "UPDATE meeting SET title = ?, updated_at = ? WHERE id = ? AND title = ?",
+            (title, now_ms(), meeting_id, expected),
+        )
+        return cursor.rowcount == 1
+
     def recover_after_restart(self) -> int:
         """Meetings a closed or crashed app left mid-way keep their transcript: one still
         `processing` its note becomes `ready` (the note can be retried), one still `recording`

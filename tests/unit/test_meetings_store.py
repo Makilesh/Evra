@@ -29,6 +29,14 @@ def test_meeting_lifecycle(store: MeetingStore) -> None:
     assert row["state"] == "ready" and row["ended_at"] is not None
 
 
+def test_a_conditional_rename_changes_only_the_title_it_expects(store: MeetingStore) -> None:
+    mid = _meeting(store)
+    assert store.rename_meeting_if(mid, "Budget review", expected="Sync") is True
+    assert store.get_meeting(mid)["title"] == "Budget review"
+    assert store.rename_meeting_if(mid, "Launch date", expected="Sync") is False
+    assert store.get_meeting(mid)["title"] == "Budget review"
+
+
 def test_new_transcript_version_becomes_current(store: MeetingStore) -> None:
     mid = _meeting(store)
     v1 = store.create_transcript_version(mid, kind="live", model="parakeet")

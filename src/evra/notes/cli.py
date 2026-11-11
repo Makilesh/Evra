@@ -1,5 +1,6 @@
-"""`evra note [MEETING_ID]`: write a cited note for a recorded meeting (M3b). The note prints
-to the user's own console only; logs get counts, never text."""
+"""`evra note [MEETING_ID]`: write a cited note for a recorded meeting (M3b). `evra titles`:
+name the meetings that have a note but still their placeholder title (A8). Notes and titles
+print to the user's own console only; logs get counts, never text."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from evra.llm.provider import (
 from evra.logging_setup import configure_logging
 from evra.notes.job import NothingSupported, write_and_save
 from evra.notes.templates import load_template, template_ids
+from evra.notes.title import has_placeholder_title, name_meeting, title_settings
 from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong
 from evra.paths import AppPaths
 from evra.store.db import connect
@@ -178,3 +180,51 @@ def _run(
         f" kept, {result.note.dropped} dropped as unsupported{repaired}; generation {generation_id}"
     )
     return 0
+
+
+def titles_command(
+    args: argparse.Namespace, paths: AppPaths, *, provider: LlmProvider | None = None
+) -> int:
+    """Name each meeting the way the window names a new one once its note is written; meetings
+    recorded before that, or noted with `evra note`, are named here."""
+    paths.ensure()
+    configure_logging(paths.log_dir, debug=False)
+    settings = title_settings(load_settings(paths.settings_file).llm)
+    model = args.model or settings.model
+    conn = connect(paths.db_path)
+    try:
+        migrate(conn)
+        todo = [
+            m
+            for m in MeetingStore(conn).list_meetings()
+            if m["has_note"] and has_placeholder_title(str(m["title"]))
+        ]
+        if not todo:
+            print("Every meeting with a note has a name already.")
+            return 0
+        named = 0
+        try:
+            llm = provider or OllamaProvider(settings)
+            for meeting in todo:
+                title = name_meeting(conn, str(meeting["id"]), provider=llm, model=model)
+                if title is None:
+                    print(f"{meeting['title']}: kept, no usable title came back")
+                else:
+                    print(f"{meeting['title']} -> {title}")
+                    named += 1
+        except LlmUnavailable:
+            _err("Ollama is not running. Start it (it lives in the system tray) and try again.")
+            return 2
+        except LlmModelMissing as exc:
+            _err(f"The model {exc.model} is not installed. Run: ollama pull {exc.model}")
+            return 2
+        except LlmConfigError as exc:
+            _err(str(exc))
+            return 2
+        except LlmError as exc:
+            _err(f"The LLM failed: {exc}")
+            return 1
+        print(f"-- {named} of {len(todo)} named")
+        return 0
+    finally:
+        conn.close()

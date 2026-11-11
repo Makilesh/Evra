@@ -15,6 +15,7 @@ from evra.capture.sources import MicUnavailableError
 from evra.config import LlmSettings, Settings, load_settings
 from evra.llm.provider import ChatMessage, ChatResult, LlmModelMissing, LlmProvider, LlmUnavailable
 from evra.modelstore import ModelError
+from evra.notes.title import TITLE_TIMEOUT_S, has_placeholder_title
 from evra.paths import AppPaths
 from evra.services.meetings import MeetingService
 from evra.store.db import connect
@@ -23,11 +24,25 @@ from evra.store.migrate import migrate
 from evra.store.notes import NoteStore
 from evra.transcribe.recording import LiveRecording
 from tests.unit.audio.test_vad import FakeVad
-from tests.unit.notes.fakes import FakeProvider
+from tests.unit.notes.fakes import FakeProvider, title_reply
 
 GOOD = json.dumps(
     {"summary": [{"text": "Some words were said.", "citations": ["u:1"]}], "sections": []}
 )
+
+
+def note_then_title(titler: LlmProvider) -> Callable[[LlmSettings], LlmProvider]:
+    """The note call gets a note; the title call, made with its own short settings, goes to
+    `titler`."""
+    return lambda s: titler if s.timeout_s == TITLE_TIMEOUT_S else FakeProvider([GOOD])
+
+
+def wait_for_note_jobs(timeout: float = 10.0) -> None:
+    """Naming runs on the note job's thread after `note.ready`: when it ends, so has naming."""
+    deadline = time.monotonic() + timeout
+    while any(t.name == "note-writer" for t in threading.enumerate()):
+        assert time.monotonic() < deadline, "the note job did not finish"
+        time.sleep(0.01)
 
 
 class NumberAsr:
@@ -304,6 +319,43 @@ def test_retry_writes_the_note_for_a_finished_meeting(tmp_path: Path) -> None:
     events.wait_for("note.ready", meeting_id=mid)
 
 
+def test_a_new_meeting_is_named_from_its_note_once_the_note_is_out(tmp_path: Path) -> None:
+    named = FakeProvider([title_reply("Search migration status")])
+    service, events, _, paths = make(tmp_path, provider=note_then_title(named))
+    mid = service.start("")["meeting_id"]
+    events.wait_for("transcript.utterance")
+    service.stop()
+    renamed = events.wait_for("meeting.renamed", meeting_id=mid)
+    assert renamed == {"meeting_id": mid, "title": "Search migration status"}
+    items = list(events.items)
+    note_at = next(i for i, (n, _) in enumerate(items) if n == "note.ready")
+    idle_at = max(
+        i for i, (n, p) in enumerate(items) if n == "recording.state" and p["state"] == "idle"
+    )
+    named_at = next(i for i, (n, _) in enumerate(items) if n == "meeting.renamed")
+    assert note_at < idle_at < named_at  # the note and Record never wait for the title
+    meetings, _, close = _db(paths)
+    try:
+        assert meetings.get_meeting(mid)["title"] == "Search migration status"
+    finally:
+        close()
+
+
+def test_a_title_that_cannot_be_written_keeps_the_placeholder(tmp_path: Path) -> None:
+    service, events, _, paths = make(tmp_path, provider=note_then_title(Down([])))
+    mid = service.start("")["meeting_id"]
+    events.wait_for("transcript.utterance")
+    service.stop()
+    events.wait_for("note.ready", meeting_id=mid)
+    wait_for_note_jobs()
+    assert "meeting.renamed" not in events.names()
+    meetings, _, close = _db(paths)
+    try:
+        assert has_placeholder_title(meetings.get_meeting(mid)["title"])
+    finally:
+        close()
+
+
 def test_no_speech_means_no_note(tmp_path: Path) -> None:
     service, events, _, _ = make(tmp_path, speech=False)
     mid = service.start("")["meeting_id"]
@@ -431,7 +483,8 @@ def test_the_next_note_is_written_by_the_chosen_model(tmp_path: Path) -> None:
     events.wait_for("transcript.utterance")
     service.stop()
     events.wait_for("note.ready", meeting_id=mid)
-    assert used == ["qwen3.5:9b"]
+    wait_for_note_jobs()
+    assert used == ["qwen3.5:9b", "qwen3.5:9b"]  # the note, then its title
 
 
 def test_note_models_are_the_ones_installed_in_ollama(tmp_path: Path) -> None:

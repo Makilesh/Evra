@@ -5,6 +5,7 @@ import {
   onEvent,
   type Levels,
   type MeetingDetail,
+  type MeetingRenamed,
   type MeetingSummary,
   type MicList,
   type NoteFailed,
@@ -150,6 +151,16 @@ export function useEvra() {
         setState((s) => ({
           ...s,
           noteStatus: { ...s.noteStatus, [failed.meeting_id]: { failed: { reason: failed.reason, model: failed.model } } },
+        }));
+      }),
+      // The name lands in place: a rename being typed keeps its own draft (see MeetingView's Title).
+      onEvent("meeting.renamed", (payload) => {
+        const { meeting_id, title } = payload as MeetingRenamed;
+        setState((s) => ({
+          ...s,
+          meetings: s.meetings.map((m) => (m.id === meeting_id ? { ...m, title } : m)),
+          detail:
+            s.detail?.meeting.id === meeting_id ? { ...s.detail, meeting: { ...s.detail.meeting, title } } : s.detail,
         }));
       }),
     ];

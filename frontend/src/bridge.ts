@@ -111,6 +111,12 @@ export interface NoteFailed {
   model?: string;
 }
 
+/** Evra named a meeting from its note (it only replaces the "Recording …" placeholder). */
+export interface MeetingRenamed {
+  meeting_id: string;
+  title: string;
+}
+
 /** "system" is Match Windows: it follows Windows' light or dark app mode. */
 export type Theme = "light" | "dark" | "system";
 

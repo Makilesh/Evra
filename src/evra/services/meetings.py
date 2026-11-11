@@ -24,6 +24,7 @@ from evra.llm.provider import LlmError, LlmModelMissing, LlmProvider
 from evra.modelstore import ModelError
 from evra.notes.job import failure_reason, write_and_save
 from evra.notes.templates import load_template
+from evra.notes.title import name_meeting, placeholder_title, title_settings
 from evra.notes.writer import NoteError, NoTranscript
 from evra.paths import AppPaths
 from evra.services.views import utterance_view
@@ -162,7 +163,7 @@ class MeetingService:
                 return self._back_to_idle({"ok": False, "reason": "closing"})
             recording = self._kit.new_recording(
                 mic_name or None,
-                title=f"Recording {datetime.now():%Y-%m-%d %H:%M}",
+                title=placeholder_title(datetime.now()),
                 situation=self._settings.default_situation,
                 on_utterance=self._on_utterance,
                 on_level=self._on_level,
@@ -254,10 +255,11 @@ class MeetingService:
         ).start()
 
     def _note_job(self, meeting_id: str) -> None:
+        llm = self._settings.llm  # the note and its title use the same model
         try:
             conn = connect(self._paths.db_path)
             try:
-                event = self._write(conn, meeting_id)
+                event = self._write(conn, meeting_id, llm)
                 MeetingStore(conn).finish_meeting(meeting_id, state="ready")
             finally:
                 conn.close()
@@ -268,13 +270,35 @@ class MeetingService:
             payload = self._set("idle")
         self._emit(*event)
         self._announce(payload)
+        if event[0] == "note.ready":
+            self._name(meeting_id, llm)
 
-    def _write(self, conn: sqlite3.Connection, meeting_id: str) -> tuple[str, dict[str, Any]]:
+    def _name(self, meeting_id: str, llm: LlmSettings) -> None:
+        """Name the meeting from its new note (A8). It runs once the note is shown and Record
+        is back, so neither waits for a title; if it fails, the placeholder stays."""
+        try:
+            conn = connect(self._paths.db_path)
+            try:
+                provider = self._provider_factory(title_settings(llm))
+                title = name_meeting(conn, meeting_id, provider=provider, model=llm.model)
+            finally:
+                conn.close()
+        except LlmError as exc:  # Ollama went away or gave up: the placeholder stays
+            log.info("meeting_not_named", reason=type(exc).__name__)
+            return
+        except Exception as exc:  # e.g. a busy database
+            log.warning("meeting_not_named", error=type(exc).__name__)
+            return
+        if title is not None:
+            self._emit("meeting.renamed", {"meeting_id": meeting_id, "title": title})
+
+    def _write(
+        self, conn: sqlite3.Connection, meeting_id: str, llm: LlmSettings
+    ) -> tuple[str, dict[str, Any]]:
         store = MeetingStore(conn)
         meeting = store.get_meeting(meeting_id)
         version_id = store.current_transcript_version(meeting_id)
         utterances = store.utterances(version_id) if version_id else []
-        llm = self._settings.llm
         try:
             if version_id is None or not utterances:
                 raise NoTranscript("no transcript")
