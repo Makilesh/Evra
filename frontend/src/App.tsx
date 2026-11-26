@@ -15,6 +15,8 @@ export default function App() {
     startRecording,
     stopRecording,
     writeNote,
+    ask,
+    prepareAsk,
     rename,
     dismissStartError,
     refreshMics,
@@ -111,6 +113,8 @@ export default function App() {
             canWrite={canWrite}
             onWrite={() => void writeNote(detail.meeting.id)}
             onRename={(title) => rename(detail.meeting.id, title)}
+            onAsk={(text) => ask(detail.meeting.id, text)}
+            onPrepareAsk={() => prepareAsk(detail.meeting.id)}
           />
         ) : state.ready && state.meetings.length === 0 ? (
           <Welcome />

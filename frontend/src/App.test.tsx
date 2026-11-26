@@ -31,7 +31,7 @@ it("records, shows the live transcript, then the note once it is written", async
   const api = makeFakeApi({
     list_meetings: async () => meetings,
     get_meeting: async (id) =>
-      id === "m2" ? { meeting: LIVE, utterances: [], note: noted ? DETAIL.note : null } : DETAIL,
+      id === "m2" ? { meeting: LIVE, utterances: [], note: noted ? DETAIL.note : null, questions: [] } : DETAIL,
   });
   setApiForTests(api);
   render(<App />);
@@ -190,4 +190,33 @@ it("welcomes a first run with what Record does and the two shortcuts", async () 
   expect(shortcuts).toHaveTextContent("Search your meetings");
   expect(shortcuts).toHaveTextContent("Ctrl ,");
   expect(shortcuts).toHaveTextContent("Settings");
+});
+
+it("asks about the open meeting and shows the answer when it arrives", async () => {
+  const api = makeFakeApi();
+  setApiForTests(api);
+  render(<App />);
+  await screen.findByText("Launch moves to October 14.");
+  await userEvent.click(screen.getByRole("tab", { name: "Ask" }));
+  expect(api.prepare_ask).toHaveBeenCalledWith("m1");
+  await userEvent.type(screen.getByRole("textbox", { name: "Ask about this meeting" }), "What did I promise?{Enter}");
+  expect(api.ask_meeting).toHaveBeenCalledWith("m1", "What did I promise?");
+  expect(await screen.findByText("Reading the meeting…")).toBeInTheDocument();
+  act(() =>
+    emit("question.updated", {
+      meeting_id: "m1",
+      question: {
+        id: "q1",
+        text: "What did I promise?",
+        asked_at: 1,
+        state: "answered",
+        points: [{ text: "You'll send the proposal by Thursday.", citations: [{ utterance_id: "u2", start_ms: 110_000 }] }],
+        excerpt: false,
+        model: "gemma4:12b",
+      },
+    }),
+  );
+  expect(screen.getByText("You'll send the proposal by Thursday.")).toBeInTheDocument();
+  expect(screen.queryByText("Reading the meeting…")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Ask about this meeting" })).toBeEnabled();
 });

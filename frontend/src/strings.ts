@@ -1,5 +1,5 @@
 // Every user-facing string in one place (BUILD.md §8.4: one i18n layer later).
-import type { NoteFailureReason, Theme } from "@/bridge";
+import type { AskFailureReason, AskRefusal, NoteFailureReason, Theme } from "@/bridge";
 
 export const strings = {
   claim: "Everything stays on this PC",
@@ -55,6 +55,19 @@ export const strings = {
   dismiss: "Dismiss",
   jumpTo: (clock: string) => `Jump to ${clock} in the transcript`,
   stages: { writing: "Writing note…" } as Record<string, string>,
+  askTab: "Ask",
+  askLabel: "Ask about this meeting",
+  askPlaceholder: "Ask about this meeting…",
+  askButton: "Ask",
+  askIntro: "Ask anything about this call. Every answer sits beside the lines it came from.",
+  askSuggestions: ["What did I promise?", "What did they promise?", "What did we decide?", "What's still open?"],
+  askThinking: "Reading the meeting…",
+  notDiscussed: "Not discussed in this meeting.",
+  askUnchecked: "Evra found an answer but couldn't check it against the transcript, so it isn't shown.",
+  askExcerpt: "This call is too long to read whole, so Evra read the parts that match your question.",
+  askAgain: "Ask again",
+  askAnswered: "Answer ready",
+  askAfterRecording: "You can ask once the recording ends.",
   bridgeDown: "Evra couldn't reach its Python side. Close the window and start Evra again.",
   settings: "Settings",
   settingsShortcut: "Ctrl ,",
@@ -108,4 +121,41 @@ export function noteFailureText(reason: NoteFailureReason, model?: string): stri
 
 export function canRetry(reason: NoteFailureReason): boolean {
   return reason !== "too_long" && reason !== "no_transcript" && reason !== "cloud_model";
+}
+
+/** The note's failure texts in answer words; Ollama's own problems read the same for both. */
+export function askFailureText(reason: AskFailureReason | undefined): string {
+  switch (reason) {
+    case "interrupted":
+      return "Evra closed before it answered. Ask again.";
+    case "too_long":
+      return "This question needs more room than the model's settings allow.";
+    case "cut_off":
+      return "The model ran out of room while answering.";
+    case "invalid":
+      return "The model didn't return a valid answer.";
+    case "timeout":
+      return "The model took too long to answer.";
+    case "nothing_supported":
+      return "Nothing in the answer could be checked against the transcript.";
+    case "no_transcript":
+      return "Nothing was transcribed, so there's nothing to ask about.";
+    case "ollama_down":
+    case "model_missing":
+    case "cloud_model":
+      return noteFailureText(reason);
+    default:
+      return "The question couldn't be answered.";
+  }
+}
+
+const ASK_REFUSALS: Record<AskRefusal, string> = {
+  invalid: "Type a question of up to 500 characters.",
+  busy: "Evra is still answering the last question.",
+  recording: strings.askAfterRecording,
+  no_transcript: "There's no transcript to ask about yet.",
+};
+
+export function askRefusalText(reason: AskRefusal): string {
+  return ASK_REFUSALS[reason];
 }

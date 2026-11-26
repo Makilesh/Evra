@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
-import type { MeetingDetail } from "@/bridge";
+import type { AskRefusal, MeetingDetail } from "@/bridge";
 import { copyText } from "@/clipboard";
+import { AskView } from "@/components/AskView";
 import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
 import { NoteView } from "@/components/NoteView";
 import { Stamp } from "@/components/Stamp";
@@ -18,11 +19,25 @@ interface MeetingViewProps {
   canWrite: boolean;
   onWrite: () => void;
   onRename: (title: string) => Promise<boolean>;
+  onAsk: (text: string) => Promise<AskRefusal | null>;
+  onPrepareAsk: () => void;
 }
 
-type Tab = "note" | "transcript";
+type Tab = "note" | "transcript" | "ask";
 
-export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWrite, onRename }: MeetingViewProps) {
+const TABS: Tab[] = ["note", "transcript", "ask"];
+
+export function MeetingView({
+  detail,
+  isLive,
+  noteStatus,
+  hints,
+  canWrite,
+  onWrite,
+  onRename,
+  onAsk,
+  onPrepareAsk,
+}: MeetingViewProps) {
   const [tab, setTab] = useState<Tab>(isLive ? "transcript" : "note");
   const [highlight, setHighlight] = useState<string | null>(null);
   const stage = noteStatus?.stage;
@@ -36,15 +51,15 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
   const line = [meetingLine(meeting), strings.oneOnOne].join(" · ");
   const settled = note !== null && !stage;
 
-  // Arrow keys move between the two tabs, as Windows tab strips do; Tab leaves the strip.
+  // Arrow keys cycle the tabs, as Windows tab strips do; Tab leaves the strip.
   function onTabKey(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
     if ((event.target as HTMLElement).getAttribute("role") !== "tab") return;
     event.preventDefault();
-    const next: Tab = tab === "note" ? "transcript" : "note";
-    setTab(next);
-    const tabs = event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]');
-    tabs[next === "note" ? 0 : 1]?.focus();
+    const step = event.key === "ArrowRight" ? 1 : TABS.length - 1;
+    const next = (TABS.indexOf(tab) + step) % TABS.length;
+    setTab(TABS[next]);
+    event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
   }
 
   function cite(utteranceId: string) {
@@ -70,29 +85,18 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
           {settled && <Stamp model={note.model} points={pointCount(note)} />}
         </header>
         <div role="tablist" aria-label={strings.meetingTabs} onKeyDown={onTabKey} className="tabs mt-6">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "note"}
-            tabIndex={tab === "note" ? 0 : -1}
-            onClick={() => setTab("note")}
-            className="tab"
-          >
+          <TabButton selected={tab === "note"} onSelect={() => setTab("note")}>
             {strings.noteTab}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "transcript"}
-            tabIndex={tab === "transcript" ? 0 : -1}
-            onClick={() => setTab("transcript")}
-            className="tab"
-          >
+          </TabButton>
+          <TabButton selected={tab === "transcript"} onSelect={() => setTab("transcript")}>
             {strings.transcriptTab}
             <span aria-hidden="true" className="ml-1.5 text-[13px] font-medium tabular-nums">
               {strings.lineCount(utterances.length)}
             </span>
-          </button>
+          </TabButton>
+          <TabButton selected={tab === "ask"} onSelect={() => setTab("ask")}>
+            {strings.askTab}
+          </TabButton>
           <span className="flex-1" />
           {tab === "note" && settled && <CopyButton text={() => noteToMarkdown(meeting.title, line, note)} />}
         </div>
@@ -107,11 +111,36 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
             onWrite={onWrite}
             onCite={cite}
           />
-        ) : (
+        ) : tab === "transcript" ? (
           <TranscriptView utterances={utterances} follow={isLive} highlightId={highlight} />
+        ) : (
+          <AskView
+            questions={detail.questions}
+            utterances={utterances}
+            isLive={isLive}
+            onAsk={onAsk}
+            onPrepare={onPrepareAsk}
+            onCite={cite}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+// Only the selected tab is in the Tab order; the arrow keys reach the others.
+function TabButton({ selected, onSelect, children }: { selected: boolean; onSelect: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      tabIndex={selected ? 0 : -1}
+      onClick={onSelect}
+      className="tab"
+    >
+      {children}
+    </button>
   );
 }
 

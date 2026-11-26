@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getApi,
   onEvent,
+  type AskRefusal,
+  type AskReply,
   type Levels,
   type MeetingDetail,
   type MeetingRenamed,
@@ -11,6 +13,8 @@ import {
   type NoteFailed,
   type NoteFailureReason,
   type NoteModels,
+  type Question,
+  type QuestionUpdated,
   type RecordingFinished,
   type RecordingState,
   type SettingsInfo,
@@ -77,6 +81,15 @@ function without<T>(map: Record<string, T>, key: string): Record<string, T> {
   const rest = { ...map };
   delete rest[key];
   return rest;
+}
+
+/** The question replaced in place, or added when the meeting doesn't have it yet. */
+function withQuestion(detail: MeetingDetail, question: Question): MeetingDetail {
+  const known = detail.questions.some((q) => q.id === question.id);
+  const questions = known
+    ? detail.questions.map((q) => (q.id === question.id ? question : q))
+    : [...detail.questions, question];
+  return { ...detail, questions };
 }
 
 export function useEvra() {
@@ -163,6 +176,12 @@ export function useEvra() {
             s.detail?.meeting.id === meeting_id ? { ...s.detail, meeting: { ...s.detail.meeting, title } } : s.detail,
         }));
       }),
+      // An answer lands on the open meeting. It may beat the reply to ask_meeting (a fast
+      // failure), so an unknown question is added rather than dropped.
+      onEvent("question.updated", (payload) => {
+        const { meeting_id, question } = payload as QuestionUpdated;
+        setState((s) => (s.detail?.meeting.id === meeting_id ? { ...s, detail: withQuestion(s.detail, question) } : s));
+      }),
     ];
     getApi()
       .then(async (api) => {
@@ -208,6 +227,34 @@ export function useEvra() {
   const writeNote = useCallback(async (id: string) => {
     setState((s) => ({ ...s, noteStatus: without(s.noteStatus, id) }));
     await (await getApi()).write_note(id);
+  }, []);
+
+  // One question at a time (Python refuses another while one is answered). The reply only says
+  // the question was taken; its answer arrives as `question.updated`.
+  const ask = useCallback(async (meetingId: string, text: string): Promise<AskRefusal | null> => {
+    let reply: AskReply;
+    try {
+      reply = await (await getApi()).ask_meeting(meetingId, text);
+    } catch {
+      return "busy";
+    }
+    const question = reply.question;
+    if (!reply.ok || !question) return reply.reason ?? "busy";
+    setState((s) => {
+      const detail = s.detail;
+      // already there when its answer came first: keep the answer
+      if (!detail || detail.meeting.id !== meetingId || detail.questions.some((q) => q.id === question.id)) return s;
+      return { ...s, detail: { ...detail, questions: [...detail.questions, question] } };
+    });
+    return null;
+  }, []);
+
+  const prepareAsk = useCallback((meetingId: string) => {
+    getApi()
+      .then((api) => api.prepare_ask(meetingId))
+      .catch(() => {
+        // a warm-up only: a question reports its own errors
+      });
   }, []);
 
   const rename = useCallback(
@@ -283,6 +330,8 @@ export function useEvra() {
     startRecording,
     stopRecording,
     writeNote,
+    ask,
+    prepareAsk,
     rename,
     dismissStartError,
     refreshMics,

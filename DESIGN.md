@@ -164,6 +164,29 @@ components:
   note-failed-row:
     backgroundColor: "{colors.band-deep}"
     rounded: "{rounded.control}"
+  ask-question:
+    textColor: "{colors.ink}"
+    typography: "{typography.body-strong}"
+  ask-state-row:
+    backgroundColor: "{colors.band}"
+    rounded: "{rounded.control}"
+  ask-failed-row:
+    backgroundColor: "{colors.band-deep}"
+    rounded: "{rounded.control}"
+  ask-suggestion:
+    backgroundColor: "{colors.band}"
+    textColor: "{colors.ink}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  ask-suggestion-hover:
+    backgroundColor: "{colors.band-deep}"
+  ask-input:
+    backgroundColor: "{colors.band}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+    rounded: "{rounded.well}"
+    height: "40px"
   banner:
     backgroundColor: "{colors.band-deep}"
     textColor: "{colors.ink}"
@@ -211,7 +234,7 @@ A paper-and-board palette: two greens of pad, a tan board, a deep green rule, na
 
 ### Primary
 - **Steno Rule Green** (rule): the structural colour. Draws the centre rule, the detents, the time tabs, the stamp, the focus ring, the caret, the thin scrollbar and the record button while a note is being written. Section heads on the note sheet are set in it.
-- **Deep Rule Green** (rule-ink): the same green a step darker, for the caps titles of the writing and failed rows where they sit on a band fill.
+- **Deep Rule Green** (rule-ink): the same green a step darker, for the caps titles of the writing, reading and failed rows where they sit on a band fill.
 
 ### Secondary
 - **Recording Red** (rec): the dot on the Record button and the live pip beside a meeting in the rail.
@@ -224,8 +247,8 @@ A paper-and-board palette: two greens of pad, a tan board, a deep green rule, na
 
 ### Neutral
 - **Steno Pad** (pad): the main surface, the selected meeting in the rail, the background of time tabs and transcript times so they sit on the rule.
-- **Pad Band** (band): row fill for hover and focus on note points, the highlighted transcript line, the writing row, the Copy button, the title being edited.
-- **Deep Band** (band-deep): stronger fill for the failed-note row, notices (banners), text selection, Copy hover, and the first frame of a landing line.
+- **Pad Band** (band): row fill for hover and focus on note points, the highlighted transcript line, the writing row, the Copy button, the title being edited; on the Ask tab the input, the one-click questions and the reading, not-discussed and unchecked rows.
+- **Deep Band** (band-deep): stronger fill for the failed-note row and a failed question, notices (banners), text selection, Copy and one-click hover, and the first frame of a landing line.
 - **Chipboard** (chip): the rail.
 - **Chipboard Edge** (chip-edge): the 1px line where the rail meets the pad and above the microphone.
 - **Chipboard Well** (chip-well): wells cut into the rail (search, microphone) and meeting hover.
@@ -302,7 +325,7 @@ Gently rounded, never pill-shaped except for dots and meters. Small marks (time 
 
 ### Navigation
 - **Meetings in the rail:** grouped under caps day heads; each item is the title (semibold) over a 13px meta line (time and duration). Hover fills chipboard-well; the selected item takes the pad colour and merges into the pad. A live meeting shows a red pip and "Recording"; a meeting whose note is being written shows a rule-green pip.
-- **Tabs:** Note and Transcript (with a line count) on a 2px ink rule; unselected muted (ink on hover), selected ink with a 5px ink bar that draws out from its middle over 220ms. Arrow keys move between the tabs; only the selected tab is in the Tab order.
+- **Tabs:** Note, Transcript (with a line count) and Ask on a 2px ink rule; unselected muted (ink on hover), selected ink with a 5px ink bar that draws out from its middle over 220ms. Arrow keys cycle the tabs; only the selected tab is in the Tab order. Copy as Markdown belongs to the Note tab only.
 - **Settings in the rail:** at the foot, below the microphone, as Windows apps place it: the sliders icon, the word and a Ctrl , hint, in chipboard ink. Hover fills chipboard-well; while Settings is open it keeps that fill with ink text.
 
 ### The Note Sheet (signature)
@@ -313,6 +336,9 @@ The writing and failed states are drawn as rows on the sheet. Writing: a band ro
 
 ### Transcript
 Lines sit on the same rule with their time on it in 13px meta type; the speaker is named once per turn, in coloured caps in its own column, and an 8px detent sits on the rule in the space between turns. Hover fills a line with half a band. While live, a row below the last line says "Listening…" beside a pulsing rule-green dot, where the rule fades out; it shows before the first line too. A newly arrived line lands at heavier weight (640) and settles to 400 over 900ms; a cited line fills band-deep and settles to band over 1400ms.
+
+### Ask
+The meeting's questions as a thread on the note sheet, with a form fixed under it. Each question heads its rows in body-strong (15px, 600) with a square detent on the rule; its answer is note rows (point | time tabs on the rule | quotes), and when only the parts of a long call that match the question were read, a 13px muted line under the points says so. While the answer is being written, a band row shows a caps title in deep rule green over the progress rule; "Not discussed in this meeting." and an answer that couldn't be checked are band rows; a failure is a band-deep row with its reason and an Ask again primary button. The thread fades out over its last 28px above the form. The form: one-click questions as band-filled buttons (like Copy as Markdown), then the input, a band well (10px radius, 40px tall) with an Ask primary button; Enter asks. Everything that asks is disabled (band at half strength, muted text) while an answer is pending or the meeting is recording, when the empty thread says so instead of its intro; a refusal is a 13px muted line under the input. The newest question scrolls into view when asked and again when its answer lands, stopping clear of the fade, and the input takes focus back. On short windows the form tightens and, once there are questions, the one-click questions step aside.
 
 ### Stamp (signature)
 Provenance as one mark: a 2px rule-green bordered box, 7px radius, rotated -1.2deg, in rule green, with a caps first line ("written on this PC"), the model, and the number of points checked against the transcript. Shown only once a note is settled.

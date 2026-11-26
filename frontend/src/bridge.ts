@@ -67,6 +67,8 @@ export interface MeetingDetail {
   meeting: MeetingSummary;
   utterances: Utterance[];
   note: Note | null;
+  /** Oldest first. */
+  questions: Question[];
 }
 
 export interface MicList {
@@ -98,6 +100,41 @@ export type NoteFailureReason =
   | "timeout"
   | "no_transcript"
   | "llm_error";
+
+export type QuestionState = "asking" | "answered" | "not_found" | "unchecked" | "failed";
+
+/** A question fails for the note's reasons, or because Evra closed while answering it. */
+export type AskFailureReason = NoteFailureReason | "interrupted";
+
+/** Why Python did not take a question (nothing was stored). */
+export type AskRefusal = "invalid" | "busy" | "recording" | "no_transcript";
+
+/** A question about one meeting. Its answer is points cited like a note's. */
+export interface Question {
+  id: string;
+  text: string;
+  asked_at: number;
+  state: QuestionState;
+  /** Only when failed. */
+  reason?: AskFailureReason;
+  points: NoteBlock[];
+  /** The call was too long to read whole, so only the parts matching the question were read. */
+  excerpt: boolean;
+  /** Only when answered. */
+  model?: string;
+}
+
+export interface AskReply {
+  ok: boolean;
+  reason?: AskRefusal;
+  /** Stored and "asking"; the answer arrives as `question.updated`. */
+  question?: Question;
+}
+
+export interface QuestionUpdated {
+  meeting_id: string;
+  question: Question;
+}
 
 export interface RecordingFinished {
   meeting_id: string;
@@ -144,6 +181,9 @@ export interface EvraApi {
   start_recording(micName: string): Promise<StartReply>;
   stop_recording(): Promise<OkReply>;
   write_note(meetingId: string): Promise<OkReply>;
+  ask_meeting(meetingId: string, question: string): Promise<AskReply>;
+  /** Reads the meeting into the model ahead of a question; the reply says nothing useful. */
+  prepare_ask(meetingId: string): Promise<OkReply>;
   rename_meeting(meetingId: string, title: string): Promise<OkReply>;
   recording_state(): Promise<RecordingState>;
   get_settings(): Promise<SettingsInfo>;

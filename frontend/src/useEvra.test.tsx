@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
-import { emit, setApiForTests, type MeetingSummary } from "@/bridge";
+import { afterEach, expect, it, vi } from "vitest";
+import { emit, setApiForTests, type AskRefusal, type MeetingSummary, type Question } from "@/bridge";
 import { DETAIL, MEETING, makeFakeApi } from "@/test/fakeApi";
 import { useEvra } from "@/useEvra";
 
@@ -42,7 +42,7 @@ it("picks up a recording in progress after the window reloads", async () => {
     makeFakeApi({
       recording_state: async () => ({ state: "recording", meeting_id: "m2", started_at: 5 }),
       list_meetings: async () => [LIVE, MEETING],
-      get_meeting: async (id) => (id === "m2" ? { meeting: LIVE, utterances: [], note: null } : DETAIL),
+      get_meeting: async (id) => (id === "m2" ? { meeting: LIVE, utterances: [], note: null, questions: [] } : DETAIL),
     }),
   );
   const { result } = renderHook(() => useEvra());
@@ -55,7 +55,7 @@ it("opens a meeting when its recording starts", async () => {
   setApiForTests(
     makeFakeApi({
       list_meetings: async () => meetings,
-      get_meeting: async (id) => (id === "m2" ? { meeting: LIVE, utterances: [], note: null } : DETAIL),
+      get_meeting: async (id) => (id === "m2" ? { meeting: LIVE, utterances: [], note: null, questions: [] } : DETAIL),
     }),
   );
   const { result } = renderHook(() => useEvra());
@@ -130,4 +130,75 @@ it("lists the microphones again on request", async () => {
   await waitFor(() => expect(result.current.state.mics?.mics).toEqual(["Array"]));
   await act(() => result.current.refreshMics());
   expect(result.current.state.mics?.mics).toEqual(["Array", "Headset (Mivi Roam 2)"]);
+});
+
+const ASKING: Question = { id: "q1", text: "What did I promise?", asked_at: 1, state: "asking", points: [], excerpt: false };
+const ANSWERED: Question = {
+  ...ASKING,
+  state: "answered",
+  points: [{ text: "You'll send the proposal by Thursday.", citations: [{ utterance_id: "u2", start_ms: 110_000 }] }],
+  model: "gemma4:12b",
+};
+
+it("ask appends the question and the event updates it", async () => {
+  const api = makeFakeApi({ ask_meeting: vi.fn(async () => ({ ok: true, question: ASKING })) });
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  let refusal: AskRefusal | null = "busy";
+  await act(async () => {
+    refusal = await result.current.ask("m1", "What did I promise?");
+  });
+  expect(refusal).toBeNull();
+  expect(api.ask_meeting).toHaveBeenCalledWith("m1", "What did I promise?");
+  expect(result.current.state.detail?.questions).toEqual([ASKING]);
+  act(() => emit("question.updated", { meeting_id: "other", question: { ...ANSWERED, id: "q9" } }));
+  expect(result.current.state.detail?.questions).toEqual([ASKING]);
+  act(() => emit("question.updated", { meeting_id: "m1", question: ANSWERED }));
+  expect(result.current.state.detail?.questions).toEqual([ANSWERED]);
+});
+
+it("ask returns the refusal, and busy when the bridge fails", async () => {
+  const replies = [
+    async () => ({ ok: false, reason: "recording" as const }),
+    async () => {
+      throw new Error("bridge gone");
+    },
+  ];
+  setApiForTests(makeFakeApi({ ask_meeting: vi.fn(() => replies.shift()!()) }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).not.toBeNull());
+  await act(async () => expect(await result.current.ask("m1", "When is it due?")).toBe("recording"));
+  await act(async () => expect(await result.current.ask("m1", "When is it due?")).toBe("busy"));
+  expect(result.current.state.detail?.questions).toEqual([]);
+});
+
+it("keeps an answer that arrives before the reply to the question", async () => {
+  setApiForTests(
+    makeFakeApi({
+      ask_meeting: vi.fn(async () => {
+        emit("question.updated", { meeting_id: "m1", question: ANSWERED });
+        return { ok: true, question: ASKING };
+      }),
+    }),
+  );
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).not.toBeNull());
+  await act(async () => {
+    await result.current.ask("m1", "What did I promise?");
+  });
+  expect(result.current.state.detail?.questions).toEqual([ANSWERED]);
+});
+
+it("asks Python to read the meeting ahead, ignoring the reply and errors", async () => {
+  const api = makeFakeApi({
+    prepare_ask: vi.fn(async () => {
+      throw new Error("not now");
+    }),
+  });
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.ready).toBe(true));
+  act(() => result.current.prepareAsk("m1"));
+  await waitFor(() => expect(api.prepare_ask).toHaveBeenCalledWith("m1"));
 });

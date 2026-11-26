@@ -33,6 +33,7 @@ export const DETAIL: MeetingDetail = {
       },
     ],
   },
+  questions: [],
 };
 
 export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
@@ -63,6 +64,11 @@ export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
     set_note_model: vi.fn(async () => ({ ok: true })),
     list_note_models: vi.fn(async () => ({ ok: true, models: ["gemma4:12b", "qwen3.5:9b"] })),
     open_data_folder: vi.fn(async () => ({ ok: true })),
+    ask_meeting: vi.fn(async (_meetingId: string, question: string) => ({
+      ok: true,
+      question: { id: "q1", text: question, asked_at: 1, state: "asking" as const, points: [], excerpt: false },
+    })),
+    prepare_ask: vi.fn(async () => ({ ok: true })),
     ...overrides,
   };
 }

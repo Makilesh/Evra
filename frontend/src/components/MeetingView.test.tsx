@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+import type { Question } from "@/bridge";
 import { MeetingView } from "@/components/MeetingView";
 import { DETAIL } from "@/test/fakeApi";
 
@@ -13,6 +14,8 @@ function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
     canWrite: true,
     onWrite: vi.fn(),
     onRename: vi.fn(async () => true),
+    onAsk: vi.fn(async () => null),
+    onPrepareAsk: vi.fn(),
     ...extra,
   };
   return { props, ...render(<MeetingView {...props} />) };
@@ -113,20 +116,51 @@ it("says when the note could not be copied", async () => {
   expect(await screen.findByRole("button", { name: "Couldn't copy" })).toBeInTheDocument();
 });
 
-it("moves between the tabs with the arrow keys, keeping one tab in the Tab order", async () => {
+it("arrow keys cycle note, transcript and ask", async () => {
   view();
   const note = screen.getByRole("tab", { name: "Note" });
   const transcript = screen.getByRole("tab", { name: "Transcript" });
+  const ask = screen.getByRole("tab", { name: "Ask" });
   expect(note).toHaveAttribute("tabindex", "0");
   expect(transcript).toHaveAttribute("tabindex", "-1");
+  expect(ask).toHaveAttribute("tabindex", "-1");
   note.focus();
   await userEvent.keyboard("{ArrowRight}");
   expect(transcript).toHaveAttribute("aria-selected", "true");
   expect(transcript).toHaveFocus();
   expect(note).toHaveAttribute("tabindex", "-1");
   await userEvent.keyboard("{ArrowRight}");
+  expect(ask).toHaveAttribute("aria-selected", "true");
+  expect(ask).toHaveFocus();
+  expect(screen.getByRole("textbox", { name: "Ask about this meeting" })).toBeInTheDocument();
+  await userEvent.keyboard("{ArrowRight}");
   expect(note).toHaveAttribute("aria-selected", "true");
   expect(note).toHaveFocus();
   await userEvent.keyboard("{ArrowLeft}");
+  expect(ask).toHaveAttribute("aria-selected", "true");
+  expect(ask).toHaveFocus();
+  await userEvent.keyboard("{ArrowLeft}");
   expect(transcript).toHaveAttribute("aria-selected", "true");
+});
+
+it("asks on the Ask tab, keeps Copy for the note, and jumps from an answer to its line", async () => {
+  const answered: Question = {
+    id: "q1",
+    text: "What date does marketing want?",
+    asked_at: 1,
+    state: "answered",
+    points: [{ text: "October 14.", citations: [{ utterance_id: "u1", start_ms: 65_000 }] }],
+    excerpt: false,
+    model: "gemma4:12b",
+  };
+  const { props } = view({ detail: { ...DETAIL, questions: [answered] } });
+  await userEvent.click(screen.getByRole("tab", { name: "Ask" }));
+  expect(props.onPrepareAsk).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("button", { name: "Copy as Markdown" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "What date does marketing want?" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "What did we decide?" }));
+  expect(props.onAsk).toHaveBeenCalledWith("What did we decide?");
+  await userEvent.click(screen.getByRole("button", { name: "Jump to 01:05 in the transcript" }));
+  expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByText("Marketing wants October 14.").closest("li")).toHaveAttribute("data-highlighted", "true");
 });
