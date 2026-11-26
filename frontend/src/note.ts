@@ -20,6 +20,12 @@ export function pointCount(note: Note): number {
   return note.sections.reduce((sum, section) => sum + section.blocks.length, 0);
 }
 
+/** Action items copy as Markdown task boxes, ticked when done: "- [x] You: …". */
+function bullet(block: NoteBlock): string {
+  if (block.item?.kind !== "action_item") return "- ";
+  return block.item.status === "done" ? "- [x] " : "- [ ] ";
+}
+
 export function noteToMarkdown(title: string, line: string, note: Note): string {
   const out = [`# ${title}`, line];
   for (const section of note.sections) {
@@ -33,7 +39,7 @@ export function noteToMarkdown(title: string, line: string, note: Note): string 
         ids.add(citation.utterance_id);
         times.push(formatClock(citation.start_ms));
       }
-      out.push(`- ${block.text}${times.length > 0 ? ` (${times.join(", ")})` : ""}`);
+      out.push(`${bullet(block)}${block.text}${times.length > 0 ? ` (${times.join(", ")})` : ""}`);
     }
   }
   return `${out.join("\n")}\n`;

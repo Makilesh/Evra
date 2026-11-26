@@ -1,5 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
-import type { AskRefusal, MeetingDetail } from "@/bridge";
+import type { AskRefusal, ItemStatus, MeetingDetail } from "@/bridge";
 import { copyText } from "@/clipboard";
 import { AskView } from "@/components/AskView";
 import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
@@ -21,6 +21,7 @@ interface MeetingViewProps {
   onRename: (title: string) => Promise<boolean>;
   onAsk: (text: string) => Promise<AskRefusal | null>;
   onPrepareAsk: () => void;
+  onItemStatus: (itemId: string, status: ItemStatus) => void;
 }
 
 type Tab = "note" | "transcript" | "ask";
@@ -37,15 +38,17 @@ export function MeetingView({
   onRename,
   onAsk,
   onPrepareAsk,
+  onItemStatus,
 }: MeetingViewProps) {
   const [tab, setTab] = useState<Tab>(isLive ? "transcript" : "note");
   const [highlight, setHighlight] = useState<string | null>(null);
   const stage = noteStatus?.stage;
   const [seenStage, setSeenStage] = useState(stage);
   if (stage !== seenStage) {
-    // a note started being written: show its progress (adjusting state on a prop change)
+    // a note started being written: show its progress (adjusting state on a prop change); its
+    // later stages leave the owner on the tab they chose
     setSeenStage(stage);
-    if (stage) setTab("note");
+    if (stage && !seenStage) setTab("note");
   }
   const { meeting, note, utterances } = detail;
   const line = [meetingLine(meeting), strings.oneOnOne].join(" · ");
@@ -110,6 +113,7 @@ export function MeetingView({
             canWrite={canWrite}
             onWrite={onWrite}
             onCite={cite}
+            onItemStatus={onItemStatus}
           />
         ) : tab === "transcript" ? (
           <TranscriptView utterances={utterances} follow={isLive} highlightId={highlight} />

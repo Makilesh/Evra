@@ -52,6 +52,7 @@ export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
     stop_recording: vi.fn(async () => ({ ok: true })),
     write_note: vi.fn(async () => ({ ok: true })),
     rename_meeting: vi.fn(async () => ({ ok: true })),
+    set_item_status: vi.fn(async () => ({ ok: true })),
     recording_state: vi.fn(async () => ({ state: "idle" as const })),
     get_settings: vi.fn(async () => ({
       theme: "light" as const,

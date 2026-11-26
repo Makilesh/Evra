@@ -8,14 +8,17 @@ sections:
     title: Decisions
     instruction: Explicit agreements or choices made in the call.
     required: false
+    source: extraction
   - id: action_items
     title: Action items
     instruction: Tasks someone committed to or was asked to do; start with the owner (You, Them or a name) and include any stated due date.
     required: false
+    source: extraction
   - id: open_questions
     title: Open questions
     instruction: Questions raised and not answered by the end of the call.
     required: false
+    source: extraction
   - id: next_time
     title: For next time
     instruction: Topics either person wants to pick up in the next 1:1.

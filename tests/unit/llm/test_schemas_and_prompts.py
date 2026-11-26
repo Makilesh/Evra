@@ -42,7 +42,7 @@ def test_a1_is_the_task_part_and_names_its_inputs() -> None:
     from evra.llm.prompt_files import load_part
 
     part = load_part("a1_note")
-    assert part.version == "a1-v3"
+    assert part.version == "a1-v4"
     for placeholder in [
         "{schema}",
         "{output_language}",
@@ -51,6 +51,13 @@ def test_a1_is_the_task_part_and_names_its_inputs() -> None:
     ]:
         assert placeholder in part.text
     assert "<transcript>" not in part.text.replace("pointing at lines in <transcript>", "")
+    # v4: the note leaves the lists to A4-A6, and asks for every line a point draws on
+    assert "Leave decisions, action items and open questions out: they are listed separately." in (
+        part.text
+    )
+    assert "Cite every line the bullet draws on" in part.text
+    for gone in ['A note line containing "?" is an open question', "start with their owner"]:
+        assert gone not in part.text
 
 
 def test_render_fills_once_and_refuses_missing_values() -> None:

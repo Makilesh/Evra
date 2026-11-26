@@ -9,9 +9,13 @@ from evra.bridge.api import BridgeApi
 from evra.bridge.events import EventBus, build_emit_script
 from evra.capture.devices import MicList
 from evra.config import Settings
+from evra.notes.extract import CheckedItem
+from evra.notes.validate import CheckedNote
 from evra.store.db import connect
+from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.store.notes import NoteStore
 
 
 class FakeWindow:
@@ -109,6 +113,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "recording_state",
         "rename_meeting",
         "request_hello",
+        "set_item_status",
         "set_note_model",
         "set_theme",
         "start_recording",
@@ -195,6 +200,37 @@ def test_rename_tidies_the_title_and_refuses_bad_input(tmp_path: Path) -> None:
     assert api.rename_meeting(mid, "   ") == {"ok": False}
     assert api.rename_meeting(mid, 5) == {"ok": False}  # type: ignore[arg-type]
     assert api.rename_meeting("nope", "x") == {"ok": False}
+
+
+def test_an_item_is_ticked_and_bad_input_is_refused(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    mid = _meeting(db)
+    conn = connect(db)
+    try:
+        vid = MeetingStore(conn).create_transcript_version(mid, kind="live", model="fake")
+        generation = NoteStore(conn).save_generation(
+            meeting_id=mid,
+            transcript_version_id=vid,
+            note=CheckedNote((), (), 0, 0, {}),
+            provider="fake",
+            model="fake:1b",
+            prompt_version="a0-v1+a4-v1",
+            template="one_on_one",
+            tokens_in=1,
+            tokens_out=1,
+            items=[CheckedItem("action_item", "Send the quote", ("u1",), "You", None, 0.9)],
+        )
+        [item] = ItemStore(conn).for_generation(generation)
+    finally:
+        conn.close()
+    assert api.set_item_status(item.id, "done") == {"ok": True}
+    for item_id, status in [(item.id, "finished"), ("nope", "open"), (5, "done"), (item.id, None)]:
+        assert api.set_item_status(item_id, status) == {"ok": False}  # type: ignore[arg-type]
+    conn = connect(db)
+    try:
+        assert ItemStore(conn).for_generation(generation)[0].status == "done"
+    finally:
+        conn.close()
 
 
 def test_recording_calls_go_to_the_service_and_bad_input_is_refused(tmp_path: Path) -> None:

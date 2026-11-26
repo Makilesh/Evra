@@ -1,13 +1,18 @@
-"""Generated notes (BUILD.md §7.7, §8.2): a `generation` row per note (the newest is current)
-and one `output_block` per bullet, summary first. M5 adds editing and restoring."""
+"""Generated notes (BUILD.md §7.7, §8.2): a `generation` row per note (the newest is current),
+one `output_block` per bullet of the note's own sections, summary first, and the action items,
+decisions and open questions found with it (`ItemStore`), all saved in one transaction. M5 adds
+editing and restoring."""
 
 from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+from evra.notes.extract import CheckedItem
 from evra.notes.validate import CheckedBullet, CheckedNote
+from evra.store.items import ItemStore
 from evra.store.meetings import new_id, now_ms
 
 SUMMARY = "summary"
@@ -50,6 +55,7 @@ class NoteStore:
         template: str,
         tokens_in: int,
         tokens_out: int,
+        items: Sequence[CheckedItem] = (),
     ) -> str:
         generation_id = new_id()
         groups: list[tuple[str, tuple[CheckedBullet, ...]]] = [(SUMMARY, note.summary)]
@@ -95,6 +101,9 @@ class NoteStore:
                         ),
                     )
                     position += 1
+            ItemStore(self._conn).save(
+                meeting_id=meeting_id, generation_id=generation_id, items=items
+            )
             self._conn.execute("COMMIT")
         except BaseException:
             self._conn.execute("ROLLBACK")

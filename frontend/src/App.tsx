@@ -18,6 +18,7 @@ export default function App() {
     ask,
     prepareAsk,
     rename,
+    setItemStatus,
     dismissStartError,
     refreshMics,
     setTheme,
@@ -115,6 +116,7 @@ export default function App() {
             onRename={(title) => rename(detail.meeting.id, title)}
             onAsk={(text) => ask(detail.meeting.id, text)}
             onPrepareAsk={() => prepareAsk(detail.meeting.id)}
+            onItemStatus={(itemId, status) => void setItemStatus(itemId, status)}
           />
         ) : state.ready && state.meetings.length === 0 ? (
           <Welcome />

@@ -16,6 +16,7 @@ function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
     onRename: vi.fn(async () => true),
     onAsk: vi.fn(async () => null),
     onPrepareAsk: vi.fn(),
+    onItemStatus: vi.fn(),
     ...extra,
   };
   return { props, ...render(<MeetingView {...props} />) };
@@ -41,6 +42,13 @@ it("opens a live meeting on the transcript, then the note once it is being writt
   expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
   rerender(<MeetingView {...props} isLive={false} noteStatus={{ stage: "writing" }} />);
   expect(screen.getByRole("tab", { name: "Note" })).toHaveAttribute("aria-selected", "true");
+});
+
+it("keeps the tab the owner chose while the note moves on to its next stage", async () => {
+  const { rerender, props } = view({ noteStatus: { stage: "writing" } });
+  await userEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+  rerender(<MeetingView {...props} noteStatus={{ stage: "items" }} />);
+  expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
 });
 
 it("jumps from a citation to its highlighted transcript line", async () => {

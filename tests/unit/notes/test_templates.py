@@ -21,6 +21,17 @@ def test_one_on_one_sections_in_order() -> None:
     assert template.sections[0].required
 
 
+@pytest.mark.parametrize("template_id", ["one_on_one", "general"])
+def test_the_lists_come_from_extraction_and_the_rest_from_synthesis(template_id: str) -> None:
+    template = load_template(template_id)
+    listed = {s.id for s in template.sections if s.source == "extraction"}
+    assert listed == {"decisions", "action_items", "open_questions"}
+    assert [s.id for s in template.synthesis_sections()] == [
+        s.id for s in template.sections if s.id not in listed
+    ]
+    assert "source" not in template.sections_yaml()  # the model sees ids, titles, instructions
+
+
 def test_sections_yaml_round_trips() -> None:
     template = load_template("general")
     data = yaml.safe_load(template.sections_yaml())

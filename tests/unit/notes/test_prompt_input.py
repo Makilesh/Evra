@@ -62,7 +62,7 @@ def test_prompt_carries_meeting_template_and_empty_blocks() -> None:
         template=load_template("one_on_one"),
         schema=SCHEMA,
     )
-    assert prompt.prompt_version == "a0-v1+a1-v3"
+    assert prompt.prompt_version == "a0-v1+a1-v4"
     assert '{"type":"object"}' in prompt.user
     assert "Write in English." in prompt.user
     for expected in [
@@ -72,10 +72,23 @@ def test_prompt_carries_meeting_template_and_empty_blocks() -> None:
         "participants: You (the owner of this note), Them (the other person on the call)",
     ]:
         assert expected in prompt.system
-    for expected in ['<template name="1:1">', "- id: discussion"]:
+    for expected in ['<template name="1:1">', "- id: discussion", "- id: next_time"]:
         assert expected in prompt.user
     assert prompt.system.count("(none)") == 2  # no user notes, no gaps
     assert prompt.aliases == {"u:1": "a"}
+
+
+def test_the_note_template_lists_only_what_the_note_writes() -> None:
+    """Decisions, action items and open questions are listed by A4-A6, not by A1 (v4)."""
+    prompt = build_note_prompt(
+        meeting=MEETING,
+        utterances=[utt("a", 0, 0, 1000, "Hi")],
+        template=load_template("one_on_one"),
+        schema=SCHEMA,
+    )
+    for left_out in ["id: decisions", "id: action_items", "id: open_questions"]:
+        assert left_out not in prompt.user
+    assert "Leave decisions, action items and open questions out" in prompt.user
 
 
 def test_gaps_are_listed_with_cause() -> None:
@@ -138,4 +151,4 @@ def test_prompt_version() -> None:
         template=load_template("one_on_one"),
         schema=SCHEMA,
     )
-    assert prompt.prompt_version == "a0-v1+a1-v3"
+    assert prompt.prompt_version == "a0-v1+a1-v4"

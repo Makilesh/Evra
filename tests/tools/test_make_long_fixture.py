@@ -118,6 +118,8 @@ def test_the_long_fixture_asks_what_the_generator_plants() -> None:
     facts = [fact for part in PARTS for fact in part.facts]
     assert [e["question"] for e in data["expected"]] == [f.question for f in facts]
     assert [e["what"] for e in data["expected"]] == [f.what for f in facts]
+    assert [e.get("commitment", False) for e in data["expected"]] == [f.commitment for f in facts]
+    assert sum(f.commitment for f in facts) == 3
     assert data["absent"] == list(ABSENT)
 
 

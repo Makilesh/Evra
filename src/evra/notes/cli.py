@@ -8,6 +8,7 @@ import argparse
 import sqlite3
 import sys
 from collections.abc import Mapping
+from typing import Any
 
 from evra.config import LlmSettings, load_settings
 from evra.llm.ollama import OllamaProvider
@@ -21,14 +22,17 @@ from evra.llm.provider import (
 )
 from evra.logging_setup import configure_logging
 from evra.notes.job import NothingSupported, write_and_save
+from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template, template_ids
 from evra.notes.title import has_placeholder_title, name_meeting, title_settings
 from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong
 from evra.paths import AppPaths
+from evra.services.views import note_view
 from evra.store.db import connect
+from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
-from evra.store.notes import SUMMARY, NoteStore, StoredNote
+from evra.store.notes import NoteStore
 from evra.transcribe.cli import format_ms
 
 FALLBACK_MODEL = "gemma4:12b"
@@ -44,17 +48,15 @@ def cite_marks(citations: tuple[str, ...], starts: Mapping[str, int]) -> str:
     return " ".join(marks)
 
 
-def render_note(
-    note: StoredNote, *, titles: Mapping[str, str], starts: Mapping[str, int]
-) -> list[str]:
+def render_note(view: Mapping[str, Any]) -> list[str]:
+    """The note as the window shows it (`note_view`): each section's points, its action items,
+    decisions and open questions among them, with the times of the lines they cite."""
     lines: list[str] = []
-    current: str | None = None
-    for block in note.blocks:
-        if block.section != current:
-            current = block.section
-            title = titles.get(current) or current.replace("_", " ").capitalize()
-            lines += ["", f"## {title}"]
-        lines.append(f"- {block.text} {cite_marks(block.citations, starts)}".rstrip())
+    for section in view["sections"]:
+        lines += ["", f"## {section['title']}"]
+        for block in section["blocks"]:
+            marks = " ".join(f"[{format_ms(int(c['start_ms']))}]" for c in block["citations"])
+            lines.append(f"- {block['text']} {marks}".rstrip())
     return lines[1:]
 
 
@@ -125,6 +127,7 @@ def _run(
             provider=llm,
             model=model,
             settings=settings,
+            semantic=SemanticCheck(Embedder(llm, settings.embedding_model)),  # as the window does
         )
     except KeyboardInterrupt:
         _err("Stopped; nothing saved.")
@@ -166,18 +169,25 @@ def _run(
     except LlmError as exc:
         _err(f"The LLM failed: {exc}")
         return 1
-    result, generation_id = saved.result, saved.generation_id
-    notes = NoteStore(conn)
-    stored = notes.current_note(meeting_id)
+    result, extraction = saved.result, saved.extraction
+    stored = NoteStore(conn).current_note(meeting_id)
     assert stored is not None
-    titles = {SUMMARY: "Summary", **{s.id: s.title for s in template.sections}}
+    items = ItemStore(conn).for_generation(saved.generation_id)
     print(f"# {meeting['title']}")
-    for line in render_note(stored, titles=titles, starts={u.id: u.start_ms for u in utterances}):
+    for line in render_note(note_view(stored, utterances, items)):
         print(line)
+    if result.items_only:
+        print(
+            f"-- {model} did not return a valid note, even after one repair: this note holds"
+            " only the action items, decisions and open questions"
+        )
     repaired = ", after one JSON repair" if result.repaired else ""
+    kept = result.note.kept + len(extraction.items)
+    dropped = result.note.dropped + extraction.dropped
     print(
-        f"-- note written in {result.seconds:.1f} s by {result.model}; {result.note.kept} points"
-        f" kept, {result.note.dropped} dropped as unsupported{repaired}; generation {generation_id}"
+        f"-- note written in {result.seconds + extraction.seconds:.1f} s by {result.model};"
+        f" {kept} points kept, {dropped} dropped as unsupported{repaired};"
+        f" generation {saved.generation_id}"
     )
     return 0
 

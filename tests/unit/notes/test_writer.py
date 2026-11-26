@@ -35,8 +35,8 @@ GOOD = json.dumps(
         ],
         "sections": [
             {
-                "section_id": "action_items",
-                "title": "Action items",
+                "section_id": "discussion",
+                "title": "Discussion",
                 "bullets": [{"text": "Them will ask Priya directly.", "citations": ["u:2"]}],
             }
         ],
@@ -65,7 +65,7 @@ def test_a_valid_reply_becomes_a_checked_note() -> None:
     provider = FakeProvider([GOOD])
     result = write(provider)
     assert (result.note.kept, result.note.dropped, result.repaired) == (2, 0, False)
-    assert result.prompt_version == "a0-v1+a1-v3"
+    assert result.prompt_version == "a0-v1+a1-v4"
     assert (result.tokens_in, result.tokens_out) == (100, 50)
     assert result.template == "one_on_one"
     system, user = provider.calls[0]
@@ -82,7 +82,7 @@ def test_invalid_json_gets_one_repair() -> None:
     provider = FakeProvider(['{"summary": [', GOOD])
     result = write(provider)
     assert result.repaired
-    assert result.prompt_version == "a0-v1+a1-v3+a9-v1"
+    assert result.prompt_version == "a0-v1+a1-v4+a9-v1"
     assert result.tokens_in == 200
     repair_user = provider.calls[1][1].content
     assert "<error>" in repair_user and '{"summary": [' in repair_user
@@ -168,6 +168,23 @@ def test_the_meaning_check_reaches_the_note() -> None:
     written = next(e for e in logs if e["event"] == "note_written")
     assert (written["kept"], written["dropped"], written["rescued"]) == (1, 0, 1)
     assert len(provider.embed_calls) == 1  # after the model's reply, in one batch
+
+
+def test_points_under_the_lists_are_left_to_the_lists() -> None:
+    """A1 v4 leaves decisions, action items and open questions to A4-A6; a point it still puts
+    there is set aside: neither kept nor counted as dropped."""
+    listed = {
+        "section_id": "action_items",
+        "title": "Action items",
+        "bullets": [{"text": "Them will ask Priya directly.", "citations": ["u:2"]}],
+    }
+    reply = json.loads(GOOD) | {"sections": [listed]}
+    with structlog.testing.capture_logs() as logs:
+        result = write(FakeProvider([json.dumps(reply)]))
+    assert (result.note.kept, result.note.dropped) == (1, 0)
+    assert [s.section_id for s in result.note.sections] == []
+    written = next(e for e in logs if e["event"] == "note_written")
+    assert written["set_aside"] == 1
 
 
 def test_no_meaning_check_by_default() -> None:

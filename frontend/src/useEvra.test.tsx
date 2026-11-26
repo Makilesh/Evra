@@ -243,6 +243,61 @@ it("keeps a question just asked when a reload read the meeting before it", async
   expect(result.current.state.detail?.questions).toEqual([ASKING]);
 });
 
+const WITH_ITEM: MeetingDetail = {
+  ...DETAIL,
+  note: {
+    model: "gemma4:12b",
+    sections: [
+      {
+        id: "action_items",
+        title: "Action items",
+        blocks: [
+          {
+            text: "You: Send the proposal (by Thursday)",
+            citations: [{ utterance_id: "u2", start_ms: 110_000 }],
+            item: { id: "i1", kind: "action_item", status: "open", owner: "You", due: "by Thursday" },
+          },
+        ],
+      },
+    ],
+  },
+};
+
+function itemStatus(detail: MeetingDetail | null): string | undefined {
+  return detail?.note?.sections[0].blocks[0].item?.status;
+}
+
+it("ticks an item at once and puts it back when Python refuses", async () => {
+  const replies: ((value: { ok: boolean }) => void)[] = [];
+  const set_item_status = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => replies.push(resolve)));
+  setApiForTests(makeFakeApi({ get_meeting: async () => WITH_ITEM, set_item_status }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(WITH_ITEM));
+
+  let saved: Promise<boolean> = Promise.resolve(false);
+  act(() => {
+    saved = result.current.setItemStatus("i1", "done");
+  });
+  expect(itemStatus(result.current.state.detail)).toBe("done"); // before Python answers
+  await waitFor(() => expect(set_item_status).toHaveBeenCalledWith("i1", "done"));
+  await act(async () => {
+    replies[0]({ ok: true });
+    expect(await saved).toBe(true);
+  });
+  expect(itemStatus(result.current.state.detail)).toBe("done");
+
+  act(() => {
+    saved = result.current.setItemStatus("i1", "open");
+  });
+  expect(itemStatus(result.current.state.detail)).toBe("open");
+  await waitFor(() => expect(replies).toHaveLength(2));
+  await act(async () => {
+    replies[1]({ ok: false });
+    expect(await saved).toBe(false);
+  });
+  expect(itemStatus(result.current.state.detail)).toBe("done"); // put back: it wasn't saved
+});
+
 it("asks Python to read the meeting ahead, ignoring the reply and errors", async () => {
   const api = makeFakeApi({
     prepare_ask: vi.fn(async () => {

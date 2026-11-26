@@ -156,6 +156,11 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - **Refused pre-read not retried:** a pre-read refused because another one is running is not retried.
 - **Long calls read a full excerpt every time:** with meaning, every window scores above zero, so each question on a 2-hour call reads 8,200–9,050 tokens, against 0–8,700 by words alone. Follow-ups take a median of 7.5 s in all against 5.9 s (the windows themselves are now embedded once per meeting; DECISIONS "Long-call asking reads by meaning"). A score cut-off could let a question that words match narrowly read fewer lines.
 
+## Complete notes, later (2026-11-27)
+
+- **A list that couldn't be made:** when A4, A5 or A6 still returns invalid JSON after its repair (or runs out of room), its section of the note is simply empty, and only the log says so (`note_items_failed`, with the kinds). Say in the note that Evra couldn't list them, with a way to try again.
+- **A note of the lists alone:** when A1's JSON fails even after its repair, the note is built from the action items, decisions and open questions (BUILD.md §9.1). `evra note` says so; the window shows the lists without saying the summary and discussion couldn't be written.
+
 ## From the competitor review (2026-11-10)
 The full list (100 features, with links) is in `private/research/reports/`.
 - **Switch the microphone during a recording.** The picker is locked while recording, so a headset that drops can't be swapped mid-call.

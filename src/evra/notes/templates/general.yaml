@@ -4,14 +4,17 @@ sections:
     title: Decisions
     instruction: Explicit agreements, approvals or choices between options.
     required: false
+    source: extraction
   - id: action_items
     title: Action items
     instruction: Tasks someone committed to or was asked to do, with owner and due date if stated.
     required: false
+    source: extraction
   - id: open_questions
     title: Open questions
     instruction: Questions raised and not answered by the end of the meeting.
     required: false
+    source: extraction
   - id: discussion
     title: Discussion by topic
     instruction: The main topics in order, with the key points of each.

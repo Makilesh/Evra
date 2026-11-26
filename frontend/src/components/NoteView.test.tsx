@@ -13,11 +13,60 @@ function sheet(extra: Partial<Parameters<typeof NoteView>[0]> = {}) {
     canWrite: true,
     onWrite: vi.fn(),
     onCite: vi.fn(),
+    onItemStatus: vi.fn(),
     ...extra,
   };
-  render(<NoteView {...props} />);
-  return props;
+  const { rerender } = render(<NoteView {...props} />);
+  return { ...props, rerender };
 }
+
+function withItems(status: "open" | "done"): Note {
+  return {
+    model: "gemma4:12b",
+    sections: [
+      {
+        id: "decisions",
+        title: "Decisions",
+        blocks: [
+          {
+            text: "Launch on October 14.",
+            citations: [{ utterance_id: "u1", start_ms: 65_000 }],
+            item: { id: "d1", kind: "decision", status: "open", owner: null, due: null },
+          },
+        ],
+      },
+      {
+        id: "action_items",
+        title: "Action items",
+        blocks: [
+          {
+            text: "You: Send the proposal (by Thursday)",
+            citations: [{ utterance_id: "u2", start_ms: 110_000 }],
+            item: { id: "i1", kind: "action_item", status, owner: "You", due: "by Thursday" },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+it("ticks an action item done", async () => {
+  const { rerender, ...props } = sheet({ note: withItems("open") });
+  const box = screen.getByRole("checkbox", { name: "Done: You: Send the proposal (by Thursday)" });
+  expect(box).not.toBeChecked();
+  expect(screen.getAllByRole("checkbox")).toHaveLength(1); // a decision is not ticked off
+  await userEvent.click(box);
+  expect(props.onItemStatus).toHaveBeenCalledWith("i1", "done");
+
+  rerender(<NoteView {...props} note={withItems("done")} />);
+  const ticked = screen.getByRole("checkbox", { name: "Done: You: Send the proposal (by Thursday)" });
+  expect(ticked).toBeChecked();
+  const row = ticked.closest("li")!;
+  expect(within(row).getByText(/Send the proposal/)).toHaveClass("line-through", "text-muted");
+  expect(within(row).getByText("You:").tagName).toBe("B");
+  await userEvent.click(ticked);
+  expect(props.onItemStatus).toHaveBeenLastCalledWith("i1", "open");
+});
 
 it("shows sections with time tabs that jump to the transcript", async () => {
   const props = sheet();
@@ -66,13 +115,13 @@ it("shows progress instead of an old note while a new one is written", () => {
 it("explains a failure and offers Retry only when it can help", async () => {
   const onWrite = vi.fn();
   const { rerender } = render(
-    <NoteView note={null} utterances={[]} status={{ failed: { reason: "invalid" } }} canWrite onWrite={onWrite} onCite={vi.fn()} />,
+    <NoteView note={null} utterances={[]} status={{ failed: { reason: "invalid" } }} canWrite onWrite={onWrite} onCite={vi.fn()} onItemStatus={vi.fn()} />,
   );
   expect(screen.getByRole("alert")).toHaveTextContent("The model didn't return a valid note.");
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(onWrite).toHaveBeenCalled();
   rerender(
-    <NoteView note={null} utterances={[]} status={{ failed: { reason: "too_long" } }} canWrite onWrite={onWrite} onCite={vi.fn()} />,
+    <NoteView note={null} utterances={[]} status={{ failed: { reason: "too_long" } }} canWrite onWrite={onWrite} onCite={vi.fn()} onItemStatus={vi.fn()} />,
   );
   expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 });

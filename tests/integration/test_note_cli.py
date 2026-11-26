@@ -33,6 +33,15 @@ GOOD = json.dumps(
 UNSUPPORTED = json.dumps(
     {"summary": [{"text": "Everyone loved the cake.", "citations": ["u:1"]}], "sections": []}
 )
+NO_ITEMS = json.dumps({"items": []})
+ASK_PRIYA = {
+    "text": "Ask Priya directly",
+    "owner": "Them",
+    "due": "tomorrow",
+    "confidence": 0.9,
+    "citations": ["u:2"],
+}
+LISTS = [json.dumps({"items": [ASK_PRIYA]}), NO_ITEMS, NO_ITEMS]  # A4-A6 after the note (A1)
 
 
 def _args(**overrides: object) -> argparse.Namespace:
@@ -66,14 +75,16 @@ def test_writes_prints_and_stores_the_note(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     paths, mid = recorded(tmp_path)
-    assert note_command(_args(), paths, provider=FakeProvider([GOOD])) == 0
+    assert note_command(_args(), paths, provider=FakeProvider([GOOD, *LISTS])) == 0
     out = capsys.readouterr().out
     assert "# Weekly 1:1" in out
     assert "## Summary\n- You finished the search migration on Tuesday. [00:00]" in out
-    assert "## Action items\n- Them will ask Priya directly. [00:05]" in out
+    # the action items come from their own list (A4), not from the note's sections
+    assert "## Action items\n- Them: Ask Priya directly (tomorrow) [00:05]" in out
+    assert "Them will ask Priya directly." not in out
     assert "2 points kept, 0 dropped" in out
     stored = _current(paths, mid)
-    assert stored is not None and len(stored.blocks) == 2
+    assert stored is not None and len(stored.blocks) == 1
 
 
 def test_meeting_id_argument_and_template_override(
@@ -81,7 +92,7 @@ def test_meeting_id_argument_and_template_override(
 ) -> None:
     paths, mid = recorded(tmp_path)
     args = _args(meeting_id=mid, template="general")
-    assert note_command(args, paths, provider=FakeProvider([GOOD])) == 0
+    assert note_command(args, paths, provider=FakeProvider([GOOD, *LISTS])) == 0
     stored = _current(paths, mid)
     assert stored is not None and stored.template == "general"
     capsys.readouterr()
@@ -138,19 +149,33 @@ def test_invalid_json_twice_fails_cleanly(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     paths, mid = recorded(tmp_path)
-    assert note_command(_args(), paths, provider=FakeProvider(["{", "{"])) == 1
+    provider = FakeProvider(["{", "{", NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    assert note_command(_args(), paths, provider=provider) == 1
     assert "did not return a valid note" in capsys.readouterr().err
     assert _current(paths, mid) is None
+
+
+def test_a_note_of_the_lists_alone_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths, mid = recorded(tmp_path)
+    assert note_command(_args(), paths, provider=FakeProvider(["{", "{", *LISTS])) == 0
+    out = capsys.readouterr().out
+    assert "## Action items\n- Them: Ask Priya directly (tomorrow) [00:05]" in out
+    assert "only the action items, decisions and open questions" in out
+    stored = _current(paths, mid)
+    assert stored is not None and stored.blocks == ()
 
 
 def test_a_note_with_nothing_supported_is_not_saved_and_keeps_the_previous_one(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     paths, mid = recorded(tmp_path)
-    assert note_command(_args(), paths, provider=FakeProvider([GOOD])) == 0
+    assert note_command(_args(), paths, provider=FakeProvider([GOOD, *LISTS])) == 0
     good = _current(paths, mid)
     capsys.readouterr()
-    assert note_command(_args(), paths, provider=FakeProvider([UNSUPPORTED])) == 1
+    provider = FakeProvider([UNSUPPORTED, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    assert note_command(_args(), paths, provider=provider) == 1
     err = capsys.readouterr().err
     assert "Nothing in the note could be checked" in err and "nothing saved" in err
     assert _current(paths, mid) == good

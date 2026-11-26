@@ -5,6 +5,7 @@ import {
   onEvent,
   type AskRefusal,
   type AskReply,
+  type ItemStatus,
   type Levels,
   type MeetingDetail,
   type MeetingRenamed,
@@ -12,6 +13,7 @@ import {
   type MicList,
   type NoteFailed,
   type NoteFailureReason,
+  type NoteItem,
   type NoteModels,
   type Question,
   type QuestionUpdated,
@@ -102,6 +104,34 @@ function withMeetingQuestion(s: EvraState, meetingId: string, question: Question
   return { ...s, detail: { ...detail, questions: withQuestion(detail.questions, question) } };
 }
 
+/** The open note's record with this id, in whichever section it is. */
+function noteItem(detail: MeetingDetail | null, id: string): NoteItem | undefined {
+  for (const section of detail?.note?.sections ?? []) {
+    for (const block of section.blocks) {
+      if (block.item?.id === id) return block.item;
+    }
+  }
+  return undefined;
+}
+
+/** The meeting with one record's status changed, while it is still `from`. */
+function withItemStatus(
+  detail: MeetingDetail | null,
+  id: string,
+  from: ItemStatus,
+  to: ItemStatus,
+): MeetingDetail | null {
+  const note = detail?.note;
+  if (!detail || !note) return detail;
+  const sections = note.sections.map((section) => ({
+    ...section,
+    blocks: section.blocks.map((block) =>
+      block.item?.id === id && block.item.status === from ? { ...block, item: { ...block.item, status: to } } : block,
+    ),
+  }));
+  return { ...detail, note: { ...note, sections } };
+}
+
 type Heard = Map<string, Map<string, Question>>;
 
 function hear(heard: Heard, meetingId: string, question: Question): void {
@@ -126,6 +156,11 @@ export function useEvra() {
   // reload of the meeting that read it a moment earlier must not put an answer back to
   // "asking", and an answer that lands while its meeting is still loading must not be lost.
   const heard = useRef<Heard>(new Map());
+  // The open meeting as last shown, so a tick Python couldn't save goes back to what it was.
+  const shown = useRef<MeetingDetail | null>(null);
+  useEffect(() => {
+    shown.current = state.detail;
+  }, [state.detail]);
 
   const refreshMeetings = useCallback(async () => {
     try {
@@ -300,6 +335,21 @@ export function useEvra() {
     [refreshMeetings, loadDetail],
   );
 
+  // A tick (or untick) shows at once; if Python couldn't save it, the box goes back.
+  const setItemStatus = useCallback(async (id: string, status: ItemStatus): Promise<boolean> => {
+    const before = noteItem(shown.current, id)?.status;
+    if (before === undefined) return false;
+    setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, before, status) }));
+    let ok = false;
+    try {
+      ok = (await (await getApi()).set_item_status(id, status)).ok;
+    } catch {
+      // put back below
+    }
+    if (!ok) setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, status, before) }));
+    return ok;
+  }, []);
+
   const refreshMics = useCallback(async () => {
     try {
       const mics = await (await getApi()).list_mics();
@@ -364,6 +414,7 @@ export function useEvra() {
     ask,
     prepareAsk,
     rename,
+    setItemStatus,
     dismissStartError,
     refreshMics,
     setTheme,

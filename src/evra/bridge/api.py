@@ -24,6 +24,7 @@ from evra.config import LlmSettings, Settings, Theme
 from evra.llm.ollama import is_cloud_model_name
 from evra.services.views import clean_title, meeting_detail, meeting_summary
 from evra.store.db import connect
+from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 
 log = structlog.get_logger(__name__)
@@ -149,6 +150,13 @@ class BridgeApi:
         if self._asker is None or not isinstance(meeting_id, str):
             return {"ok": False}
         return self._asker.prepare(meeting_id)
+
+    def set_item_status(self, item_id: str, status: str) -> dict[str, Any]:
+        """Tick an action item done (or open it again, or dismiss it)."""
+        if not isinstance(item_id, str) or not isinstance(status, str):
+            return {"ok": False}
+        with self._db() as conn:
+            return {"ok": ItemStore(conn).set_status(item_id, status)}
 
     def rename_meeting(self, meeting_id: str, title: str) -> dict[str, Any]:
         cleaned = clean_title(title) if isinstance(title, str) else None

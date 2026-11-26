@@ -158,6 +158,13 @@ components:
   point-row-hover:
     backgroundColor: "{colors.band}"
     rounded: "{rounded.control}"
+  done-box:
+    textColor: "{colors.pad}"
+    rounded: "{rounded.tab}"
+    height: "16px"
+  done-box-ticked:
+    backgroundColor: "{colors.rule}"
+    textColor: "{colors.pad}"
   note-writing-row:
     backgroundColor: "{colors.band}"
     rounded: "{rounded.control}"
@@ -331,6 +338,8 @@ Gently rounded, never pill-shaped except for dots and meters. Small marks (time 
 
 ### The Note Sheet (signature)
 Each note point sits on a row with its time tabs on the centre rule and its quotes on the far side, each quote led by a coloured caps speaker name, clamped to four lines. Hovering or focusing a row fills it band green, brings the quotes from muted to ink, and keeps the time tabs on the band. A time tab is a small rule-green outlined tab on the pad; hover and keyboard focus both fill it rule green with pad text (no second ring). Pressing one opens the transcript at that line, filled the same band.
+
+An action item's point starts with a Done box on its first line, drawn like a time tab: 16px, a 1.5px rule-green line at 60%, 4px radius (full rule green on hover). Ticked, it fills rule green with a pad-coloured tick, and the point is struck through in muted ink. Keyboard focus draws the 2px rule-green ring around the box. Decisions and open questions have no box.
 
 ### Note States
 The writing and failed states are drawn as rows on the sheet. Writing: a band row with a caps title in deep rule green, a sentence, and a short stretch of rule running down a faint one in the rule cell. Failed: a band-deep row with the reason and a Retry button.

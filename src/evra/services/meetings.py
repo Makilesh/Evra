@@ -1,5 +1,5 @@
 """The window's meeting flow (M3c spec §3.1): one recording at a time, then its note
-(BUILD.md §7.3, D16).
+(BUILD.md §7.3, D16), whose stages are announced as it goes: writing, then listing the items.
 
 Bridge calls arrive on their own threads (pywebview), so the state lives under one lock and
 nothing slow, and no event, runs while holding it. Events carry transcript text only to the
@@ -23,6 +23,7 @@ from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import LlmError, LlmModelMissing, LlmProvider
 from evra.modelstore import ModelError
 from evra.notes.job import failure_reason, write_and_save
+from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template
 from evra.notes.title import name_meeting, placeholder_title, title_settings
 from evra.notes.writer import NoteError, NoTranscript
@@ -314,18 +315,29 @@ class MeetingService:
         meeting = store.get_meeting(meeting_id)
         version_id = store.current_transcript_version(meeting_id)
         utterances = store.utterances(version_id) if version_id else []
+        shown = ["writing"]  # _start_note_job showed it already
+
+        def on_stage(stage: str) -> None:  # each stage once, in order (D16)
+            if stage != shown[-1]:
+                shown.append(stage)
+                self._emit("note.stage", {"meeting_id": meeting_id, "stage": stage})
+
         try:
             if version_id is None or not utterances:
                 raise NoTranscript("no transcript")
+            provider = self._provider_factory(llm)
             write_and_save(
                 conn,
                 meeting=meeting,
                 version_id=version_id,
                 utterances=utterances,
                 template=load_template(str(meeting["template"])),
-                provider=self._provider_factory(llm),
+                provider=provider,
                 model=llm.model,
                 settings=llm,
+                # the same Ollama embeds, once every chat call is done (BUILD.md §8.3)
+                semantic=SemanticCheck(Embedder(provider, llm.embedding_model)),
+                on_stage=on_stage,
             )
         except (LlmError, NoteError) as exc:
             reason = failure_reason(exc)

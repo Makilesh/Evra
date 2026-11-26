@@ -47,9 +47,25 @@ export interface Citation {
   start_ms: number;
 }
 
+export type ItemKind = "action_item" | "decision" | "open_question";
+
+/** An action item is ticked done, or dismissed; a decision or a question stays open. */
+export type ItemStatus = "open" | "done" | "dismissed";
+
+/** A record behind a point in a decisions, action items or open questions section. */
+export interface NoteItem {
+  id: string;
+  kind: ItemKind;
+  status: ItemStatus;
+  owner: string | null;
+  due: string | null;
+}
+
 export interface NoteBlock {
   text: string;
   citations: Citation[];
+  /** Only on a point that comes from a record (action items, decisions, open questions). */
+  item?: NoteItem;
 }
 
 export interface NoteSection {
@@ -185,6 +201,7 @@ export interface EvraApi {
   /** Reads the meeting into the model ahead of a question; the reply says nothing useful. */
   prepare_ask(meetingId: string): Promise<OkReply>;
   rename_meeting(meetingId: string, title: string): Promise<OkReply>;
+  set_item_status(itemId: string, status: ItemStatus): Promise<OkReply>;
   recording_state(): Promise<RecordingState>;
   get_settings(): Promise<SettingsInfo>;
   set_theme(theme: Theme): Promise<OkReply>;

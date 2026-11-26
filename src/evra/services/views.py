@@ -7,7 +7,9 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from evra.notes.extract import ITEM_SECTIONS
 from evra.notes.templates import load_template
+from evra.store.items import ItemStore, StoredItem
 from evra.store.meetings import MeetingStore, Utterance
 from evra.store.notes import SUMMARY, NoteStore, StoredNote
 from evra.store.questions import QuestionStore, StoredQuestion
@@ -39,22 +41,60 @@ def utterance_view(utterance: Utterance) -> dict[str, Any]:
     }
 
 
-def note_view(note: StoredNote, utterances: Sequence[Utterance]) -> dict[str, Any]:
+def item_text(owner: str | None, text: str, due: str | None) -> str:
+    """An item as the note shows it: "You: Send the vendor quote (by Friday)"."""
+    shown = f"{owner}: {text}" if owner else text
+    return f"{shown} ({due})" if due else shown
+
+
+def note_view(
+    note: StoredNote, utterances: Sequence[Utterance], items: Sequence[StoredItem] = ()
+) -> dict[str, Any]:
+    """The summary, then the template's sections in order: the note's own points, and in the
+    sections the records fill, the generation's items (a dismissed one is left out). An older
+    note kept its lists as points, so those still show."""
     try:
-        titles = {s.id: s.title for s in load_template(note.template).sections}
+        known = load_template(note.template).sections
     except KeyError:
-        titles = {}
-    titles[SUMMARY] = "Summary"
+        known = ()
+    titles = {SUMMARY: "Summary", **{s.id: s.title for s in known}}
     starts = {u.id: u.start_ms for u in utterances}
-    sections: list[dict[str, Any]] = []
+
+    def cited(citations: Sequence[str]) -> list[dict[str, Any]]:
+        return [{"utterance_id": c, "start_ms": starts[c]} for c in citations if c in starts]
+
+    blocks: dict[str, list[dict[str, Any]]] = {}
     for block in note.blocks:
-        if not sections or sections[-1]["id"] != block.section:
-            title = titles.get(block.section) or block.section.replace("_", " ").capitalize()
-            sections.append({"id": block.section, "title": title, "blocks": []})
-        citations = [
-            {"utterance_id": c, "start_ms": starts[c]} for c in block.citations if c in starts
-        ]
-        sections[-1]["blocks"].append({"text": block.text, "citations": citations})
+        blocks.setdefault(block.section, []).append(
+            {"text": block.text, "citations": cited(block.citations)}
+        )
+    for item in items:
+        if item.status == "dismissed":
+            continue
+        blocks.setdefault(ITEM_SECTIONS[item.kind], []).append(
+            {
+                "text": item_text(item.owner, item.text, item.due),
+                "citations": cited(item.citations),
+                "item": {
+                    "id": item.id,
+                    "kind": item.kind,
+                    "status": item.status,
+                    "owner": item.owner,
+                    "due": item.due,
+                },
+            }
+        )
+    order = [SUMMARY, *(s.id for s in known)]
+    order += [sid for sid in blocks if sid not in order]  # a section the template doesn't name
+    sections = [
+        {
+            "id": sid,
+            "title": titles.get(sid) or sid.replace("_", " ").capitalize(),
+            "blocks": blocks[sid],
+        }
+        for sid in order
+        if blocks.get(sid)
+    ]
     return {"model": note.model, "sections": sections}
 
 
@@ -92,10 +132,11 @@ def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] 
     utterances = store.utterances(version) if version else []
     note = NoteStore(conn).current_note(meeting_id)
     starts = {u.id: u.start_ms for u in utterances}
+    items = ItemStore(conn).for_generation(note.generation_id) if note is not None else []
     return {
         "meeting": meeting_summary({**meeting, "has_note": note is not None}),
         "utterances": [utterance_view(u) for u in utterances],
-        "note": note_view(note, utterances) if note is not None else None,
+        "note": note_view(note, utterances, items) if note is not None else None,
         "questions": [
             question_view(q, starts) for q in QuestionStore(conn).for_meeting(meeting_id)
         ],

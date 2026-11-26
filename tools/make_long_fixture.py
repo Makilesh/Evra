@@ -48,6 +48,7 @@ class Fact:
     keywords: tuple[str, ...]  # the bake-off's rule: every keyword in one line, "a|b" = either
     lines: tuple[Line, ...]  # planted word for word
     question: str  # what tools/bakeoff_ask.py asks; it never gives the answer away
+    commitment: bool = False  # a task someone took on: the note bake-off looks for its action item
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ PARTS = (
                     (YOU, "Yes, I'll have the postmortem done by Friday."),
                 ),
                 "Who is writing the postmortem, and when is it due?",
+                commitment=True,
             ),
         ),
     ),
@@ -188,6 +190,7 @@ PARTS = (
                 ("promotion", "quarter"),
                 ((THEM, "Send me your promotion packet by the end of the quarter."),),
                 "What's the deadline for my promotion packet?",
+                commitment=True,
             ),
         ),
     ),
@@ -200,6 +203,7 @@ PARTS = (
                 ("laptop", "finance"),
                 ((THEM, "I'll ask finance about the laptop refresh this week."),),
                 "Who is checking on the laptop refresh, and with whom?",
+                commitment=True,
             ),
         ),
     ),
@@ -374,14 +378,15 @@ def expected_facts(
     expected = []
     for fact in (f for p in parts for f in p.facts):
         start = next(int(u["start_ms"]) for u in utterances if has_fact(str(u["text"]), fact))
-        expected.append(
-            {
-                "what": fact.what,
-                "keywords": list(fact.keywords),
-                "minute": start // 60_000,
-                "question": fact.question,
-            }
-        )
+        entry: dict[str, Any] = {
+            "what": fact.what,
+            "keywords": list(fact.keywords),
+            "minute": start // 60_000,
+            "question": fact.question,
+        }
+        if fact.commitment:
+            entry["commitment"] = True
+        expected.append(entry)
     return expected
 
 

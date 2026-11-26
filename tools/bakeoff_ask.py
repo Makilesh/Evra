@@ -25,15 +25,15 @@ import re
 import statistics
 import sys
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from evra.config import LlmSettings
 from evra.console import safe_console
 from evra.llm.ollama import OllamaProvider
-from evra.llm.provider import ChatMessage, ChatResult, LlmError, LlmProvider
+from evra.llm.provider import LlmError
 from evra.llm.schemas import MeetingAnswer
 from evra.notes.ask import ask_meeting, ask_settings
 from evra.notes.context import MeetingContext, build_context
@@ -46,7 +46,7 @@ from evra.notes.writer import write_note
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
 
-from tools.bakeoff_notes import FIXTURES, Case, load_case, repeat_case
+from tools.bakeoff_notes import FIXTURES, Case, Recorder, load_case, repeat_case
 from tools.bakeoff_steps import pre_read, title_after_note, unload
 
 Phase = Literal["cold", "warm", "after_note", "after_prepare"]
@@ -195,32 +195,6 @@ def summary(rows: Sequence[Row]) -> Summary:
         cold_total=cold.total_seconds if cold else None,
         after_prepare=next((r for r in rows if r.phase == "after_prepare" and not r.error), None),
     )
-
-
-class Recorder:
-    """Passes calls on and keeps the replies, so the model's own answer can be scored before
-    the transcript check drops anything."""
-
-    def __init__(self, inner: LlmProvider) -> None:
-        self.inner = inner
-        self.name = inner.name
-        self.replies: list[str] = []
-
-    def chat_json(
-        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
-    ) -> ChatResult:
-        result = self.inner.chat_json(model, messages, schema)
-        self.replies.append(result.content)
-        return result
-
-    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
-        return self.inner.embed(model, texts)
-
-    def installed_models(self) -> list[str]:
-        return self.inner.installed_models()
-
-    def load(self, model: str) -> None:
-        self.inner.load(model)
 
 
 def ask_one(

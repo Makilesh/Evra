@@ -61,6 +61,57 @@ describe("noteToMarkdown", () => {
   });
 });
 
+describe("noteToMarkdown with items", () => {
+  it("copies done items as checked", () => {
+    const note: Note = {
+      model: "m",
+      sections: [
+        {
+          id: "action_items",
+          title: "Action items",
+          blocks: [
+            {
+              text: "You: Send the proposal (by Thursday)",
+              citations: [{ utterance_id: "u2", start_ms: 110_000 }],
+              item: { id: "i1", kind: "action_item", status: "done", owner: "You", due: "by Thursday" },
+            },
+            {
+              text: "Them: Tell marketing",
+              citations: [],
+              item: { id: "i2", kind: "action_item", status: "open", owner: "Them", due: null },
+            },
+          ],
+        },
+        {
+          id: "decisions",
+          title: "Decisions",
+          blocks: [
+            {
+              text: "Launch on October 14.",
+              citations: [{ utterance_id: "u1", start_ms: 65_000 }],
+              item: { id: "d1", kind: "decision", status: "open", owner: null, due: null },
+            },
+          ],
+        },
+      ],
+    };
+    expect(noteToMarkdown("Weekly 1:1", "Mon 28 Sept · 13:51 · 12 min", note)).toBe(
+      [
+        "# Weekly 1:1",
+        "Mon 28 Sept · 13:51 · 12 min",
+        "",
+        "## Action items",
+        "- [x] You: Send the proposal (by Thursday) (01:50)",
+        "- [ ] Them: Tell marketing",
+        "",
+        "## Decisions",
+        "- Launch on October 14. (01:05)",
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("splitOwner", () => {
   it("separates a one-word owner from the rest of the point", () => {
     expect(splitOwner("You: send the proposal by Thursday.")).toEqual({

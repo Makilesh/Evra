@@ -30,12 +30,14 @@ from tests.unit.notes.fakes import FakeProvider, title_reply
 GOOD = json.dumps(
     {"summary": [{"text": "Some words were said.", "citations": ["u:1"]}], "sections": []}
 )
+NO_ITEMS = json.dumps({"items": []})
+NOTE = [GOOD, NO_ITEMS, NO_ITEMS, NO_ITEMS]  # the note (A1), then its three lists (A4-A6)
 
 
 def note_then_title(titler: LlmProvider) -> Callable[[LlmSettings], LlmProvider]:
     """The note call gets a note; the title call, made with its own short settings, goes to
     `titler`."""
-    return lambda s: titler if s.timeout_s == TITLE_TIMEOUT_S else FakeProvider([GOOD])
+    return lambda s: titler if s.timeout_s == TITLE_TIMEOUT_S else FakeProvider(NOTE)
 
 
 def wait_for_threads(name: str, timeout: float = 10.0) -> None:
@@ -209,7 +211,7 @@ def make(
         settings=Settings(),
         emit=events,
         kit=fake_kit,
-        provider_factory=provider or (lambda settings: FakeProvider([GOOD])),
+        provider_factory=provider or (lambda settings: FakeProvider(NOTE)),
         level_interval_s=0.02,
         idle_check_s=idle_check_s,
     )
@@ -348,7 +350,7 @@ def test_retry_writes_the_note_for_a_finished_meeting(tmp_path: Path) -> None:
                 raise LlmUnavailable("down")
             return super().chat_json(model, messages, schema)
 
-    service, events, _, _ = make(tmp_path, provider=lambda s: ComesBack([GOOD]))
+    service, events, _, _ = make(tmp_path, provider=lambda s: ComesBack(NOTE))
     mid = service.start("")["meeting_id"]
     events.wait_for("transcript.utterance")
     service.stop()
@@ -404,7 +406,7 @@ def test_stop_starts_loading_the_note_model_while_the_transcript_drains(tmp_path
             super().load(model)
             asked.set()
 
-    warming = Warming([GOOD])
+    warming = Warming(NOTE)
     service, events, kit, _ = make(tmp_path, provider=lambda s: warming, drain_gate=asked)
     mid = service.start("")["meeting_id"]
     events.wait_for("transcript.utterance")
@@ -423,7 +425,7 @@ def test_stop_does_not_wait_for_the_note_model_to_load(tmp_path: Path) -> None:
             release.wait(5)
             loaded.append(model)
 
-    service, events, _, _ = make(tmp_path, provider=lambda s: SlowLoad([GOOD]))
+    service, events, _, _ = make(tmp_path, provider=lambda s: SlowLoad(NOTE))
     mid = service.start("")["meeting_id"]
     events.wait_for("transcript.utterance")
     assert service.stop() == {"ok": True}
@@ -437,7 +439,7 @@ def test_a_warm_up_that_fails_is_logged_and_the_note_still_comes(tmp_path: Path)
         def load(self, model: str) -> None:
             raise LlmUnavailable("down")
 
-    service, events, _, _ = make(tmp_path, provider=lambda s: DownForLoading([GOOD]))
+    service, events, _, _ = make(tmp_path, provider=lambda s: DownForLoading(NOTE))
     with structlog.testing.capture_logs() as logs:
         mid = service.start("")["meeting_id"]
         events.wait_for("transcript.utterance")
@@ -568,7 +570,7 @@ def test_the_next_note_is_written_by_the_chosen_model(tmp_path: Path) -> None:
 
     def provider(settings: LlmSettings) -> LlmProvider:
         used.append(settings.model)
-        return FakeProvider([GOOD])
+        return FakeProvider(NOTE)
 
     service, events, _, _ = make(tmp_path, provider=provider)
     service.set_note_model("qwen3.5:9b")

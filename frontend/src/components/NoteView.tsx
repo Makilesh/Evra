@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Note, NoteFailureReason, Utterance } from "@/bridge";
+import type { ItemStatus, Note, NoteFailureReason, Utterance } from "@/bridge";
 import { PointRow } from "@/components/PointRow";
 import { noteQuotes } from "@/note";
 import { canRetry, noteFailureText, strings } from "@/strings";
@@ -12,12 +12,13 @@ interface NoteViewProps {
   canWrite: boolean;
   onWrite: () => void;
   onCite: (utteranceId: string) => void;
+  onItemStatus: (itemId: string, status: ItemStatus) => void;
 }
 
 // The note is a sheet: point | timed centre rule | the lines it came from. It folds to
 // rule | point over quotes when narrow. The note appears once, complete (D16): while one is
 // written, only its progress shows, as a band on the sheet.
-export function NoteView({ note, utterances, status, canWrite, onWrite, onCite }: NoteViewProps) {
+export function NoteView({ note, utterances, status, canWrite, onWrite, onCite, onItemStatus }: NoteViewProps) {
   const byId = useMemo(() => new Map(utterances.map((u) => [u.id, u])), [utterances]);
   const failed = status?.failed;
   return (
@@ -35,7 +36,7 @@ export function NoteView({ note, utterances, status, canWrite, onWrite, onCite }
               />
             )}
             {note ? (
-              <Sheet note={note} byId={byId} onCite={onCite} />
+              <Sheet note={note} byId={byId} onCite={onCite} onItemStatus={onItemStatus} />
             ) : (
               !failed && (
                 <div className="px-2.5 pt-5">
@@ -96,7 +97,14 @@ function FailureRow({ reason, model, onRetry }: { reason: NoteFailureReason; mod
   );
 }
 
-function Sheet({ note, byId, onCite }: { note: Note; byId: Map<string, Utterance>; onCite: (id: string) => void }) {
+interface SheetProps {
+  note: Note;
+  byId: Map<string, Utterance>;
+  onCite: (id: string) => void;
+  onItemStatus: (itemId: string, status: ItemStatus) => void;
+}
+
+function Sheet({ note, byId, onCite, onItemStatus }: SheetProps) {
   return (
     <article>
       <div aria-hidden="true" className="sheet-row sheet-heads">
@@ -124,6 +132,7 @@ function Sheet({ note, byId, onCite }: { note: Note; byId: Map<string, Utterance
                   quotes={noteQuotes(block, byId)}
                   owners={section.id.includes("action")}
                   onCite={onCite}
+                  onItemStatus={onItemStatus}
                 />
               ))}
             </ul>

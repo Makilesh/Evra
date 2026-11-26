@@ -36,6 +36,10 @@ log = structlog.get_logger(__name__)
 
 ItemKind = Literal["action_item", "decision", "open_question"]
 ALL_KINDS: tuple[ItemKind, ...] = ("action_item", "decision", "open_question")
+# the template section each kind fills (a section with `source: extraction`, BUILD.md §7.6)
+ITEM_SECTIONS: Mapping[ItemKind, str] = MappingProxyType(
+    {"action_item": "action_items", "decision": "decisions", "open_question": "open_questions"}
+)
 MIN_CONFIDENCE = 0.5
 SAME_TEXT = 0.9  # two items this alike repeat each other
 SAME_TEXT_AND_LINE = 0.6  # ...or this alike when they cite a common line

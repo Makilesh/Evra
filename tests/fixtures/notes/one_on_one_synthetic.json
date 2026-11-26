@@ -37,10 +37,10 @@
     {"what": "search migration finished", "keywords": ["migration"]},
     {"what": "latency settled at 90 ms", "keywords": ["90"]},
     {"what": "launch moved to October 14", "keywords": ["october 14|oct 14|14 october"]},
-    {"what": "Them tells marketing", "keywords": ["marketing", "tell|inform|let"]},
+    {"what": "Them tells marketing", "keywords": ["marketing", "tell|inform|let"], "commitment": true},
     {"what": "12,000 contractor budget left", "keywords": ["12,000|12000|twelve thousand"]},
-    {"what": "You send the designer proposal by Thursday", "keywords": ["proposal", "thursday"]},
-    {"what": "Them asks Priya about API limits", "keywords": ["priya", "ask|check|follow"]},
+    {"what": "You send the designer proposal by Thursday", "keywords": ["proposal", "thursday"], "commitment": true},
+    {"what": "Them asks Priya about API limits", "keywords": ["priya", "ask|check|follow"], "commitment": true},
     {"what": "open question: 500 requests per minute or batching", "keywords": ["500"]},
     {"what": "conference budget depends on travel policy", "keywords": ["conference", "travel|policy|budget"]},
     {"what": "mentoring picked up next time", "keywords": ["mentor"]}

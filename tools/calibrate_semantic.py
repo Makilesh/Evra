@@ -46,8 +46,7 @@ from evra.store.meetings import Utterance
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
 
-from tools.bakeoff_ask import Recorder
-from tools.bakeoff_notes import FIXTURES, Case, load_case
+from tools.bakeoff_notes import FIXTURES, Case, Recorder, load_case
 
 Group = Literal["supported", "mismatched", "unsupported"]
 GROUPS: tuple[Group, ...] = ("supported", "mismatched", "unsupported")
