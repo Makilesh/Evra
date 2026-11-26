@@ -474,6 +474,7 @@ CREATE INDEX job_ready ON job(state, priority, run_after);
 - Jobs are claimed with `UPDATE … WHERE id = (SELECT … LIMIT 1) RETURNING *` in a transaction. Priorities: interactive 1 > post-meeting 5 > background 9.
 - 3 retries with backoff, then `dead` → **Needs attention** list with Retry. On restart, `running` jobs older than 10 minutes return to `queued`.
 - **GPU rule:** one GPU job at a time (12 GB VRAM). The torch worker frees GPU memory (`torch.cuda.empty_cache()`, or stops) before the LLM step; Ollama calls use a short `keep_alive`. Diarization, embeddings and the LLM never hold VRAM at the same time.
+- **Note model at Stop:** pressing Stop asks Ollama to load the note model, at the context size notes use, while the transcript drains. Speech recognition runs on the CPU, so nothing else needs the GPU then. Once M4's torch worker runs after Stop, this load moves to after the worker frees the GPU (DECISIONS 2026-11-11).
 
 ### 8.4 Screens (React)
 

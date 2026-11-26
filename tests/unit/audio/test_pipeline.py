@@ -230,6 +230,45 @@ def test_callback_stall_with_burst_catch_up_loses_nothing(stall_ms: int) -> None
     assert len(_pcm_of(frames, MIC)) == 300 * 160
 
 
+@pytest.mark.parametrize("quiet_ms", [150, 500, 1500])
+def test_a_loopback_quiet_when_recording_starts_is_not_a_dropout(quiet_ms: int) -> None:
+    mic, system, clock, frames, pipe = _passthrough_rig()
+    for i in range(300):
+        clock.t = (i + 1) * 10 * MS
+        mic.ring.put(_level(i), clock.t)
+        if clock.t > quiet_ms * MS:  # nothing is playing yet, so loopback delivers nothing
+            system.ring.put(_level(i), clock.t)
+        pipe.step()
+    pipe.flush()
+    stats = pipe.stats(SYSTEM)
+    assert stats.gaps == ()
+    assert stats.padded_ms == quiet_ms
+    assert stats.corrections == 0 and stats.dropped_ms == 0
+    audio = _pcm_of(frames, SYSTEM)
+    assert np.flatnonzero(audio)[0] == quiet_ms * 16  # its first sound lands where it was heard
+
+
+def test_first_loopback_audio_that_overlaps_the_padding_is_trimmed_and_counted() -> None:
+    # Padding runs 100 ms behind real time, so when the first callback carries 200 ms of
+    # audio (a burst as playback starts), its first 90 ms fall where silence already went out.
+    mic, system, clock, frames, pipe = _passthrough_rig()
+    for i in range(300):
+        clock.t = (i + 1) * 10 * MS
+        mic.ring.put(_level(i), clock.t)
+        if clock.t == 600 * MS:
+            system.ring.put(np.full((3_200, 1), 0.02, dtype=np.float32), clock.t)  # 400-600 ms
+        elif clock.t > 600 * MS:
+            system.ring.put(_level(i), clock.t)
+        pipe.step()
+    pipe.flush()
+    stats = pipe.stats(SYSTEM)
+    assert stats.padded_ms == 490  # silence had gone out up to 600 - 10 - 100 ms
+    assert stats.dropped_ms == 90  # the overlap is lost audio, and the stats say so
+    assert stats.corrections == 0  # aligned at once, not set right a second later
+    assert stats.gaps == ()
+    assert np.flatnonzero(_pcm_of(frames, SYSTEM))[0] == 490 * 16
+
+
 def test_a_late_first_callback_needs_no_correction_later() -> None:
     mic, system, clock, _frames, pipe = _passthrough_rig()
     for i in range(300):

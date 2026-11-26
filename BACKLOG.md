@@ -117,7 +117,6 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Name check over long calls: a name said more than 3 lines before the cited line drops a true point (a project named once, then "the beta"; "her first week" after "Dana starts"). Consider a longer look-back for names that are not the owner of an action item.
 - Short replies: if models keep citing only "Yeah, I can do that.", let the overlap check borrow the line just before a short reply.
 - Bake-off coverage matches keywords exactly ("hardware refresh" for "laptop refresh" is a miss): allow alternative keywords per fact.
-- About 20 s of the 58.5 s for an hour's note is loading gemma4:12b; start loading it when Stop is pressed, alongside the transcript drain.
 
 ## Steno pad follow-ups (2026-11-10)
 
@@ -143,11 +142,7 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - Live transcript off for slow PCs: record now, transcribe after. `live_transcript` is already in the settings file.
 - After a theme switch, WebView2's background behind a resizing window keeps the startup colour until the next start.
 
-## Flaky test (2026-11-10)
-- `tests/unit/capture/test_session.py::test_clean_start_needs_no_drift_corrections` times a simulated 0.2 s loopback start against the real clock. It failed once while the PC was busy (five research agents running) and passed alone 5 of 5 times. Give it a fake clock, or a tolerance for scheduling delay.
-
 ## From the competitor review (2026-11-10)
 The full list (100 features, with links) is in `private/research/reports/`.
-- **Keep the PC awake while recording.** Nothing stops Windows from sleeping mid-recording. A call app such as Teams or Zoom usually keeps it awake, but an in-person 1:1 has nothing doing that. Hold `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` from Record to Stop; the screen may still turn off.
 - **Switch the microphone during a recording.** The picker is locked while recording, so a headset that drops can't be swapped mid-call.
 - **Gaps with no plan yet** that comparable apps cover: one action-item list across meetings, exporting files (PDF, text, Markdown), importing an older audio file, and detecting a meeting and asking first.

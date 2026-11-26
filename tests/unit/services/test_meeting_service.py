@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import structlog
 
 from evra.asr.engine import Segment
 from evra.audio.vad import SpeechSegmenter
@@ -22,7 +23,7 @@ from evra.store.db import connect
 from evra.store.meetings import MeetingStore, Utterance
 from evra.store.migrate import migrate
 from evra.store.notes import NoteStore
-from evra.transcribe.recording import LiveRecording
+from evra.transcribe.recording import LiveRecording, RecordingResult
 from tests.unit.audio.test_vad import FakeVad
 from tests.unit.notes.fakes import FakeProvider, title_reply
 
@@ -37,12 +38,35 @@ def note_then_title(titler: LlmProvider) -> Callable[[LlmSettings], LlmProvider]
     return lambda s: titler if s.timeout_s == TITLE_TIMEOUT_S else FakeProvider([GOOD])
 
 
+def wait_for_threads(name: str, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while any(t.name == name for t in threading.enumerate()):
+        assert time.monotonic() < deadline, f"{name} did not finish"
+        time.sleep(0.01)
+
+
 def wait_for_note_jobs(timeout: float = 10.0) -> None:
     """Naming runs on the note job's thread after `note.ready`: when it ends, so has naming."""
-    deadline = time.monotonic() + timeout
-    while any(t.name == "note-writer" for t in threading.enumerate()):
-        assert time.monotonic() < deadline, "the note job did not finish"
-        time.sleep(0.01)
+    wait_for_threads("note-writer", timeout)
+
+
+class GatedRecording:
+    """A real recording whose stop (the transcript drain) first waits for `gate`, and notes
+    whether it had opened by then."""
+
+    def __init__(self, live: LiveRecording, gate: threading.Event, seen: list[bool]) -> None:
+        self._live, self._gate, self._seen = live, gate, seen
+        self.meeting_id: str | None = None
+        self.started_at_ms: int | None = None
+
+    def start(self) -> str:
+        meeting_id = self._live.start()
+        self.meeting_id, self.started_at_ms = self._live.meeting_id, self._live.started_at_ms
+        return meeting_id
+
+    def stop(self, *, state: str = "ready") -> RecordingResult:
+        self._seen.append(self._gate.wait(5))
+        return self._live.stop(state=state)
 
 
 class NumberAsr:
@@ -59,8 +83,11 @@ class FakeKit:
         mic_error: Exception | None = None,
         prepare_error: Exception | None = None,
         prepare_delay: float = 0.0,
+        drain_gate: threading.Event | None = None,
     ) -> None:
         self.paths, self.speech = paths, speech
+        self.drain_gate = drain_gate
+        self.gate_open_at_drain: list[bool] = []
         self.mic_error, self.prepare_error, self.prepare_delay = (
             mic_error,
             prepare_error,
@@ -83,7 +110,7 @@ class FakeKit:
         situation: str,
         on_utterance: Callable[[Utterance], None] | None = None,
         on_level: Callable[[int, float], None] | None = None,
-    ) -> LiveRecording:
+    ) -> LiveRecording | GatedRecording:
         self.mics.append(mic)
         if self.mic_error is not None:
             raise self.mic_error
@@ -97,7 +124,7 @@ class FakeKit:
             0: SpeechSegmenter(0, FakeVad(script=script)),
             1: SpeechSegmenter(1, FakeVad(script=[])),
         }
-        return LiveRecording(
+        live = LiveRecording(
             session=session,
             segmenters=segmenters,
             asr=NumberAsr(),
@@ -107,6 +134,9 @@ class FakeKit:
             on_utterance=on_utterance,
             on_level=on_level,
         )
+        if self.drain_gate is None:
+            return live
+        return GatedRecording(live, self.drain_gate, self.gate_open_at_drain)
 
     def release_if_idle(self) -> bool:
         self.releases += 1
@@ -308,13 +338,23 @@ def test_a_missing_model_is_named(tmp_path: Path) -> None:
 
 
 def test_retry_writes_the_note_for_a_finished_meeting(tmp_path: Path) -> None:
-    providers: list[LlmProvider] = [Down([]), FakeProvider([GOOD])]
-    service, events, _, _ = make(tmp_path, provider=lambda s: providers.pop(0))
+    back = threading.Event()
+
+    class ComesBack(FakeProvider):  # Ollama is down for the first note, then comes back
+        def chat_json(
+            self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+        ) -> ChatResult:
+            if not back.is_set():
+                raise LlmUnavailable("down")
+            return super().chat_json(model, messages, schema)
+
+    service, events, _, _ = make(tmp_path, provider=lambda s: ComesBack([GOOD]))
     mid = service.start("")["meeting_id"]
     events.wait_for("transcript.utterance")
     service.stop()
     events.wait_for("note.failed")
     events.wait_for("recording.state", state="idle")
+    back.set()
     assert service.write_note(mid) == {"ok": True}
     events.wait_for("note.ready", meeting_id=mid)
 
@@ -354,6 +394,59 @@ def test_a_title_that_cannot_be_written_keeps_the_placeholder(tmp_path: Path) ->
         assert has_placeholder_title(meetings.get_meeting(mid)["title"])
     finally:
         close()
+
+
+def test_stop_starts_loading_the_note_model_while_the_transcript_drains(tmp_path: Path) -> None:
+    asked = threading.Event()
+
+    class Warming(FakeProvider):
+        def load(self, model: str) -> None:
+            super().load(model)
+            asked.set()
+
+    warming = Warming([GOOD])
+    service, events, kit, _ = make(tmp_path, provider=lambda s: warming, drain_gate=asked)
+    mid = service.start("")["meeting_id"]
+    events.wait_for("transcript.utterance")
+    assert service.stop() == {"ok": True}
+    assert kit.gate_open_at_drain == [True]  # the load was asked for while the drain ran
+    assert warming.loaded == ["gemma4:12b"]
+    events.wait_for("note.ready", meeting_id=mid)
+
+
+def test_stop_does_not_wait_for_the_note_model_to_load(tmp_path: Path) -> None:
+    release = threading.Event()
+    loaded: list[str] = []
+
+    class SlowLoad(FakeProvider):
+        def load(self, model: str) -> None:
+            release.wait(5)
+            loaded.append(model)
+
+    service, events, _, _ = make(tmp_path, provider=lambda s: SlowLoad([GOOD]))
+    mid = service.start("")["meeting_id"]
+    events.wait_for("transcript.utterance")
+    assert service.stop() == {"ok": True}
+    assert loaded == []  # Stop came back while the model was still loading
+    events.wait_for("note.ready", meeting_id=mid)  # and the note did not wait for it either
+    release.set()
+
+
+def test_a_warm_up_that_fails_is_logged_and_the_note_still_comes(tmp_path: Path) -> None:
+    class DownForLoading(FakeProvider):
+        def load(self, model: str) -> None:
+            raise LlmUnavailable("down")
+
+    service, events, _, _ = make(tmp_path, provider=lambda s: DownForLoading([GOOD]))
+    with structlog.testing.capture_logs() as logs:
+        mid = service.start("")["meeting_id"]
+        events.wait_for("transcript.utterance")
+        assert service.stop() == {"ok": True}
+        events.wait_for("note.ready", meeting_id=mid)
+        wait_for_threads("note-model-warmup")
+    assert any(
+        e["event"] == "note_model_not_warmed" and e["reason"] == "LlmUnavailable" for e in logs
+    )
 
 
 def test_no_speech_means_no_note(tmp_path: Path) -> None:
@@ -484,7 +577,8 @@ def test_the_next_note_is_written_by_the_chosen_model(tmp_path: Path) -> None:
     service.stop()
     events.wait_for("note.ready", meeting_id=mid)
     wait_for_note_jobs()
-    assert used == ["qwen3.5:9b", "qwen3.5:9b"]  # the note, then its title
+    wait_for_threads("note-model-warmup")
+    assert used == ["qwen3.5:9b"] * 3  # the warm-up at Stop, the note, then its title
 
 
 def test_note_models_are_the_ones_installed_in_ollama(tmp_path: Path) -> None:

@@ -204,6 +204,7 @@ class MeetingService:
         if recording is None:
             return {"ok": False}
         self._stop_ticker()
+        self._warm_note_model()
         try:
             result = recording.stop(state="processing")
         except Exception as exc:  # capture failed while closing: the meeting is still kept
@@ -237,6 +238,20 @@ class MeetingService:
         return {"ok": True}
 
     # --- notes -----------------------------------------------------------------------------
+
+    def _warm_note_model(self) -> None:
+        """Have Ollama load the note model while the transcript drains: loading is about 20 s
+        of an hour-long call's note. Nothing waits for it; if it fails, the note loads the
+        model itself. Speech recognition runs on the CPU, so the two never share the GPU."""
+        llm = self._settings.llm
+
+        def warm() -> None:
+            try:
+                self._provider_factory(llm).load(llm.model)
+            except Exception as exc:  # Ollama is down or busy: the note says so if it matters
+                log.info("note_model_not_warmed", reason=type(exc).__name__)
+
+        threading.Thread(target=warm, name="note-model-warmup", daemon=True).start()
 
     def write_note(self, meeting_id: str) -> dict[str, Any]:
         with self._lock:

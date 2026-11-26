@@ -151,6 +151,7 @@ class ChannelTimeline:
         self.stats = TimelineStats()
         self._since_check = 0
         self._owed_drop = 0
+        self._heard = False  # True once real audio, not padding, is on the timeline
 
     def index_at(self, t_ns: int) -> int:
         return round((t_ns - self._start_ns) * SAMPLE_RATE / NS)
@@ -159,7 +160,7 @@ class ChannelTimeline:
         """What to append to this channel's timeline for a chunk whose first sample is at t."""
         delta = self.index_at(t_first_ns) - self.emitted  # > 0: timeline behind real time
         out = samples
-        if self.emitted == 0 and self.stats.padded == 0:  # first audio on this channel
+        if not self._heard:  # first audio on this channel, even after start-up padding
             return self._place_first(samples, t_first_ns, delta, cause)
         if delta >= GAP_SAMPLES:
             fill = delta // STEP * STEP
@@ -191,10 +192,16 @@ class ChannelTimeline:
     def _place_first(
         self, samples: Int16Array, t_first_ns: int, delta: int, cause: str | None
     ) -> Int16Array:
-        """Align the channel's first chunk: trim audio from before the start, or lead with
-        silence if the device started late (a gap only if audio was known to be lost)."""
+        """Align the channel's first audio: trim what lies before the start, or lead with
+        silence if the device started late or a loopback had nothing to play yet (a gap only
+        if audio was known to be lost). Audio that overlaps silence already padded in is
+        trimmed too, and counted as dropped: it is real audio the timeline cannot take back."""
+        self._heard = True
         if delta < 0:
-            out = samples[min(-delta, len(samples)) :]
+            cut = min(-delta, len(samples))
+            if self.emitted:  # padding already covered this time
+                self.stats.dropped += cut
+            out = samples[cut:]
         else:
             lead = delta // STEP * STEP
             if cause is not None and lead >= GAP_SAMPLES:

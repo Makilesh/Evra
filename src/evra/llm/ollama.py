@@ -130,6 +130,17 @@ class OllamaProvider:
                 return float(loaded.get("size_vram") or 0) / float(loaded["size"])
         return None
 
+    def load(self, model: str) -> None:
+        """A generate request with no prompt only loads the model. It asks for the context
+        size every chat uses: loaded at any other size, the next chat would load it again."""
+        s = self._settings
+        self._call(
+            "POST",
+            "/api/generate",
+            {"model": model, "keep_alive": s.keep_alive, "options": {"num_ctx": s.num_ctx}},
+            model=model,
+        )
+
     def unload(self, model: str) -> None:
         self._call("POST", "/api/generate", {"model": model, "keep_alive": 0}, model=model)
 

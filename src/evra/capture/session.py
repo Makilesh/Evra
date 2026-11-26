@@ -12,6 +12,7 @@ import structlog
 
 from evra.audio.frames import MIC, SAMPLE_RATE, SYSTEM, Channel, Frames
 from evra.audio.pipeline import CapturePipeline, ChannelStats
+from evra.capture.awake import KeepAwake
 from evra.capture.sources import MIC_PRIVACY_HINT, AudioSource
 
 log = structlog.get_logger(__name__)
@@ -98,8 +99,10 @@ class CaptureSession:
         now_ns: Callable[[], int] = time.monotonic_ns,
         tick_s: float = 0.01,
         liveness_s: float = 2.0,
+        keep_awake: KeepAwake | None = None,
     ) -> None:
         self._sources: dict[Channel, AudioSource] = {MIC: mic, SYSTEM: system}
+        self._keep_awake = keep_awake if keep_awake is not None else KeepAwake.for_this_os()
         self._watcher_factory = watcher_factory
         self._now = now_ns
         self._tick = tick_s
@@ -130,6 +133,7 @@ class CaptureSession:
         if self._watcher_factory is not None:
             self._watcher = self._watcher_factory(self._on_output_changed)
             self._watcher.start()
+        self._keep_awake.start()  # only once the devices are open: a failed start holds nothing
         log.info("capture_started", mic=mic.name, system=system.name)
 
     def stop(self) -> CaptureHealth:
@@ -143,6 +147,7 @@ class CaptureSession:
             self._thread = None
         for source in self._sources.values():
             source.stop()
+        self._keep_awake.stop()  # the devices are closed: nothing more is being recorded
         if self._pipeline is not None and self._failure is None:
             try:
                 self._pipeline.flush(end_ns)
