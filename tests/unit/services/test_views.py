@@ -145,3 +145,46 @@ def test_summary_duration_only_once_finished() -> None:
 )
 def test_titles_are_tidied_and_bounded(given: str, expected: str | None) -> None:
     assert clean_title(given) == expected
+
+
+def test_meeting_detail_lists_questions(conn: sqlite3.Connection) -> None:
+    from evra.notes.ask import AskResult
+    from evra.store.questions import QuestionStore
+
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    line = store.add_utterance(
+        version_id=vid, meeting_id=mid, channel=1, start_ms=9_000, end_ms=12_000, text="Friday."
+    )
+    questions = QuestionStore(conn)
+    first = questions.add(mid, "When?")
+    questions.answer(
+        first.id,
+        AskResult(
+            "answered",
+            (CheckedBullet("Friday.", (line.id, "gone")),),
+            False,
+            "gemma4:12b",
+            "a0-v1+a12-v1",
+            10,
+            5,
+            1.0,
+            0,
+        ),
+        transcript_version_id=vid,
+    )
+    second = questions.fail(questions.add(mid, "Who?").id, "ollama_down")
+    detail = meeting_detail(conn, mid)
+    assert detail is not None
+    answered, failed = detail["questions"]
+    assert answered["text"] == "When?" and answered["state"] == "answered"
+    assert answered["points"] == [
+        {"text": "Friday.", "citations": [{"utterance_id": line.id, "start_ms": 9_000}]}
+    ]
+    assert answered["model"] == "gemma4:12b" and answered["excerpt"] is False
+    assert "reason" not in answered
+    assert (failed["id"], failed["state"], failed["reason"]) == (second.id, "failed", "ollama_down")
+    json.dumps(detail)

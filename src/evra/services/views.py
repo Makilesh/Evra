@@ -10,6 +10,7 @@ from typing import Any
 from evra.notes.templates import load_template
 from evra.store.meetings import MeetingStore, Utterance
 from evra.store.notes import SUMMARY, NoteStore, StoredNote
+from evra.store.questions import QuestionStore, StoredQuestion
 from evra.transcribe.labels import speaker_label
 
 MAX_TITLE = 200
@@ -57,6 +58,30 @@ def note_view(note: StoredNote, utterances: Sequence[Utterance]) -> dict[str, An
     return {"model": note.model, "sections": sections}
 
 
+def question_view(question: StoredQuestion, starts: Mapping[str, int]) -> dict[str, Any]:
+    view: dict[str, Any] = {
+        "id": question.id,
+        "text": question.text,
+        "asked_at": question.asked_at,
+        "state": question.state,
+        "points": [
+            {
+                "text": p.text,
+                "citations": [
+                    {"utterance_id": c, "start_ms": starts[c]} for c in p.citations if c in starts
+                ],
+            }
+            for p in question.points
+        ],
+        "excerpt": question.excerpt,
+    }
+    if question.state == "failed":
+        view["reason"] = question.reason
+    if question.model is not None:
+        view["model"] = question.model
+    return view
+
+
 def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] | None:
     store = MeetingStore(conn)
     try:
@@ -66,10 +91,14 @@ def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] 
     version = store.current_transcript_version(meeting_id)
     utterances = store.utterances(version) if version else []
     note = NoteStore(conn).current_note(meeting_id)
+    starts = {u.id: u.start_ms for u in utterances}
     return {
         "meeting": meeting_summary({**meeting, "has_note": note is not None}),
         "utterances": [utterance_view(u) for u in utterances],
         "note": note_view(note, utterances) if note is not None else None,
+        "questions": [
+            question_view(q, starts) for q in QuestionStore(conn).for_meeting(meeting_id)
+        ],
     }
 
 

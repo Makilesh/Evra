@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="let a thinking model think first (default: settings llm.think)",
     )
     note.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
+    ask = commands.add_parser("ask", help="ask a question about a recorded meeting")
+    ask.add_argument("question", help="what you want to know")
+    ask.add_argument("--meeting-id", default=None, help="meeting id (default: latest)")
+    ask.add_argument("--model", default=None, help="Ollama model (default: settings llm.model)")
+    ask.add_argument("--data-dir", type=Path, default=None, help="keep all app data here")
     titles = commands.add_parser(
         "titles", help="name meetings that have a note but still a 'Recording ...' title"
     )
@@ -105,6 +110,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         command = note_command if args.command == "note" else titles_command
         return command(args, resolve_paths(args.data_dir))
+    if args.command == "ask":
+        from evra.notes.ask_cli import ask_command
+        from evra.paths import resolve_paths
+
+        return ask_command(args, resolve_paths(args.data_dir))
     parser.print_help()
     return 0
 

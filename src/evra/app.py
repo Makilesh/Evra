@@ -16,6 +16,7 @@ from evra.config import Settings, Theme, debug_enabled, load_settings
 from evra.constants import APP_NAME
 from evra.logging_setup import LOG_FILE_NAME, configure_logging
 from evra.paths import AppPaths, resolve_paths
+from evra.services.ask import AskService
 from evra.services.meetings import MeetingService
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
@@ -47,6 +48,7 @@ class App:
     api: BridgeApi
     debug: bool
     service: MeetingService
+    asker: AskService
 
 
 def build_app(paths: AppPaths, *, debug: bool) -> App:
@@ -61,16 +63,26 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
         conn.close()
     bus = EventBus()
     service = MeetingService(paths=paths, settings=settings, emit=bus.emit, kit=RecordingKit(paths))
+    asker = AskService(
+        paths=paths,
+        llm=lambda: service.settings.llm,
+        emit=bus.emit,
+        recording_busy=lambda: service.state()["state"] in ("loading", "recording", "stopping"),
+    )
+    asker.recover()
     api = BridgeApi(
         app_name=APP_NAME,
         version=__version__,
         bus=bus,
         control=service,
+        asker=asker,
         db_path=paths.db_path,
         mic_lister=service.list_mics,
     )
     log.info("app_started", version=__version__, schema_version=schema, recovered=recovered)
-    return App(paths=paths, settings=settings, bus=bus, api=api, debug=debug, service=service)
+    return App(
+        paths=paths, settings=settings, bus=bus, api=api, debug=debug, service=service, asker=asker
+    )
 
 
 def run_app(
@@ -100,6 +112,7 @@ def run_app(
             )
         finally:  # the window is closed: save a running recording, stop the workers
             app.bus.detach()
+            app.asker.shutdown()
             app.service.shutdown()
     except Exception as exc:
         # Log the details (redacted per §9.1) and give the user one readable line.

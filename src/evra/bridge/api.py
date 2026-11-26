@@ -71,6 +71,12 @@ class Control(Protocol):
     def note_models(self) -> dict[str, Any]: ...
 
 
+class Asker(Protocol):
+    def ask(self, meeting_id: object, question: object) -> dict[str, Any]: ...
+
+    def prepare(self, meeting_id: object) -> dict[str, Any]: ...
+
+
 class BridgeApi:
     def __init__(
         self,
@@ -80,6 +86,7 @@ class BridgeApi:
         bus: EventBus,
         control: Control,
         db_path: Path,
+        asker: Asker | None = None,
         mic_lister: Callable[[], MicList] = list_mics,
         folder_opener: Callable[[Path], None] = open_folder,
     ) -> None:
@@ -87,6 +94,7 @@ class BridgeApi:
         self._version = version
         self._bus = bus
         self._control = control
+        self._asker = asker
         self._db_path = db_path
         self._mic_lister = mic_lister
         self._open_folder = folder_opener
@@ -131,6 +139,16 @@ class BridgeApi:
         if not isinstance(meeting_id, str):
             return {"ok": False}
         return self._control.write_note(meeting_id)
+
+    def ask_meeting(self, meeting_id: str, question: str) -> dict[str, Any]:
+        if self._asker is None or not isinstance(meeting_id, str) or not isinstance(question, str):
+            return {"ok": False, "reason": "invalid"}
+        return self._asker.ask(meeting_id, question)
+
+    def prepare_ask(self, meeting_id: str) -> dict[str, Any]:
+        if self._asker is None or not isinstance(meeting_id, str):
+            return {"ok": False}
+        return self._asker.prepare(meeting_id)
 
     def rename_meeting(self, meeting_id: str, title: str) -> dict[str, Any]:
         cleaned = clean_title(title) if isinstance(title, str) else None

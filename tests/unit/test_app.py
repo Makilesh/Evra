@@ -172,3 +172,24 @@ def test_closing_the_window_shuts_the_meeting_service_down(
         == 0
     )
     assert closed == [True]
+
+
+def test_recover_runs_at_start(tmp_path: Path) -> None:
+    from evra.store.meetings import MeetingStore
+    from evra.store.migrate import migrate
+    from evra.store.questions import QuestionStore
+
+    paths = AppPaths.under(tmp_path)
+    paths.ensure()
+    conn = connect(paths.db_path)
+    migrate(conn)
+    mid = MeetingStore(conn).create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    qid = QuestionStore(conn).add(mid, "When?").id
+    conn.close()
+    build_app(paths, debug=False)
+    conn = connect(paths.db_path)
+    stored = QuestionStore(conn).get(qid)
+    conn.close()
+    assert (stored.state, stored.reason) == ("failed", "interrupted")

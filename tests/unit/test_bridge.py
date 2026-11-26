@@ -97,6 +97,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
     public = sorted(n for n in dir(api) if not n.startswith("_"))
     assert public == [
         "app_info",
+        "ask_meeting",
         "get_meeting",
         "get_settings",
         "list_meetings",
@@ -104,6 +105,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "list_note_models",
         "open_data_folder",
         "ping",
+        "prepare_ask",
         "recording_state",
         "rename_meeting",
         "request_hello",
@@ -287,3 +289,33 @@ def test_set_note_model_refuses_cloud(tmp_path: Path) -> None:
     assert api.set_note_model("gemma4:cloud") == {"ok": False}
     assert api.set_note_model("gemma4:31b-cloud") == {"ok": False}
     assert control.calls == []
+
+
+class StubAsker:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def ask(self, meeting_id: object, question: object) -> dict[str, Any]:
+        self.calls.append(("ask", (meeting_id, question)))
+        return {"ok": True, "question": {"id": "q"}}
+
+    def prepare(self, meeting_id: object) -> dict[str, Any]:
+        self.calls.append(("prepare", (meeting_id,)))
+        return {"ok": True}
+
+
+def test_ask_meeting_passes_through(tmp_path: Path) -> None:
+    asker = StubAsker()
+    api = _api(tmp_path, asker=asker)[0]
+    assert api.ask_meeting("m1", "When?") == {"ok": True, "question": {"id": "q"}}
+    assert api.prepare_ask("m1") == {"ok": True}
+    assert asker.calls == [("ask", ("m1", "When?")), ("prepare", ("m1",))]
+
+
+def test_prepare_ask_refuses_non_strings(tmp_path: Path) -> None:
+    asker = StubAsker()
+    api = _api(tmp_path, asker=asker)[0]
+    assert api.prepare_ask(5) == {"ok": False}  # type: ignore[arg-type]
+    assert api.ask_meeting(5, "q") == {"ok": False, "reason": "invalid"}  # type: ignore[arg-type]
+    assert api.ask_meeting("m", None) == {"ok": False, "reason": "invalid"}  # type: ignore[arg-type]
+    assert asker.calls == []
