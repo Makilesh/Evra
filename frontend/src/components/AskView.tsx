@@ -106,6 +106,7 @@ export function AskView({ questions, utterances, isLive, onAsk, onPrepare, onCit
                 question={question}
                 byId={byId}
                 busy={busy}
+                repeated={questions.slice(index + 1).some((later) => later.text === question.text)}
                 onAskAgain={() => void ask(question.text)}
                 onCite={onCite}
               />
@@ -170,6 +171,8 @@ interface QuestionBlockProps {
   question: Question;
   byId: Map<string, Utterance>;
   busy: boolean;
+  /** A later question in the thread has this same text: asking again would only repeat it. */
+  repeated: boolean;
   onAskAgain: () => void;
   onCite: (utteranceId: string) => void;
 }
@@ -193,7 +196,7 @@ function QuestionBlock({ ref, question, ...answer }: QuestionBlockProps) {
   );
 }
 
-function Answer({ question, byId, busy, onAskAgain, onCite }: Omit<QuestionBlockProps, "ref">) {
+function Answer({ question, byId, busy, repeated, onAskAgain, onCite }: Omit<QuestionBlockProps, "ref">) {
   switch (question.state) {
     case "asking":
       return (
@@ -212,25 +215,30 @@ function Answer({ question, byId, busy, onAskAgain, onCite }: Omit<QuestionBlock
               <PointRow key={index} block={point} quotes={noteQuotes(point, byId)} owners={false} onCite={onCite} />
             ))}
           </ul>
-          {question.excerpt && (
-            <div className="sheet-row">
-              <p className="sheet-point text-[13px] leading-5 text-muted">{strings.askExcerpt}</p>
-              <span className="sheet-mid on-rule" />
-            </div>
-          )}
+          {question.excerpt && <ExcerptRow text={strings.askExcerpt} />}
         </>
       );
     case "not_found":
-      return <BandRow text={strings.notDiscussed} />;
+      return (
+        <>
+          <BandRow text={strings.notDiscussed} />
+          {question.excerpt && <ExcerptRow text={strings.askExcerptNothing} />}
+        </>
+      );
     case "unchecked":
-      return <BandRow text={strings.askUnchecked} />;
+      return (
+        <>
+          <BandRow text={strings.askUnchecked} />
+          {question.excerpt && <ExcerptRow text={strings.askExcerpt} />}
+        </>
+      );
     case "failed":
       return (
         <div className="sheet-row bg-band-deep">
           <p className="sheet-point py-3.5">{askFailureText(question.reason)}</p>
           <span className="sheet-mid on-rule" />
           <div className="sheet-quotes py-3.5">
-            {canAskAgain(question.reason) && (
+            {canAskAgain(question.reason) && !repeated && (
               <button
                 type="button"
                 disabled={busy}
@@ -244,6 +252,15 @@ function Answer({ question, byId, busy, onAskAgain, onCite }: Omit<QuestionBlock
         </div>
       );
   }
+}
+
+function ExcerptRow({ text }: { text: string }) {
+  return (
+    <div className="sheet-row">
+      <p className="sheet-point text-[13px] leading-5 text-muted">{text}</p>
+      <span className="sheet-mid on-rule" />
+    </div>
+  );
 }
 
 function BandRow({ text }: { text: string }) {

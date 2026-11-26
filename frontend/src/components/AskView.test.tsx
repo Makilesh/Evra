@@ -114,6 +114,33 @@ it("excerpt answer says it read parts", () => {
   ).toBeInTheDocument();
 });
 
+it("says a long call had no part matching the question, and when it read parts", () => {
+  view({ questions: [question({ state: "not_found", excerpt: true })] });
+  expect(screen.getByText("Not discussed in this meeting.")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "This call is too long to read whole, and no part of it matches the words of your question.",
+    ),
+  ).toBeInTheDocument();
+});
+
+it("an unchecked answer from a long call says it read parts", () => {
+  view({ questions: [question({ state: "unchecked", excerpt: true })] });
+  expect(
+    screen.getByText("This call is too long to read whole, so Evra read the parts that match your question."),
+  ).toBeInTheDocument();
+});
+
+it("a failed question loses Ask again once a later question has the same text", () => {
+  const failed = question({ id: "q1", state: "failed", reason: "timeout", text: "When is it due?" });
+  const { rerender, props } = view({ questions: [failed] });
+  expect(screen.getByRole("button", { name: "Ask again" })).toBeInTheDocument();
+  rerender(<AskView {...props} questions={[failed, question({ id: "q2", text: "When is it due?" })]} />);
+  expect(screen.queryByRole("button", { name: "Ask again" })).toBeNull();
+  rerender(<AskView {...props} questions={[failed, question({ id: "q2", text: "Who owns it?" })]} />);
+  expect(screen.getByRole("button", { name: "Ask again" })).toBeInTheDocument();
+});
+
 it("waits for the recording to end", () => {
   const { props } = view({ isLive: true });
   expect(screen.getByText("You can ask once the recording ends.")).toBeInTheDocument();

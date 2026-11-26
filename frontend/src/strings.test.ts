@@ -9,8 +9,8 @@ describe("cloud_model failure", () => {
     );
   });
 
-  it("cannot be retried", () => {
-    expect(canRetry("cloud_model")).toBe(false);
+  it("can be retried once another model is chosen", () => {
+    expect(canRetry("cloud_model")).toBe(true); // the owner picks another model, then retries
     expect(canRetry("timeout")).toBe(true);
     expect(canRetry("too_long")).toBe(false);
   });
@@ -38,7 +38,9 @@ describe("asking", () => {
     expect(askFailureText("invalid")).toBe("The model didn't return a valid answer.");
     expect(askFailureText("timeout")).toBe("The model took too long to answer.");
     expect(askFailureText("ollama_down")).toBe(noteFailureText("ollama_down"));
-    expect(askFailureText("model_missing")).toBe(noteFailureText("model_missing"));
+    expect(askFailureText("model_missing")).toBe(
+      "The note model isn't installed in Ollama. Choose another in Settings, or install it with ollama pull.",
+    );
     for (const reason of [...reasons, undefined]) {
       // "note model" names the setting; a note itself is never what failed here
       expect(askFailureText(reason)).not.toMatch(/\bnote\b(?! model)/i);

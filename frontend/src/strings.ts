@@ -65,6 +65,8 @@ export const strings = {
   notDiscussed: "Not discussed in this meeting.",
   askUnchecked: "Evra found an answer but couldn't check it against the transcript, so it isn't shown.",
   askExcerpt: "This call is too long to read whole, so Evra read the parts that match your question.",
+  askExcerptNothing:
+    "This call is too long to read whole, and no part of it matches the words of your question.",
   askAgain: "Ask again",
   askAnswered: "Answer ready",
   askAfterRecording: "You can ask once the recording ends.",
@@ -120,7 +122,7 @@ export function noteFailureText(reason: NoteFailureReason, model?: string): stri
 }
 
 export function canRetry(reason: NoteFailureReason): boolean {
-  return reason !== "too_long" && reason !== "no_transcript" && reason !== "cloud_model";
+  return reason !== "too_long" && reason !== "no_transcript";
 }
 
 /** Asking the same question again can't help when it needs more room or there's no transcript.
@@ -146,8 +148,9 @@ export function askFailureText(reason: AskFailureReason | undefined): string {
       return "Nothing in the answer could be checked against the transcript.";
     case "no_transcript":
       return "Nothing was transcribed, so there's nothing to ask about.";
-    case "ollama_down":
     case "model_missing":
+      return "The note model isn't installed in Ollama. Choose another in Settings, or install it with ollama pull.";
+    case "ollama_down":
     case "cloud_model":
       return noteFailureText(reason);
     default:
