@@ -494,3 +494,36 @@ it("shows a refusal", ...)                                             // onAsk 
   - PROGRESS.md: a dated entry for the branch with the commit hashes and the numbers.
   - BACKLOG.md: questions across meetings, asking during a recording (Phase 3), keeping an answer in the note, saved custom questions.
 - [ ] **Step 5:** `uv run python tools/check.py` → PASS. Commit `docs: asking a meeting — measurements, BUILD.md and decisions` and push.
+
+---
+
+### Task 9: The title keeps the meeting's prompt warm (A8 on A0)
+
+Added after Task 8's real-window check (2026-11-27): in the window the title call (A8) runs between the note and the first question with its own system message, so Ollama's cache no longer holds the meeting, and a first question asked right after the note re-read the whole call (16.6 s on gemma4:12b instead of about 2 s), unless the Ask tab's pre-read had finished.
+
+**Files:**
+- Modify: `src/evra/llm/prompts/a8_title.md` (v2: one `## Prompt` part, the task only), `src/evra/notes/title.py` (`name_meeting` sends the meeting's A0 context as the system message and A8 v2 as the user message), `tools/bakeoff_ask.py` (its "first question after the note" runs note → title → question, as the window does), `BUILD.md` (§7.4 title line, Appendix A A8), `DECISIONS.md`, `PROGRESS.md`, `BACKLOG.md` (drop the item Task 8 added for this), `README.md` (its command table lists `evra ask`)
+- Test: `tests/unit/notes/test_title.py`, `tests/unit/llm/test_schemas_and_prompts.py`
+
+**Interfaces:**
+- Consumes: `build_context` (Plan A Task 3), `load_part`.
+- Produces: `name_meeting(conn, meeting_id, *, provider, model)` with the same signature and behaviour (placeholder only, a rename made meanwhile wins, failures keep the placeholder). It builds the context exactly as the note job does for the same meeting (`build_context(meeting=…, utterances=<current transcript>)`), so the system message is byte-identical to the note's; a meeting without a transcript is left unnamed (returns None, no call).
+- A8 v2, exact text of `src/evra/llm/prompts/a8_title.md`:
+
+````markdown
+<!-- version: a8-v2 -->
+# A8 — Meeting title → MeetingTitle
+
+## Prompt
+
+Write a title for this meeting from its note in <note>: at most 8 words that name the meeting's main subject, in sentence case. No dates, no quotes, no trailing punctuation. Return JSON {"title": "..."}.
+
+<note>
+{note}
+</note>
+````
+
+- [ ] **Step 1: Write the failing tests:** `test_title_shares_the_meeting_context` (the title call's system message equals `build_context(...).system` for the meeting and equals the note's system message), `test_title_task_is_the_user_message` (the user message starts with "Write a title for this meeting from its note" and holds the note lines), `test_meeting_without_transcript_is_not_named`. Existing title tests keep passing (adjust only how they read the messages).
+- [ ] **Step 2:** run → FAIL; implement; run → PASS.
+- [ ] **Step 3: Measure:** `uv run python tools/bakeoff_ask.py gemma4:12b` with the note → title → question order; record the first question's seconds and cached tokens (target: about 2–3 s and at least 95% of the prompt reused) and three titles it wrote for the fixtures (they must still read as titles). Output to `private/scratch/plan-a/bakeoff-ask-title.txt`.
+- [ ] **Step 4:** DECISIONS.md "Meeting title on the shared context (A8 v2) (2026-11-27)" with the before/after numbers; BUILD.md, PROGRESS.md, BACKLOG.md, README.md as listed. `uv run python tools/check.py` → PASS. Commit `perf(notes): the title reuses the meeting's prompt, so the first question stays fast` and push.
