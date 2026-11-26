@@ -10,6 +10,7 @@ from importlib import resources
 
 _VERSION = re.compile(r"^<!--\s*version:\s*(\S+)\s*-->\s*$", re.MULTILINE)
 _SECTION = re.compile(r"^## (System|User)\s*$", re.MULTILINE)
+_PART_SECTION = re.compile(r"^## Prompt\s*$", re.MULTILINE)
 _PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 
 
@@ -22,6 +23,18 @@ class Prompt:
 
     def render(self, **values: str) -> tuple[str, str]:
         return _fill(self.system, values), _fill(self.user, values)
+
+
+@dataclass(frozen=True)
+class PromptPart:
+    """A prompt with one `## Prompt` section: a message shared by several calls."""
+
+    id: str
+    version: str
+    text: str
+
+    def render(self, **values: str) -> str:
+        return _fill(self.text, values)
 
 
 def _fill(text: str, values: Mapping[str, str]) -> str:
@@ -41,3 +54,12 @@ def load_prompt(prompt_id: str) -> Prompt:
     if version is None or len(parts) != 5 or parts[1] != "System" or parts[3] != "User":
         raise ValueError(f"prompt {prompt_id} needs a version line, then ## System and ## User")
     return Prompt(prompt_id, version.group(1), parts[2].strip(), parts[4].strip())
+
+
+def load_part(prompt_id: str) -> PromptPart:
+    text = resources.files("evra.llm.prompts").joinpath(f"{prompt_id}.md").read_text("utf-8")
+    version = _VERSION.search(text)
+    parts = _PART_SECTION.split(text)  # [preamble, body]
+    if version is None or len(parts) != 2 or _SECTION.search(text):
+        raise ValueError(f"prompt {prompt_id} needs a version line and exactly one ## Prompt")
+    return PromptPart(prompt_id, version.group(1), parts[1].strip())

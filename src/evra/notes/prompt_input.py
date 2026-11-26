@@ -12,17 +12,20 @@ from datetime import datetime
 from typing import Any
 
 from evra.llm.prompt_files import load_prompt
+from evra.notes.context import (
+    CHARS_PER_TOKEN,
+    EN_DASH,
+    NONE,
+    _gap_lines,
+    _one_line,
+    as_data,
+    transcript_lines,
+)
 from evra.notes.templates import Template
 from evra.store.meetings import Utterance
-from evra.transcribe.cli import format_ms
-from evra.transcribe.labels import PARTICIPANTS_1ON1, speaker_label
+from evra.transcribe.labels import PARTICIPANTS_1ON1
 
-# Measured on gemma4:12b: transcript lines run ~2.7 characters a token (their ids and times are
-# digits), the rules' prose ~3.4. The transcript rate keeps long calls, where it matters, exact.
-CHARS_PER_TOKEN = 2.7
-NONE = "(none)"
-LOOKALIKE_LT, LOOKALIKE_GT = chr(0x2039), chr(0x203A)  # single angle quotation marks
-EN_DASH = chr(0x2013)
+__all__ = ["CHARS_PER_TOKEN", "EN_DASH", "NONE", "as_data", "transcript_lines"]
 
 
 @dataclass(frozen=True)
@@ -32,36 +35,6 @@ class NotePrompt:
     prompt_version: str
     aliases: Mapping[str, str]  # "u:3" -> utterance id
     estimated_tokens: int
-
-
-def as_data(text: str) -> str:
-    """Angle brackets become look-alikes so data can never open or close a prompt tag."""
-    return text.replace("<", LOOKALIKE_LT).replace(">", LOOKALIKE_GT)
-
-
-def _one_line(text: str) -> str:
-    return " ".join(as_data(text).split())
-
-
-def transcript_lines(utterances: Sequence[Utterance]) -> tuple[str, dict[str, str]]:
-    lines: list[str] = []
-    aliases: dict[str, str] = {}
-    ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
-    for n, u in enumerate(ordered, start=1):
-        alias = f"u:{n}"
-        aliases[alias] = u.id
-        lines.append(
-            f"[{alias}] [{format_ms(u.start_ms)}] {speaker_label(u.channel)}: {_one_line(u.text)}"
-        )
-    return "\n".join(lines), aliases
-
-
-def _gap_lines(gaps: Sequence[Mapping[str, Any]]) -> str:
-    lines = []
-    for gap in gaps:
-        start, end = format_ms(int(gap["start_ms"])), format_ms(int(gap["end_ms"]))
-        lines.append(f"GAP {start}{EN_DASH}{end} ({_one_line(str(gap['cause']))})")
-    return "\n".join(lines) or NONE
 
 
 def build_note_prompt(

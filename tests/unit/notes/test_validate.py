@@ -250,3 +250,27 @@ def test_a_date_is_borrowed_from_the_line_that_said_it() -> None:
         lines, b("The launch moves to October 14 because testing needs a week.", "u:2")
     )
     assert note.summary[0].citations == ("t-2", "t-1")
+
+
+def test_grounder_matches_check_note() -> None:
+    from evra.notes.validate import Grounder
+
+    bullets = [
+        b("I finished the search migration on Tuesday.", "u:1"),
+        b("I finished the search migration.", "u:9"),
+        b("", "u:1"),
+        b("Budget talk about weather.", "u:1"),
+        b("We have thirty thousand dollars left for contractors.", "u:2"),
+        b("I will ask Dmitri tomorrow.", "u:3"),
+        b("We have twelve thousand dollars left for contractors this quarter.", "u:2"),
+    ]
+    grounder = Grounder(aliases=ALIASES, utterance_text=UTTERANCES)
+    verdicts = [grounder.check(x) for x in bullets]
+    note = check(*bullets)
+    kept = [c for c, _ in verdicts if c is not None]
+    assert kept == only_bullets(note)
+    reasons: dict[str, int] = {}
+    for c, reason in verdicts:
+        if c is None:
+            reasons[reason] = reasons.get(reason, 0) + 1
+    assert reasons == dict(note.drop_reasons)

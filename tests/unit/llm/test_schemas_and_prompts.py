@@ -52,3 +52,11 @@ def test_render_fills_once_and_refuses_missing_values() -> None:
     assert prompt.render(name="Evra", data="{name}") == ("Hi Evra", "Data: {name}")
     with pytest.raises(KeyError):
         prompt.render(name="Evra")
+
+
+def test_a0_context_has_a_version_and_one_prompt_section() -> None:
+    from evra.llm.prompt_files import load_part
+
+    part = load_part("a0_context")
+    assert re.fullmatch(r"a\d+-v\d+", part.version)
+    assert part.text.index("{transcript}") < part.text.index("{title}")

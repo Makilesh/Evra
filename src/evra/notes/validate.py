@@ -292,6 +292,27 @@ def _nearby(
     return found
 
 
+class Grounder:
+    """Checks bullets against one meeting; the vocabulary is built once."""
+
+    def __init__(
+        self,
+        *,
+        aliases: Mapping[str, str],
+        utterance_text: Mapping[str, str],
+        user_notes: str = "",
+    ) -> None:
+        self._aliases = aliases
+        self._utterance_text = utterance_text
+        self._user_notes = user_notes
+        self._vocabulary = _vocabulary([*utterance_text.values(), user_notes])
+
+    def check(self, bullet: NoteBullet) -> tuple[CheckedBullet | None, str]:
+        return _check(
+            bullet, self._aliases, self._utterance_text, self._user_notes, self._vocabulary
+        )
+
+
 def check_note(
     draft: NoteDraft,
     *,
@@ -301,12 +322,12 @@ def check_note(
     user_notes: str = "",
 ) -> CheckedNote:
     reasons: Counter[str] = Counter()
-    vocabulary = _vocabulary([*utterance_text.values(), user_notes])
+    grounder = Grounder(aliases=aliases, utterance_text=utterance_text, user_notes=user_notes)
 
     def check_all(bullets: Sequence[NoteBullet]) -> list[CheckedBullet]:
         kept: list[CheckedBullet] = []
         for bullet in bullets:
-            checked, reason = _check(bullet, aliases, utterance_text, user_notes, vocabulary)
+            checked, reason = grounder.check(bullet)
             if checked is None:
                 reasons[reason] += 1
             else:
