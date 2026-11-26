@@ -90,6 +90,7 @@ export interface OkReply {
 export type NoteFailureReason =
   | "ollama_down"
   | "model_missing"
+  | "cloud_model"
   | "too_long"
   | "cut_off"
   | "invalid"

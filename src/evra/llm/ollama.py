@@ -26,6 +26,7 @@ from evra.llm.provider import (
     LlmConfigError,
     LlmError,
     LlmModelMissing,
+    LlmNotLocal,
     LlmTimeout,
     LlmUnavailable,
 )
@@ -42,6 +43,17 @@ def is_loopback_url(url: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def is_cloud_model_name(name: str) -> bool:
+    """Ollama's cloud models carry a `cloud` tag: `gemma4:cloud`, `gemma4:31b-cloud`."""
+    _, sep, tag = name.rpartition(":")
+    tag = tag.lower()
+    return bool(sep) and (tag == "cloud" or tag.endswith("-cloud"))
+
+
+def _is_remote_entry(entry: Mapping[str, Any]) -> bool:
+    return bool(entry.get("remote_host") or entry.get("remote_model"))
 
 
 class _NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -86,10 +98,12 @@ class OllamaProvider:
         self._settings = settings
         self._clock = clock
         self._http: Any = http or OllamaHttp(settings.ollama_url, timeout_s=settings.timeout_s)
+        self._tags: list[Mapping[str, Any]] | None = None
 
     def chat_json(
         self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
     ) -> ChatResult:
+        self._ensure_local(model)
         s = self._settings
         started = self._clock()
         response = self._call(
@@ -120,8 +134,32 @@ class OllamaProvider:
         )
 
     def installed_models(self) -> list[str]:
-        listing = self._call("GET", "/api/tags")
-        return sorted(str(m["model"]) for m in listing.get("models", []) if m.get("model"))
+        return sorted(
+            str(m["model"])
+            for m in self._listing(refresh=True)
+            if m.get("model")
+            and not is_cloud_model_name(str(m["model"]))
+            and not _is_remote_entry(m)
+        )
+
+    def _listing(self, *, refresh: bool = False) -> list[Mapping[str, Any]]:
+        if self._tags is None or refresh:
+            listing = self._call("GET", "/api/tags").get("models", [])
+            self._tags = [m for m in listing if isinstance(m, dict)]
+        return self._tags
+
+    def _ensure_local(self, model: str) -> None:
+        """Refuse a cloud model before any text is sent. The name tells for `:cloud` tags; the
+        /api/tags entry (`remote_host`, `remote_model`) tells for the rest. A model that is not
+        listed is left to the call, which answers 404."""
+        if is_cloud_model_name(model):
+            raise LlmNotLocal(model)
+        wanted = {model} if ":" in model else {model, model + ":latest"}
+        for entry in self._listing():
+            if (str(entry.get("model")) in wanted or str(entry.get("name")) in wanted) and (
+                _is_remote_entry(entry)
+            ):
+                raise LlmNotLocal(model)
 
     def gpu_share(self, model: str) -> float | None:
         """Share of a loaded model held in VRAM (1.0 = fully on the GPU), or None if not loaded."""
@@ -133,6 +171,7 @@ class OllamaProvider:
     def load(self, model: str) -> None:
         """A generate request with no prompt only loads the model. It asks for the context
         size every chat uses: loaded at any other size, the next chat would load it again."""
+        self._ensure_local(model)
         s = self._settings
         self._call(
             "POST",
@@ -142,6 +181,7 @@ class OllamaProvider:
         )
 
     def unload(self, model: str) -> None:
+        self._ensure_local(model)
         self._call("POST", "/api/generate", {"model": model, "keep_alive": 0}, model=model)
 
     def _call(

@@ -279,3 +279,11 @@ def test_a_data_folder_that_cannot_open_says_so(tmp_path: Path) -> None:
 
     api, _ = _api(tmp_path, folder_opener=refuse)
     assert api.open_data_folder() == {"ok": False}
+
+
+def test_set_note_model_refuses_cloud(tmp_path: Path) -> None:
+    control = StubControl()
+    api, _ = _api(tmp_path, control=control)
+    assert api.set_note_model("gemma4:cloud") == {"ok": False}
+    assert api.set_note_model("gemma4:31b-cloud") == {"ok": False}
+    assert control.calls == []

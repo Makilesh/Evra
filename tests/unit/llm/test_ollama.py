@@ -8,12 +8,13 @@ from typing import Any
 import pytest
 
 from evra.config import LlmSettings
-from evra.llm.ollama import OllamaHttp, OllamaProvider, is_loopback_url
+from evra.llm.ollama import OllamaHttp, OllamaProvider, is_cloud_model_name, is_loopback_url
 from evra.llm.provider import (
     ChatMessage,
     LlmConfigError,
     LlmError,
     LlmModelMissing,
+    LlmNotLocal,
     LlmTimeout,
     LlmUnavailable,
 )
@@ -43,6 +44,9 @@ class FakeHttp:
         self.calls: list[tuple[str, str, Any]] = []
 
     def request(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> Any:
+        tags_ok = self.error is None or isinstance(self.error, urllib.error.HTTPError)
+        if path == "/api/tags" and path not in self.answers and tags_ok:
+            return {"models": []}  # the local-model check; tests about it list their own tags
         self.calls.append((method, path, body))
         if self.error is not None:
             raise self.error
@@ -213,3 +217,67 @@ def test_a_reply_that_is_not_a_json_object_is_an_llm_error(answer: Any) -> None:
         _provider(http).chat_json("m", [ChatMessage("user", "x")], SCHEMA)
     with pytest.raises(LlmError):
         _provider(http).installed_models()
+
+
+@pytest.mark.parametrize(
+    ("name", "cloud"),
+    [
+        ("gemma4:cloud", True),
+        ("gemma4:31b-cloud", True),
+        ("GPT-OSS:120B-CLOUD", True),
+        ("gemma4:12b", False),
+        ("cloudy:7b", False),
+        ("my-cloud", False),
+        ("foo-cloud:latest", False),
+        ("hf.co/u/m-cloud:Q4_K_M", False),
+    ],
+)
+def test_cloud_model_names(name: str, cloud: bool) -> None:
+    assert is_cloud_model_name(name) is cloud
+
+
+def test_cloud_name_refused_before_any_request() -> None:
+    http = FakeHttp({"/api/chat": reply()})
+    with pytest.raises(LlmNotLocal) as raised:
+        _provider(http).chat_json("gemma4:cloud", [ChatMessage("user", "hi")], SCHEMA)
+    assert raised.value.model == "gemma4:cloud"
+    assert "hi" not in str(raised.value)
+    assert http.calls == []
+
+
+def test_remote_model_in_tags_is_refused() -> None:
+    tags = {"models": [{"model": "big:1b", "remote_host": "https://ollama.com:443"}]}
+    http = FakeHttp({"/api/tags": tags, "/api/chat": reply()})
+    with pytest.raises(LlmNotLocal):
+        _provider(http).chat_json("big:1b", [ChatMessage("user", "hi")], SCHEMA)
+    assert [c[1] for c in http.calls] == ["/api/tags"]
+
+
+def test_local_model_checks_tags_once() -> None:
+    tags = {"models": [{"model": "gemma4:12b", "name": "gemma4:12b"}]}
+    http = FakeHttp({"/api/tags": tags, "/api/chat": reply()})
+    provider = OllamaProvider(LlmSettings(), http=http)
+    for _ in range(2):
+        provider.chat_json("gemma4:12b", [ChatMessage("user", "hi")], SCHEMA)
+    assert [c[1] for c in http.calls].count("/api/tags") == 1
+
+
+def test_untagged_name_matches_latest_and_unlisted_is_left_to_the_call() -> None:
+    tags = {"models": [{"model": "big:latest", "remote_model": "big"}]}
+    http = FakeHttp({"/api/tags": tags, "/api/generate": {}})
+    provider = OllamaProvider(LlmSettings(), http=http)
+    with pytest.raises(LlmNotLocal):
+        provider.load("big")
+    provider.unload("other:1b")  # not listed: the call itself decides
+
+
+def test_installed_models_hide_cloud_models() -> None:
+    tags = {
+        "models": [
+            {"model": "gemma4:12b"},
+            {"model": "gemma4:cloud"},
+            {"model": "x:1b", "remote_model": "x"},
+        ]
+    }
+    http = FakeHttp({"/api/tags": tags})
+    assert _provider(http).installed_models() == ["gemma4:12b"]

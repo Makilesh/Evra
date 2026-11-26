@@ -9,7 +9,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from evra.config import LlmSettings
-from evra.llm.provider import LlmModelMissing, LlmProvider, LlmTimeout, LlmUnavailable
+from evra.llm.provider import (
+    LlmModelMissing,
+    LlmNotLocal,
+    LlmProvider,
+    LlmTimeout,
+    LlmUnavailable,
+)
 from evra.notes.templates import Template
 from evra.notes.writer import (
     NoteCutOff,
@@ -39,6 +45,7 @@ class SavedNote:
 _REASONS: tuple[tuple[type[BaseException], str], ...] = (
     (LlmUnavailable, "ollama_down"),
     (LlmModelMissing, "model_missing"),
+    (LlmNotLocal, "cloud_model"),
     (LlmTimeout, "timeout"),
     (NoteTooLong, "too_long"),
     (NoteCutOff, "cut_off"),

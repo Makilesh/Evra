@@ -87,6 +87,8 @@ export function noteFailureText(reason: NoteFailureReason, model?: string): stri
       return "Ollama isn't running. Start it from the system tray (or install it from ollama.com).";
     case "model_missing":
       return `The note model isn't installed. Run: ollama pull ${model ?? ""}`.trim();
+    case "cloud_model":
+      return "That model runs in Ollama's cloud. Evra only uses models on this PC: choose another note model in Settings.";
     case "too_long":
       return "This meeting is too long for one note pass yet.";
     case "cut_off":
@@ -105,5 +107,5 @@ export function noteFailureText(reason: NoteFailureReason, model?: string): stri
 }
 
 export function canRetry(reason: NoteFailureReason): boolean {
-  return reason !== "too_long" && reason !== "no_transcript";
+  return reason !== "too_long" && reason !== "no_transcript" && reason !== "cloud_model";
 }

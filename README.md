@@ -37,6 +37,9 @@ the other person, until echo cancellation lands.
 
       ollama pull gemma4:12b
 
+  Evra refuses models that run in Ollama's cloud. To make Ollama itself refuse them too, set
+  `OLLAMA_NO_CLOUD=1` before it starts (or `"disable_ollama_cloud": true` in `~/.ollama/server.json`).
+
 Developed on 32 GB RAM with an RTX laptop GPU, but every model has a CPU path.
 
 ## Quick start

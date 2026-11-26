@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 
 from evra.config import LlmSettings
-from evra.llm.provider import LlmConfigError, LlmError, LlmModelMissing, LlmTimeout, LlmUnavailable
+from evra.llm.provider import (
+    LlmConfigError,
+    LlmError,
+    LlmModelMissing,
+    LlmNotLocal,
+    LlmTimeout,
+    LlmUnavailable,
+)
 from evra.notes.job import NothingSupported, failure_reason, write_and_save
 from evra.notes.templates import load_template
 from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong, NoTranscript
@@ -86,6 +93,7 @@ def test_a_note_with_nothing_supported_is_refused_and_the_old_one_kept(
     [
         (LlmUnavailable("down"), "ollama_down"),
         (LlmModelMissing("gemma4:12b"), "model_missing"),
+        (LlmNotLocal("m"), "cloud_model"),
         (LlmTimeout("slow"), "timeout"),
         (NoteTooLong(30_000, 24_000), "too_long"),
         (NoteCutOff(4096), "cut_off"),

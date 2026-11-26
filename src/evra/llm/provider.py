@@ -24,6 +24,14 @@ class LlmModelMissing(LlmError):
         self.model = model
 
 
+class LlmNotLocal(LlmError):
+    """The model runs in Ollama's cloud, so the text would leave this computer."""
+
+    def __init__(self, model: str) -> None:
+        super().__init__(f"model {model!r} runs in Ollama's cloud")
+        self.model = model
+
+
 class LlmTimeout(LlmError):
     """No answer within the configured time."""
 

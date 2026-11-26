@@ -21,6 +21,7 @@ import structlog
 from evra.bridge.events import EventBus
 from evra.capture.devices import MicList, list_mics
 from evra.config import LlmSettings, Settings, Theme
+from evra.llm.ollama import is_cloud_model_name
 from evra.services.views import clean_title, meeting_detail, meeting_summary
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
@@ -161,6 +162,8 @@ class BridgeApi:
 
     def set_note_model(self, model: str) -> dict[str, Any]:
         if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):
+            return {"ok": False}
+        if is_cloud_model_name(model):
             return {"ok": False}
         return {"ok": self._control.set_note_model(model)}
 
