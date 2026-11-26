@@ -58,3 +58,14 @@ def test_a_real_model_names_a_meeting_from_its_note(tmp_path: Path) -> None:
         conn.close()
     assert title is not None and not has_placeholder_title(title)
     assert 1 <= len(title.split()) <= MAX_WORDS
+
+
+def test_a_real_embedding_model_returns_unit_vectors() -> None:
+    settings = LlmSettings(keep_alive="0s")
+    provider = OllamaProvider(settings)
+    if settings.embedding_model not in provider.installed_models():
+        pytest.skip("embedding model not installed")
+    vectors = provider.embed(settings.embedding_model, ["The launch moves.", "Send the proposal."])
+    assert len(vectors) == 2
+    assert len(vectors[0]) == len(vectors[1]) > 100
+    assert abs(sum(x * x for x in vectors[0]) - 1.0) < 1e-3

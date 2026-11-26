@@ -63,6 +63,10 @@ class LlmProvider(Protocol):
         self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
     ) -> ChatResult: ...
 
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        """One unit-length vector per text, in order."""
+        ...
+
     def installed_models(self) -> list[str]: ...
 
     def load(self, model: str) -> None:

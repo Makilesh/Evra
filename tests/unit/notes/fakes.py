@@ -1,5 +1,8 @@
 import json
+import math
+import re
 import sqlite3
+import zlib
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -64,6 +67,15 @@ def saved_meeting(
     return mid
 
 
+def _hash_vector(text: str, dims: int = 64) -> list[float]:
+    """A bag of words hashed into `dims` slots, unit length: shared words raise the cosine."""
+    vector = [0.0] * dims
+    for word in re.findall(r"[a-z0-9']+", text.lower()):
+        vector[zlib.crc32(word.encode()) % dims] += 1.0
+    norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+    return [x / norm for x in vector]
+
+
 class FakeProvider:
     name = "fake"
 
@@ -74,6 +86,7 @@ class FakeProvider:
         self.calls: list[list[ChatMessage]] = []
         self.models = ["fake:1b"]
         self.loaded: list[str] = []
+        self.embed_calls: list[list[str]] = []
 
     def load(self, model: str) -> None:
         self.loaded.append(model)
@@ -83,6 +96,10 @@ class FakeProvider:
     ) -> ChatResult:
         self.calls.append(list(messages))
         return ChatResult(self.replies.pop(0), self.tokens_in, 50, 0.5, self.truncated)
+
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        self.embed_calls.append(list(texts))
+        return [_hash_vector(t) for t in texts]
 
     def installed_models(self) -> list[str]:
         return list(self.models)

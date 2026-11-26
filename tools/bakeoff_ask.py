@@ -181,6 +181,9 @@ class Recorder:
         self.replies.append(result.content)
         return result
 
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        return self.inner.embed(model, texts)
+
     def installed_models(self) -> list[str]:
         return self.inner.installed_models()
 

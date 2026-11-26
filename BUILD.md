@@ -89,7 +89,7 @@ Change none of these without a `DECISIONS.md` entry.
 | D14 | Voiceprint consent | Voiceprints stored only for people the owner names; "Forget this person" deletes them | 2026-09-24 |
 | D15 | Live transcript | Live transcript panel during meetings, on by default, toggleable | 2026-09-24 |
 | D16 | Note delivery | Transcript shown immediately; note appears once, complete with speaker names, after visible stage progress (no draft-then-replace) | 2026-09-24 |
-| D17 | Embeddings | Qwen3-Embedding-0.6B in the torch worker, used for note alignment (Phase 1) and search (Phase 2) | 2026-09-24 |
+| D17 | Embeddings | Qwen3-Embedding-0.6B in the torch worker, used for note alignment (Phase 1) and search (Phase 2) (changed 2026-11-26, DECISIONS) | 2026-09-24 |
 | D18 | Modes | **1:1** (default, main use case, fastest path), **Meeting** (full pipeline) in Phase 1; **Solo** (voice conversation with Evra as a thinking partner) as the first Phase 3 deliverable | 2026-09-24 |
 | D19 | Visual style | "Steno pad" (replaced "Quiet paper", see DECISIONS): green pad, chipboard rail, deep green rule; Sofia Sans Extra Condensed + Libre Franklin; the note as point · timed rule · quoted line; light/dark; Ctrl+K palette | 2026-11-10 |
 | D20 | Repository | Public GitHub repo; no private data, secrets or weights committed; gitleaks; Windows CI from the start (§9.3–9.4) | 2026-09-24 |

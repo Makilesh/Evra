@@ -293,3 +293,46 @@ def test_installed_models_hide_cloud_models() -> None:
     }
     http = FakeHttp({"/api/tags": tags})
     assert _provider(http).installed_models() == ["gemma4:12b"]
+
+
+def test_embed_posts_inputs_and_normalises() -> None:
+    http = FakeHttp({"/api/embed": {"embeddings": [[3, 4]], "prompt_eval_count": 2}})
+    vectors = _provider(http).embed("qwen3-embedding:0.6b", ["hello"])
+    assert vectors == [[0.6, 0.8]]
+    assert http.calls == [
+        (
+            "POST",
+            "/api/embed",
+            {
+                "model": "qwen3-embedding:0.6b",
+                "input": ["hello"],
+                "truncate": True,
+                "keep_alive": "30s",
+            },
+        )
+    ]
+
+
+def test_embed_refuses_cloud_models() -> None:
+    http = FakeHttp({"/api/embed": {"embeddings": [[1.0]]}})
+    with pytest.raises(LlmNotLocal):
+        _provider(http).embed("qwen3-embedding:cloud", ["hello"])
+    assert http.calls == []
+
+
+def test_embed_count_mismatch_is_an_error() -> None:
+    http = FakeHttp({"/api/embed": {"embeddings": [[1.0, 0.0]]}})
+    with pytest.raises(LlmError, match="without embeddings"):
+        _provider(http).embed("qwen3-embedding:0.6b", ["a", "b"])
+
+
+def test_embed_nothing_makes_no_request() -> None:
+    http = FakeHttp({"/api/embed": {"embeddings": []}})
+    assert _provider(http).embed("qwen3-embedding:0.6b", []) == []
+    assert http.calls == []
+
+
+def test_embed_missing_model_is_reported() -> None:
+    http = FakeHttp(error=http_error(404, "not found"))
+    with pytest.raises(LlmModelMissing):
+        _provider(http).embed("qwen3-embedding:0.6b", ["a"])

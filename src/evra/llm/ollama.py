@@ -12,6 +12,7 @@ from __future__ import annotations
 import http.client
 import ipaddress
 import json
+import math
 import time
 import urllib.error
 import urllib.request
@@ -54,6 +55,11 @@ def is_cloud_model_name(name: str) -> bool:
 
 def _is_remote_entry(entry: Mapping[str, Any]) -> bool:
     return bool(entry.get("remote_host") or entry.get("remote_model"))
+
+
+def _unit(vector: list[float]) -> list[float]:
+    norm = math.sqrt(sum(x * x for x in vector))
+    return [x / norm for x in vector] if norm else vector
 
 
 class _NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -133,6 +139,31 @@ class OllamaProvider:
             truncated=response.get("done_reason") == "length",
             cached_tokens=int(response.get("prompt_eval_cached_count") or 0),
         )
+
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        """One POST /api/embed for all texts. Ollama does not document normalised output, so
+        every vector is scaled to unit length here."""
+        self._ensure_local(model)
+        if not texts:
+            return []
+        response = self._call(
+            "POST",
+            "/api/embed",
+            {
+                "model": model,
+                "input": list(texts),
+                "truncate": True,
+                "keep_alive": self._settings.keep_alive,
+            },
+            model=model,
+        )
+        raw = response.get("embeddings")
+        if not isinstance(raw, list) or len(raw) != len(texts):
+            raise LlmError("Ollama sent a reply without embeddings")
+        try:
+            return [_unit([float(x) for x in vector]) for vector in raw]
+        except (TypeError, ValueError):
+            raise LlmError("Ollama sent a reply without embeddings") from None
 
     def installed_models(self) -> list[str]:
         return sorted(
