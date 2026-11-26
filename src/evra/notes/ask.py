@@ -14,7 +14,7 @@ import structlog
 
 from evra.config import LlmSettings
 from evra.llm.prompt_files import load_part
-from evra.llm.provider import ChatMessage, LlmProvider
+from evra.llm.provider import ChatMessage, ChatResult, LlmProvider
 from evra.llm.schemas import MeetingAnswer
 from evra.notes.bm25 import Bm25, tokenize
 from evra.notes.context import NONE, MeetingContext, as_data, build_context, estimate_tokens
@@ -54,10 +54,20 @@ class AskResult:
     cached_tokens: int = 0
 
 
+def output_tokens(settings: LlmSettings) -> int:
+    """The reply room a question reserves: short, unless thinking needs the note's room."""
+    return settings.max_output_tokens if settings.think else settings.ask_output_tokens
+
+
 def ask_settings(llm: LlmSettings) -> LlmSettings:
-    """Questions keep the model warm for a while and need only a short reply."""
+    """Questions keep the model warm for a while, need only a short reply (more when the model
+    thinks) and give up sooner than a note does."""
     return llm.model_copy(
-        update={"keep_alive": llm.ask_keep_alive, "max_output_tokens": llm.ask_output_tokens}
+        update={
+            "keep_alive": llm.ask_keep_alive,
+            "max_output_tokens": output_tokens(llm),
+            "timeout_s": min(llm.timeout_s, llm.ask_timeout_s),
+        }
     )
 
 
@@ -69,7 +79,7 @@ def clean_question(text: str) -> str | None:
 
 
 def whole_meeting_fits(context: MeetingContext, user_tokens: int, settings: LlmSettings) -> bool:
-    limit = min(settings.context_budget, settings.num_ctx - settings.ask_output_tokens)
+    limit = min(settings.context_budget, settings.num_ctx - output_tokens(settings))
     return context.estimated_tokens + user_tokens <= limit
 
 
@@ -135,34 +145,66 @@ def ask_meeting(
     context = build_context(
         meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes
     )
-    messages, version = build_ask_messages(context, question, history)
-    user_tokens = estimate_tokens(messages[1].content)
-    if not whole_meeting_fits(context, user_tokens, settings):
-        limit = min(settings.context_budget, settings.num_ctx - settings.ask_output_tokens)
+    # Whole versus parts is decided on the meeting alone: when the history is what tips it over,
+    # the oldest exchanges go first.
+    recent = list(history)[-HISTORY_TURNS:]
+    room = settings.num_ctx - output_tokens(settings)
+    limit = min(settings.context_budget, room)
+    whole: tuple[list[ChatMessage], str] | None = None
+    for keep in range(len(recent), -1, -1):
+        messages, version = build_ask_messages(context, question, recent[len(recent) - keep :])
+        if whole_meeting_fits(context, estimate_tokens(messages[1].content), settings):
+            whole = (messages, version)
+            break
+    if whole is None:
+        messages, version = build_ask_messages(context, question, recent)
+        user_tokens = estimate_tokens(messages[1].content)
         skeleton = build_context(
             meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes, only=set()
         ).estimated_tokens
+        if skeleton + user_tokens > limit:
+            raise NoteTooLong(skeleton + user_tokens, limit)
         # a follow-up ("When is it due?") is found through the question before it
-        query = f"{question} {history[-1].question}" if history else question
+        query = f"{question} {recent[-1].question}" if recent else question
+        chosen = excerpt_ids(utterances, query, min(EXCERPT_TOKENS, limit - user_tokens - skeleton))
+        if not chosen:
+            log.info("question_answered", state="not_found", kept=0, dropped=0, excerpt=True)
+            return AskResult(
+                state="not_found",
+                points=(),
+                excerpt=True,
+                model=model,
+                prompt_version=version,
+                tokens_in=0,
+                tokens_out=0,
+                seconds=0.0,
+                dropped=0,
+            )
         context = build_context(
             meeting=meeting,
             utterances=utterances,
             gaps=gaps,
             user_notes=user_notes,
-            only=excerpt_ids(
-                utterances, query, min(EXCERPT_TOKENS, limit - user_tokens - skeleton)
-            ),
+            only=chosen,
         )
         if not whole_meeting_fits(context, user_tokens, settings):
             raise NoteTooLong(context.estimated_tokens + user_tokens, limit)
-        messages, version = build_ask_messages(context, question, history)
+        messages, version = build_ask_messages(context, question, recent)
+    else:
+        messages, version = whole
+
+    def too_long(first: ChatResult) -> None:
+        if first.tokens_in >= room:  # Ollama cut the prompt to fit its context window
+            raise NoteTooLong(first.tokens_in, room)
+
     reply = chat_structured(
         provider,
         model,
         messages,
         MeetingAnswer,
-        max_output_tokens=settings.ask_output_tokens,
+        max_output_tokens=output_tokens(settings),
         invalid_event="question_json_invalid",
+        after_first=too_long,
     )
     if reply.repair_version:
         version = f"{version}+{reply.repair_version}"

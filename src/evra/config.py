@@ -36,6 +36,7 @@ class LlmSettings(BaseModel):
     think: bool = False
     ask_keep_alive: str = "5m"  # a conversation about a meeting keeps the model warm
     ask_output_tokens: int = Field(default=1024, ge=256)
+    ask_timeout_s: float = Field(default=180.0, gt=0)  # a hung Ollama blocks asking this long
 
 
 class Settings(BaseModel):

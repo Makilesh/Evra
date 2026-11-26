@@ -11,6 +11,7 @@ from evra.llm.provider import ChatMessage, LlmModelMissing
 from evra.notes.ask_cli import ask_command
 from evra.paths import AppPaths
 from evra.store.db import connect
+from evra.store.meetings import MeetingStore
 from evra.store.questions import QuestionStore
 from tests.integration.helpers import DownProvider, recorded
 from tests.unit.notes.fakes import FakeProvider
@@ -117,3 +118,69 @@ def test_ctrl_c_stores_interrupted_and_exits_130(
     assert ask_command(_args(), paths, provider=OneShot(KeyboardInterrupt())) == 130
     assert "Stopped." in capsys.readouterr().err
     assert _stored(paths, mid) == [("failed", "interrupted")]
+
+
+def _long_call(tmp_path: Path) -> tuple[AppPaths, str]:
+    """The recorded meeting plus 400 filler lines, with a budget that makes it a long call."""
+    paths, mid = recorded(tmp_path)
+    conn = connect(paths.db_path)
+    try:
+        store = MeetingStore(conn)
+        version_id = store.current_transcript_version(mid)
+        assert version_id is not None
+        for i in range(400):
+            start = 10_000 + i * 1_000
+            store.add_utterance(
+                version_id=version_id,
+                meeting_id=mid,
+                channel=1,
+                start_ms=start,
+                end_ms=start + 900,
+                text=f"Filler talk number {i}.",
+            )
+    finally:
+        conn.close()
+    save_settings(paths.settings_file, Settings(llm=LlmSettings(context_budget=2500)))
+    return paths, mid
+
+
+def test_a_long_call_with_no_matching_part_says_so_and_asks_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths, mid = _long_call(tmp_path)
+    provider = FakeProvider([])
+    assert ask_command(_args("zebra giraffe?"), paths, provider=provider) == 0
+    out = capsys.readouterr().out
+    assert "Not discussed in this meeting." in out
+    assert (
+        "This call is too long to read whole, and no part of it matches the words of your question."
+        in out
+    )
+    assert provider.calls == []
+    assert _stored(paths, mid) == [("not_found", None)]
+
+
+def test_a_long_call_answer_says_it_read_parts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths, _ = _long_call(tmp_path)
+    assert (
+        ask_command(_args("search migration Tuesday"), paths, provider=FakeProvider([ANSWER])) == 0
+    )
+    out = capsys.readouterr().out
+    assert "- You finished the search migration on Tuesday." in out
+    assert "This call is too long to read whole, so Evra read the parts that match" in out
+
+
+def test_too_long_uses_the_windows_words(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths, mid = _long_call(tmp_path)
+    save_settings(
+        paths.settings_file, Settings(llm=LlmSettings(num_ctx=2048, ask_output_tokens=1500))
+    )
+    assert ask_command(_args("search migration"), paths, provider=FakeProvider([])) == 1
+    assert (
+        "This question needs more room than the model's settings allow." in capsys.readouterr().err
+    )
+    assert _stored(paths, mid) == [("failed", "too_long")]

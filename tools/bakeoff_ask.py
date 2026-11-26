@@ -31,7 +31,6 @@ from typing import Any, Literal
 from evra.config import LlmSettings
 from evra.console import safe_console
 from evra.llm.ollama import OllamaProvider
-from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, ChatResult, LlmError, LlmProvider
 from evra.llm.schemas import MeetingAnswer, MeetingTitle
 from evra.notes.ask import ask_meeting, ask_settings
@@ -39,7 +38,7 @@ from evra.notes.context import MeetingContext, build_context
 from evra.notes.errors import NoteError
 from evra.notes.structured import parse_reply
 from evra.notes.templates import load_template
-from evra.notes.title import clean_generated_title, title_settings
+from evra.notes.title import clean_generated_title, title_messages, title_settings
 from evra.notes.validate import CheckedNote, Grounder
 from evra.notes.writer import write_note
 
@@ -270,12 +269,10 @@ def title_after_note(
     bullets = [b.text for b in note.summary] + [b.text for s in note.sections for b in s.bullets]
     text = "\n".join("- " + " ".join(b.split()) for b in bullets)
     context = build_context(meeting=case.meeting, utterances=case.utterances)
-    task = load_part("a8_title")
+    messages, _ = title_messages(context, text)
     started = time.monotonic()
     reply = OllamaProvider(title_settings(llm)).chat_json(
-        model,
-        [ChatMessage("system", context.system), ChatMessage("user", task.render(note=text))],
-        MeetingTitle.model_json_schema(),
+        model, messages, MeetingTitle.model_json_schema()
     )
     seconds = time.monotonic() - started
     raw, _ = parse_reply(MeetingTitle, reply.content)

@@ -244,9 +244,9 @@ def test_impossible_budget_raises_too_long() -> None:
 def test_follow_up_finds_the_line_through_the_previous_question() -> None:
     lines = _long_meeting(200, "Priya promised the vendor contract.")
     settings = LlmSettings(num_ctx=4096)
-    alone = FakeProvider([NOT_FOUND])
-    _ask(alone, utterances=lines, question="When is it due?", settings=settings)
-    assert "promised the vendor contract" not in alone.calls[0][0].content
+    alone = FakeProvider([])
+    assert _ask(alone, utterances=lines, question="When is it due?", settings=settings).excerpt
+    assert alone.calls == []  # nothing matches: no excerpt to read, no model call
     follow = FakeProvider([NOT_FOUND])
     _ask(
         follow,
@@ -282,3 +282,55 @@ def test_excerpt_citations_resolve_over_the_whole_meeting() -> None:
     )
     assert result.excerpt is True
     assert result.points[0].citations == ("x300",)
+
+
+def test_empty_excerpt_is_not_found_without_asking_the_model() -> None:
+    lines = _long_meeting(200, "The vendor quote is due Friday.")
+    provider = FakeProvider([])
+    result = _ask(
+        provider,
+        utterances=lines,
+        question="zebra giraffe?",
+        settings=LlmSettings(num_ctx=4096),
+    )
+    assert provider.calls == []
+    assert (result.state, result.excerpt, result.points) == ("not_found", True, ())
+    assert result.tokens_in == 0 and result.model == "m"
+
+
+def test_a_reply_that_fills_the_room_raises_too_long() -> None:
+    room = 32768 - 1024
+    with pytest.raises(NoteTooLong):
+        _ask(FakeProvider([NOT_FOUND], tokens_in=room))
+    _ask(FakeProvider([NOT_FOUND], tokens_in=room - 1))
+
+
+def test_thinking_reserves_the_notes_output_room() -> None:
+    plain = ask_settings(LlmSettings(max_output_tokens=4096))
+    thinking = ask_settings(LlmSettings(max_output_tokens=4096, think=True))
+    assert (plain.max_output_tokens, thinking.max_output_tokens) == (1024, 4096)
+    context = build_context(meeting=MEETING, utterances=LINES)
+    assert whole_meeting_fits(context, 100, LlmSettings(num_ctx=4096, max_output_tokens=2048))
+    thinking = LlmSettings(num_ctx=4096, max_output_tokens=4000, think=True)
+    assert not whole_meeting_fits(context, 100, thinking)  # room is 96 tokens
+
+
+def test_ask_timeout_caps_the_notes_timeout() -> None:
+    assert ask_settings(LlmSettings()).timeout_s == 180.0
+    assert ask_settings(LlmSettings(timeout_s=60.0)).timeout_s == 60.0
+    assert ask_settings(LlmSettings(ask_timeout_s=30.0)).timeout_s == 30.0
+
+
+def test_history_does_not_tip_a_short_meeting_into_excerpts() -> None:
+    context = build_context(meeting=MEETING, utterances=LINES)
+    probe = FakeProvider([NOT_FOUND])
+    _ask(probe)
+    base = estimate_tokens(probe.calls[0][1].content)
+    big = Exchange("Q?", ("word " * 400,))
+    history = [big, big, Exchange("newest?", ("short",))]
+    settings = LlmSettings(num_ctx=1024 + context.estimated_tokens + base + 300)
+    provider = FakeProvider([NOT_FOUND])
+    result = _ask(provider, settings=settings, history=history)
+    system, user = (m.content for m in provider.calls[0])
+    assert result.excerpt is False and "[u:1]" in system
+    assert "newest?" in user and "word word" not in user  # the older, big exchanges went first

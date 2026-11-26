@@ -17,7 +17,7 @@ from evra.config import LlmSettings
 from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, LlmProvider
 from evra.llm.schemas import MeetingTitle
-from evra.notes.context import build_context
+from evra.notes.context import MeetingContext, as_data, build_context
 from evra.store.meetings import MeetingStore
 from evra.store.notes import NoteStore, StoredNote
 
@@ -66,6 +66,17 @@ def note_text(note: StoredNote, limit: int = NOTE_CHARS) -> str:
     return "\n".join(lines)
 
 
+def title_messages(context: MeetingContext, text: str) -> tuple[list[ChatMessage], str]:
+    """The title call's messages on the meeting's shared context, and the prompt version. The note
+    text is data: it goes through `as_data`."""
+    task = load_part("a8_title")
+    messages = [
+        ChatMessage("system", context.system),
+        ChatMessage("user", task.render(note=as_data(text))),
+    ]
+    return messages, f"{context.version}+{task.version}"
+
+
 def clean_generated_title(raw: str) -> str | None:
     """The model's title without wrapping quotes or trailing punctuation; None if it is not a
     usable name (empty, too long, or the placeholder again). `MeetingTitle` already capped
@@ -101,12 +112,8 @@ def name_meeting(
     # The same system message the note was written with, so Ollama keeps the meeting's
     # processed prompt for the first question (BUILD.md 7.4).
     context = build_context(meeting=store.get_meeting(meeting_id), utterances=utterances)
-    task = load_part("a8_title")
-    reply = provider.chat_json(
-        model,
-        [ChatMessage("system", context.system), ChatMessage("user", task.render(note=text))],
-        MeetingTitle.model_json_schema(),
-    )
+    messages, version = title_messages(context, text)
+    reply = provider.chat_json(model, messages, MeetingTitle.model_json_schema())
     if reply.truncated:
         log.info("meeting_not_named", reason="cut_off")
         return None
@@ -126,6 +133,6 @@ def name_meeting(
         "meeting_named",
         model=model,
         words=len(title.split()),
-        prompt=f"{context.version}+{task.version}",
+        prompt=version,
     )
     return title

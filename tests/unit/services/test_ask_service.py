@@ -389,3 +389,38 @@ def test_prepare_counts_the_real_ask_prompt(tmp_path: Path) -> None:
     assert provider.calls == []
     roomy_llm = LlmSettings(model="fake:1b", context_budget=budget + 1)
     assert h.service(provider, llm=lambda: roomy_llm).prepare(h.meeting_id) == {"ok": True}
+
+
+def test_a_second_prepare_waits_for_the_first_to_finish(tmp_path: Path) -> None:
+    release = threading.Event()
+
+    class Slow(FakeProvider):
+        def chat_json(
+            self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+        ) -> ChatResult:
+            assert release.wait(10)
+            return super().chat_json(model, messages, schema)
+
+    h = Harness(tmp_path)
+    other = h.meeting_id
+    provider = Slow(['{"ready": true}', '{"ready": true}'])
+    service = h.service(provider)
+    assert service.prepare(other) == {"ok": True}
+    conn = connect(h.paths.db_path)
+    store = MeetingStore(conn)
+    second = store.create_meeting(
+        title="Other", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(second, kind="live", model="fake")
+    store.add_utterance(
+        version_id=vid, meeting_id=second, channel=0, start_ms=0, end_ms=1_000, text="Hello there."
+    )
+    conn.close()
+    assert service.prepare(second) == {"ok": False}  # one pre-read at a time
+    release.set()
+    deadline = time.monotonic() + 10
+    while len(provider.calls) < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.1)  # the thread frees the slot after its call returns
+    assert service.prepare(other) == {"ok": False}  # same meeting, still inside its window
+    assert len(provider.calls) == 1

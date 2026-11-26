@@ -68,6 +68,7 @@ class AskService:
         self._clock = clock
         self._lock = threading.Lock()
         self._pending = False
+        self._preparing = False
         self._closing = False
         self._prepared: dict[str, float] = {}
 
@@ -106,24 +107,27 @@ class AskService:
         if not isinstance(meeting_id, str) or self._recording_busy():
             return {"ok": False}
         with self._lock:
-            if self._pending or self._closing:
+            if self._pending or self._closing or self._preparing:
                 return {"ok": False}
             last = self._prepared.get(meeting_id)
             if last is not None and self._clock() - last < PREPARE_EVERY_S:
                 return {"ok": False}
             self._prepared[meeting_id] = self._clock()
+            self._preparing = True  # one pre-read at a time
         try:
             system = self._prefill_system(meeting_id)
+            if system is not None:
+                threading.Thread(
+                    target=self._prefill, args=(system,), name="ask-prepare", daemon=True
+                ).start()
         except Exception as exc:
             log.warning("prefill_not_started", error=type(exc).__name__)
             system = None
         if system is None:
             with self._lock:
                 self._prepared.pop(meeting_id, None)
+                self._preparing = False
             return {"ok": False}
-        threading.Thread(
-            target=self._prefill, args=(system,), name="ask-prepare", daemon=True
-        ).start()
         return {"ok": True}
 
     def recover(self) -> int:
@@ -176,6 +180,9 @@ class AskService:
             )
         except Exception as exc:  # a warm-up only: the real question reports its own errors
             log.info("prefill_failed", error=type(exc).__name__)
+        finally:
+            with self._lock:
+                self._preparing = False
 
     def _answer(self, stored: StoredQuestion) -> None:
         outcome: tuple[StoredQuestion, Mapping[str, int]] | None = None

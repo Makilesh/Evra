@@ -21,12 +21,20 @@ from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
 from evra.store.questions import QuestionStore, StoredQuestion
 
+# the same sentences as the window's askExcerpt and askExcerptNothing
+EXCERPT_PARTS = (
+    "This call is too long to read whole, so Evra read the parts that match your question."
+)
+EXCERPT_NOTHING = (
+    "This call is too long to read whole, and no part of it matches the words of your question."
+)
+
 FAILURES = {
     "ollama_down": "Ollama is not running. Start it (it lives in the system tray) and try again.",
     "model_missing": "The model {model} is not installed. Run: ollama pull {model}",
     "cloud_model": "That is a cloud model. Evra only uses models that run on this computer.",
     "timeout": "The model took too long. Try again, or a smaller model with --model.",
-    "too_long": "This meeting is too long to ask about yet.",
+    "too_long": "This question needs more room than the model's settings allow.",
     "cut_off": "The model ran out of output room. Try again.",
     "invalid": "The model did not return a usable answer, even after one repair. Try --model.",
     "no_transcript": "This meeting has no transcript to ask about.",
@@ -116,10 +124,14 @@ def _run(
         for point in result.points:
             print(f"- {point.text} {cite_marks(point.citations, starts)}".rstrip())
         if result.excerpt:
-            print("(answered from the best-matching parts of a long meeting)")
+            print(EXCERPT_PARTS)
     elif result.state == "unchecked":
         _err("The model answered, but nothing could be checked against the transcript.")
+        if result.excerpt:
+            _err(EXCERPT_PARTS)
         return 1
     else:
         print(NOT_DISCUSSED)
+        if result.excerpt:
+            print(EXCERPT_NOTHING)
     return 0
