@@ -34,7 +34,7 @@ from evra.transcribe.cli import format_ms
 FALLBACK_MODEL = "gemma4:12b"
 
 
-def _cite(citations: tuple[str, ...], starts: Mapping[str, int]) -> str:
+def cite_marks(citations: tuple[str, ...], starts: Mapping[str, int]) -> str:
     marks = []
     for citation in citations:
         if citation in starts:
@@ -54,7 +54,7 @@ def render_note(
             current = block.section
             title = titles.get(current) or current.replace("_", " ").capitalize()
             lines += ["", f"## {title}"]
-        lines.append(f"- {block.text} {_cite(block.citations, starts)}".rstrip())
+        lines.append(f"- {block.text} {cite_marks(block.citations, starts)}".rstrip())
     return lines[1:]
 
 

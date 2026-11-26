@@ -188,3 +188,24 @@ def test_meeting_detail_lists_questions(conn: sqlite3.Connection) -> None:
     assert "reason" not in answered
     assert (failed["id"], failed["state"], failed["reason"]) == (second.id, "failed", "ollama_down")
     json.dumps(detail)
+
+
+def test_a_not_discussed_view_has_no_model(conn: sqlite3.Connection) -> None:
+    from evra.notes.ask import AskResult
+    from evra.services.views import question_view
+    from evra.store.questions import QuestionStore
+
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    questions = QuestionStore(conn)
+    stored = questions.answer(
+        questions.add(mid, "Who?").id,
+        AskResult("not_found", (), False, "gemma4:12b", "a0-v1+a12-v1", 10, 5, 1.0, 0),
+        transcript_version_id=vid,
+    )
+    view = question_view(stored, {})
+    assert view["state"] == "not_found"
+    assert "model" not in view and "reason" not in view

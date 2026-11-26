@@ -67,3 +67,19 @@ def test_utterances_get_sequence_numbers_and_come_back_in_time_order(store: Meet
     assert sorted(u.seq for u in got) == [0, 1]
     assert got[1].words == (Word(5000, 6000, "later"),)
     assert got[0].words == ()
+
+
+def test_has_utterances_counts_without_loading(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "evra.db")
+    migrate(conn)
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    assert store.has_utterances(vid) is False
+    store.add_utterance(
+        version_id=vid, meeting_id=mid, channel=0, start_ms=0, end_ms=1, text="Hello."
+    )
+    assert store.has_utterances(vid) is True
+    conn.close()

@@ -192,6 +192,12 @@ class MeetingStore:
             confidence,
         )
 
+    def has_utterances(self, version_id: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM utterance WHERE version_id = ? LIMIT 1", (version_id,)
+        ).fetchone()
+        return row is not None
+
     def utterances(self, version_id: str) -> list[Utterance]:
         rows = self._conn.execute(
             "SELECT * FROM utterance WHERE version_id = ? ORDER BY start_ms, seq", (version_id,)

@@ -77,7 +77,7 @@ def question_view(question: StoredQuestion, starts: Mapping[str, int]) -> dict[s
     }
     if question.state == "failed":
         view["reason"] = question.reason
-    if question.model is not None:
+    if question.state == "answered" and question.model is not None:
         view["model"] = question.model
     return view
 

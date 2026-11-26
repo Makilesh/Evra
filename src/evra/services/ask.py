@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import replace
 from typing import Any, Literal
 
 import structlog
@@ -18,7 +19,14 @@ import structlog
 from evra.config import LlmSettings
 from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import ChatMessage, LlmError, LlmProvider
-from evra.notes.ask import ask_meeting, ask_settings, clean_question, whole_meeting_fits
+from evra.notes.ask import (
+    MAX_QUESTION_CHARS,
+    ask_meeting,
+    ask_settings,
+    build_ask_messages,
+    clean_question,
+    whole_meeting_fits,
+)
 from evra.notes.context import build_context, estimate_tokens
 from evra.notes.errors import NoteError
 from evra.notes.job import failure_reason
@@ -27,7 +35,7 @@ from evra.services.meetings import Emit
 from evra.services.views import question_view
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
-from evra.store.questions import QuestionStore
+from evra.store.questions import QuestionStore, StoredQuestion
 
 log = structlog.get_logger(__name__)
 
@@ -73,29 +81,26 @@ class AskService:
             if self._pending or self._closing:
                 return {"ok": False, "reason": "busy"}
             self._pending = True
+        stored: StoredQuestion | None = None
         try:
             conn = connect(self._paths.db_path)
             try:
-                meetings = MeetingStore(conn)
-                version_id = _version_with_lines(meetings, meeting_id)
-                if version_id is None:
+                if not _has_lines(MeetingStore(conn), meeting_id):
                     self._release()
                     return {"ok": False, "reason": "no_transcript"}
                 stored = QuestionStore(conn).add(meeting_id, cleaned)
-                starts = {u.id: u.start_ms for u in meetings.utterances(version_id)}
             finally:
                 conn.close()
             threading.Thread(
-                target=self._answer,
-                args=(meeting_id, stored.id),
-                name="ask-answer",
-                daemon=True,
+                target=self._answer, args=(stored,), name="ask-answer", daemon=True
             ).start()
-        except Exception as exc:  # e.g. a busy database: stay usable
+        except Exception as exc:  # e.g. a busy database or no thread: stay usable
             log.warning("question_not_started", error=type(exc).__name__)
+            if stored is not None:
+                self._fail(stored, "llm_error")  # never leave an asking row without a thread
             self._release()
             return {"ok": False, "reason": "busy"}
-        return {"ok": True, "question": question_view(stored, starts)}
+        return {"ok": True, "question": question_view(stored, {})}
 
     def prepare(self, meeting_id: object) -> dict[str, Any]:
         if not isinstance(meeting_id, str) or self._recording_busy():
@@ -139,21 +144,25 @@ class AskService:
             self._pending = False
 
     def _prefill_system(self, meeting_id: str) -> str | None:
-        """The meeting's shared system message, when the whole meeting fits one prompt."""
+        """The meeting's shared system message, when the whole meeting still fits one prompt
+        with a 500-character question and the history asked so far; otherwise asking would take
+        the excerpt path and a whole-meeting prefill would not be the cache it reuses."""
         conn = connect(self._paths.db_path)
         try:
             meetings = MeetingStore(conn)
-            version_id = _version_with_lines(meetings, meeting_id)
-            if version_id is None:
+            if not _has_lines(meetings, meeting_id):
                 return None
+            version_id = meetings.current_transcript_version(meeting_id)
+            assert version_id is not None
             context = build_context(
                 meeting=meetings.get_meeting(meeting_id),
                 utterances=meetings.utterances(version_id),
             )
+            history = QuestionStore(conn).history(meeting_id)
         finally:
             conn.close()
-        settings = ask_settings(self._llm())
-        if not whole_meeting_fits(context, estimate_tokens(PREFILL_USER), settings):
+        user = build_ask_messages(context, "x" * MAX_QUESTION_CHARS, history)[0][1].content
+        if not whole_meeting_fits(context, estimate_tokens(user), ask_settings(self._llm())):
             return None
         return context.system
 
@@ -168,67 +177,67 @@ class AskService:
         except Exception as exc:  # a warm-up only: the real question reports its own errors
             log.info("prefill_failed", error=type(exc).__name__)
 
-    def _answer(self, meeting_id: str, question_id: str) -> None:
-        event: dict[str, Any] | None
+    def _answer(self, stored: StoredQuestion) -> None:
+        outcome: tuple[StoredQuestion, Mapping[str, int]] | None = None
+        reason = "llm_error"
         try:
-            event = self._answer_and_store(meeting_id, question_id)
+            outcome = self._answer_and_store(stored)
+        except (LlmError, NoteError) as exc:
+            reason = failure_reason(exc)
+            log.info("question_failed", reason=reason)
         except Exception as exc:  # never leave the question asking
             log.warning("question_job_failed", error=type(exc).__name__)
-            event = self._mark_failed(meeting_id, question_id)
+        try:
+            if outcome is None:
+                outcome = (self._fail(stored, reason), {})
         finally:
             self._release()
-        if event is not None:
-            self._emit("question.updated", event)
+        self._emit(
+            "question.updated",
+            {"meeting_id": stored.meeting_id, "question": question_view(*outcome)},
+        )
 
-    def _answer_and_store(self, meeting_id: str, question_id: str) -> dict[str, Any]:
+    def _answer_and_store(self, asked: StoredQuestion) -> tuple[StoredQuestion, Mapping[str, int]]:
         llm = self._llm()
         settings = ask_settings(llm)
         conn = connect(self._paths.db_path)
         try:
             meetings, questions = MeetingStore(conn), QuestionStore(conn)
-            stored = questions.get(question_id)
-            version_id = meetings.current_transcript_version(meeting_id)
+            version_id = meetings.current_transcript_version(asked.meeting_id)
             utterances = meetings.utterances(version_id) if version_id else []
-            starts = {u.id: u.start_ms for u in utterances}
-            try:
-                result = ask_meeting(
-                    self._provider_factory(settings),
-                    model=llm.model,
-                    meeting=meetings.get_meeting(meeting_id),
-                    utterances=utterances,
-                    question=stored.text,
-                    settings=settings,
-                    history=questions.history(meeting_id),
-                )
-                assert version_id is not None  # ask_meeting raised NoTranscript otherwise
-                stored = questions.answer(question_id, result, transcript_version_id=version_id)
-            except (LlmError, NoteError) as exc:
-                reason = failure_reason(exc)
-                log.info("question_failed", reason=reason)
-                stored = questions.fail(question_id, reason)
+            result = ask_meeting(
+                self._provider_factory(settings),
+                model=llm.model,
+                meeting=meetings.get_meeting(asked.meeting_id),
+                utterances=utterances,
+                question=asked.text,
+                settings=settings,
+                history=questions.history(asked.meeting_id),
+            )
+            assert version_id is not None  # ask_meeting raised NoTranscript otherwise
+            stored = questions.answer(asked.id, result, transcript_version_id=version_id)
+            return stored, {u.id: u.start_ms for u in utterances}
         finally:
             conn.close()
-        return {"meeting_id": meeting_id, "question": question_view(stored, starts)}
 
-    def _mark_failed(self, meeting_id: str, question_id: str) -> dict[str, Any] | None:
+    def _fail(self, asked: StoredQuestion, reason: str) -> StoredQuestion:
+        """Store the failure; if even that cannot be written, still say it in memory so the
+        window hears back."""
         try:
             conn = connect(self._paths.db_path)
             try:
-                stored = QuestionStore(conn).fail(question_id, "llm_error")
+                return QuestionStore(conn).fail(asked.id, reason)
             finally:
                 conn.close()
         except Exception as exc:
             log.warning("question_not_marked", error=type(exc).__name__)
-            return None
-        return {"meeting_id": meeting_id, "question": question_view(stored, {})}
+            return replace(asked, state="failed", reason=reason)
 
 
-def _version_with_lines(meetings: MeetingStore, meeting_id: str) -> str | None:
+def _has_lines(meetings: MeetingStore, meeting_id: str) -> bool:
     try:
         meetings.get_meeting(meeting_id)
     except KeyError:
-        return None
+        return False
     version_id = meetings.current_transcript_version(meeting_id)
-    if version_id is None or not meetings.utterances(version_id):
-        return None
-    return version_id
+    return version_id is not None and meetings.has_utterances(version_id)

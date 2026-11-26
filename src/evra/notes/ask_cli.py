@@ -9,27 +9,28 @@ import sys
 
 from evra.config import load_settings
 from evra.llm.ollama import OllamaProvider
-from evra.llm.provider import LlmError, LlmProvider
+from evra.llm.provider import LlmError, LlmModelMissing, LlmProvider
 from evra.logging_setup import configure_logging
 from evra.notes.ask import NOT_DISCUSSED, ask_meeting, ask_settings, clean_question
-from evra.notes.cli import FALLBACK_MODEL, _cite
+from evra.notes.cli import FALLBACK_MODEL, cite_marks
 from evra.notes.errors import NoteError
 from evra.notes.job import failure_reason
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
-from evra.store.questions import QuestionStore
+from evra.store.questions import QuestionStore, StoredQuestion
 
 FAILURES = {
     "ollama_down": "Ollama is not running. Start it (it lives in the system tray) and try again.",
-    "model_missing": "The model is not installed. Run: ollama pull <model>",
+    "model_missing": "The model {model} is not installed. Run: ollama pull {model}",
     "cloud_model": "That is a cloud model. Evra only uses models that run on this computer.",
     "timeout": "The model took too long. Try again, or a smaller model with --model.",
     "too_long": "This meeting is too long to ask about yet.",
     "cut_off": "The model ran out of output room. Try again.",
     "invalid": "The model did not return a usable answer, even after one repair. Try --model.",
     "no_transcript": "This meeting has no transcript to ask about.",
+    "llm_error": "The model failed. Try again.",
 }
 
 
@@ -79,14 +80,15 @@ def _run(
     model = args.model or llm.model
     settings = ask_settings(llm)
     questions = QuestionStore(conn)
-    llm_provider = provider or OllamaProvider(settings)
-    if not model:
-        installed = llm_provider.installed_models()
-        example = installed[0] if installed else FALLBACK_MODEL
-        _err(f"No model chosen yet. Pick one, e.g.: evra ask --model {example} ...")
-        return 2
-    stored = questions.add(meeting_id, question)
+    stored: StoredQuestion | None = None
     try:
+        llm_provider = provider or OllamaProvider(settings)
+        if not model:
+            installed = llm_provider.installed_models()
+            example = installed[0] if installed else FALLBACK_MODEL
+            _err(f"No model chosen yet. Pick one, e.g.: evra ask --model {example} ...")
+            return 2
+        stored = questions.add(meeting_id, question)
         result = ask_meeting(
             llm_provider,
             model=model,
@@ -96,19 +98,23 @@ def _run(
             settings=settings,
             history=questions.history(meeting_id),
         )
-    except (LlmError, NoteError) as exc:
-        reason = failure_reason(exc)
-        questions.fail(stored.id, reason)
-        _err(FAILURES.get(reason, "The model failed. Try again."))
+        questions.answer(stored.id, result, transcript_version_id=version_id)
+    except KeyboardInterrupt:
+        if stored is not None:
+            questions.fail(stored.id, "interrupted")
+        _err("Stopped.")
+        return 130
+    except Exception as exc:  # a failed question never stays "asking"
+        reason = failure_reason(exc) if isinstance(exc, LlmError | NoteError) else "llm_error"
+        if stored is not None:
+            questions.fail(stored.id, reason)
+        named = exc.model if isinstance(exc, LlmModelMissing) else model
+        _err(FAILURES.get(reason, FAILURES["llm_error"]).format(model=named))
         return 1
-    except BaseException:  # never leave the question asking (Ctrl+C included)
-        questions.fail(stored.id, "interrupted")
-        raise
-    questions.answer(stored.id, result, transcript_version_id=version_id)
     starts = {u.id: u.start_ms for u in utterances}
     if result.state == "answered":
         for point in result.points:
-            print(f"- {point.text} {_cite(point.citations, starts)}".rstrip())
+            print(f"- {point.text} {cite_marks(point.citations, starts)}".rstrip())
         if result.excerpt:
             print("(answered from the best-matching parts of a long meeting)")
     elif result.state == "unchecked":
