@@ -52,6 +52,7 @@ from tools.bakeoff_notes import FIXTURES, Case, load_case
 Group = Literal["supported", "mismatched", "unsupported"]
 GROUPS: tuple[Group, ...] = ("supported", "mismatched", "unsupported")
 THRESHOLDS = (0.55, 0.60, 0.65, 0.70, 0.75)
+BELOW = (0.45, 0.50)  # shown for reference only: never the rule's pick
 MAX_MISMATCHED = 0.02  # the rule: at most 2% of mismatched pairs may pass
 MISMATCHES = 3  # random far lines per kept point
 SEED = 7
@@ -213,11 +214,12 @@ def _report(
         " | unsupported then kept |",
         "| --- | --- | --- | --- | --- |",
     ]
-    for t in THRESHOLDS:
+    for t in (*BELOW, *THRESHOLDS):
         rescued = sum(s >= t and a == "kept" for s, a in zip(unsupported, after, strict=True))
+        label = f"{t:.2f}" if t in THRESHOLDS else f"{t:.2f} (not a candidate)"
         lines.append(
-            f"| {t:.2f} | {_count(by_group['mismatched'], t)} | {_count(by_group['supported'], t)}"
-            f" | {_count(unsupported, t)} | {rescued} |"
+            f"| {label} | {_count(by_group['mismatched'], t)}"
+            f" | {_count(by_group['supported'], t)} | {_count(unsupported, t)} | {rescued} |"
         )
     chosen = pick_threshold(by_group["mismatched"])
     lines += [

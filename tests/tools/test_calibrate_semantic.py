@@ -58,6 +58,16 @@ def test_calibrate_reports_every_group_with_a_fake_model() -> None:
     assert "| mismatched | 3 |" in text
     assert "| unsupported | 1 |" in text
     assert "1 points kept, 1 unsupported, 1 other" in text
+    # every candidate threshold, and two below them for reference (never the rule's pick)
+    assert [line.split(" |")[0] for line in lines if line.startswith("| 0.")] == [
+        "| 0.45 (not a candidate)",
+        "| 0.50 (not a candidate)",
+        "| 0.55",
+        "| 0.60",
+        "| 0.65",
+        "| 0.70",
+        "| 0.75",
+    ]
     assert "Everyone loved the cake at lunch." in text  # an unsupported point is listed
     assert "I finished the search migration on Tuesday" in text  # with the line it cites
     assert len(provider.embed_calls) == 1  # every pair in one batch

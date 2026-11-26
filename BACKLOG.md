@@ -93,7 +93,7 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 
 ## M3b follow-ups (2026-09-28)
 
-- Meaning check (cosine ≥ 0.55, §7.5, shipped 2026-11-26): re-measure the threshold with `tools/calibrate_semantic.py` on real meetings. On the synthetic calls, gemma4:12b's points the word check dropped scored 0.51–0.53, just under 0.55, and all were true; 0.50 would have kept them with 0.6% of mismatched pairs above it (DECISIONS "Meaning check threshold").
+- Meaning check (cosine ≥ 0.55, §7.5, shipped 2026-11-26): re-measure the threshold with `tools/calibrate_semantic.py` on real meetings. On the synthetic calls, gemma4:12b's points the word check dropped scored 0.51–0.53, just under 0.55, and all were true; at 0.50, 2 of 159 mismatched pairs passed (1.3%) in a run that counted it (DECISIONS "Meaning check threshold").
 - Plain bullet-list fallback note after a failed repair (§9.1), built from extraction results (M5).
 - Spoken years ("twenty twenty-six") in the number check.
 - Map-reduce (per-window notes, A2/A3) — needed from about 30 minutes, not only over the budget: planted facts reaching a single-pass note were 30 min 3/6, 60 min 5–6/13 (2026-11-07).
