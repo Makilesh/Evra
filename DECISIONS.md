@@ -261,3 +261,38 @@ One entry per decision. Format: context · evidence · decision · consequences.
 
 - **Decision:** A0 (`a0-v1`) is the system message of every call about a meeting: the transcript first, then gaps, the user's notes and metadata. A1 v3 (`a1-v3`) is only the task, sent as the user message. Rule applied: the short call keeps 15 (>= 14) with 10/10 facts in both runs; the 60-minute call's validity (86%, 91%) is not below v2's (81%, 73%) by 5 points, and its facts (46%, 54%) are at least v2's lower run (38%). v3 kept. Prompt version is recorded as `a0-v1+a1-v3`.
 - **Consequences:** the note prompt is about 70 tokens larger on the short call. The 60-minute call writes about 40 points instead of about 20 (more output, about 2400 tokens). Notes written before this carry `a1-v2`. Token estimates stay at 2.7 characters a token and now track Ollama's counts within 0% to 26% above.
+
+## This work runs before M4 (2026-11-26)
+- **Context:** BUILD.md §10 puts M4 (speakers) next after M3 and keeps the milestones in order. On 26 November the owner asked for the seven changes from the review of how Evra uses its language model: refuse cloud models, ask a meeting, read long calls in parts, keep action items and decisions as records, track open promises across meetings, a notepad that steers the note, and a meaning check next to the word check (spec `docs/superpowers/specs/2026-11-26-ask-notes-promises-design.md`).
+- **Evidence:** a 1:1 call on headphones needs no diarization (mic = the owner, system audio = the other person, §8.1). The research behind the review found that open promises and continuity between 1:1s matter more for a 1:1 than voiceprints.
+- **Decision (owner, 2026-11-26):** this work runs before M4, as three plans on three branches: A `ask-meetings` (cloud refusal, the shared meeting context, asking a meeting), B `notes-complete` (embeddings, extraction kept as records, long calls in parts, the notepad), C `promises` (people, open promises, a prep brief). M4 is unchanged and comes after them.
+- **Consequences:** parts of M5 (the notepad, embeddings, extraction, the per-window path) arrive before M4; Plan B changes D17 with its own entry. Until M4, a 1:1 has two speakers, You and Them, without voiceprints.
+
+## Cloud models are refused (2026-11-26)
+- **Context:** D4 keeps the language model on this PC. Ollama can also run models in its own cloud, and such a model is listed and called like a local one. A note or a question sent to one would take the meeting's transcript off the PC.
+- **Evidence:** Ollama marks them with a `cloud` tag (`gemma4:cloud`, `gemma4:31b-cloud`) or, in `/api/tags`, with `remote_host` or `remote_model` (fields checked in Ollama's `api/types.go`). The dev PC's Ollama 0.34.4 lists nine models, none of them remote.
+- **Decision:** `OllamaProvider` refuses such a model before any chat, load or unload call, reading `/api/tags` once per provider. `installed_models()` leaves them out, so Settings never offers one, and Settings refuses a cloud name. A note or an answer with one fails with `cloud_model`, whose text says to choose another model. README tells users that `OLLAMA_NO_CLOUD=1` turns Ollama's cloud features off server-wide.
+- **Consequences:** a model that `/api/tags` doesn't list is left to the call, which Ollama answers with 404 (`model_missing`). Each provider makes one extra `/api/tags` request before its first call.
+
+## Asking a meeting (A12) (2026-11-26)
+- **Context:** on the 60-minute synthetic 1:1 (13 planted facts) a single-pass note keeps 5–7 of them. A throwaway probe on the same call found that the same model, asked about each fact with the whole transcript in the prompt, answered 13/13 and said "not discussed" for all 3 topics the call never mentions, and that follow-ups took 1–2 s because Ollama reuses the prompt it has already read. The owner asked for "Ask this meeting".
+- **Evidence:** `tools/bakeoff_ask.py` runs the app's own asking code on that call: 13 fact questions and 3 absent topics, each asked on its own; Ollama 0.34.4, RTX 5070 Ti Laptop 12 GB, the app's default settings (`num_ctx` 32768, temperature 0, thinking off). "Correct" means the model's answer holds every keyword of the fact; in brackets, the points the check kept still do:
+
+  | model | facts correct | not discussed | answers passing the check | first question, cold | first question right after the note | follow-ups, median / worst |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | gemma4:12b | 13/13 (12/13) | 3/3 | 12/13 | 20.1 s | 2.3 s, 26,904 of 27,417 prompt tokens reused (98%) | 1.7 s / 5.3 s |
+  | qwen3.5:9b | 13/13 (13/13) | 3/3 | 13/13 | 30.5 s | 1.5 s, 25,555 of 26,054 reused (98%) | 2.0 s / 4.1 s |
+
+  - Every follow-up reused the whole meeting and A12's rules (gemma4 27,238 of about 27,415 prompt tokens; qwen3.5 25,032 of about 26,050). The whole call fit one prompt, so no answer read only parts of it.
+  - gemma4's one answer that didn't pass the check was right, but it cited lines by their time as if it were an id (`u:15:46` for the line at 15:46), so no citation was valid. qwen3.5 answered more widely: two or three points where one was asked, some about the next topic.
+  - In the window the title (A8, with its own prompt) runs between the note and the first question. Measured with gemma4: that question then re-read the whole call (0 of 27,417 tokens reused, 16.6 s); after the Ask tab's pre-read, the next question took 1.9 s with 27,031 reused.
+  - In the real window (the synthetic meeting, gemma4), two one-click questions and a typed follow-up took 5.5–6.1 s each: 198–230 tokens written for three or four points, with 27,031–27,275 prompt tokens reused. The check dropped 3 of 12 points, all paraphrases whose detail was in lines they didn't cite. Logs held state, counts, seconds and reused tokens only.
+- **Decision:**
+  - A12 (`a12-v1`) is the user message on A0: one to four cited points, or `found: false`, as `MeetingAnswer`; the last three questions and answers ride along so a follow-up can be read. Every point goes through the note's check.
+  - Answers are stored in a `question` table with their state (`answered`, `not_found`, `unchecked`, `failed` with a reason); a question left `asking` by a closed app becomes `interrupted` at the next start.
+  - The note's model answers, with the note's `num_ctx`, a 5-minute keep-alive and 1,024 output tokens. One question at a time, none during a recording. Opening the Ask tab pre-reads the meeting. A call too long for one prompt sends only the BM25-best windows and says so.
+  - Every target of the spec (§8) is met by both models, so A12 and `notes/ask.py` stay as built; gemma4:12b stays the default.
+- **Consequences:**
+  - Until the title call stops replacing Ollama's cached prompt (BACKLOG), the first question after a new note waits for a full re-read (about 17 s on gemma4) unless the Ask tab's pre-read has finished.
+  - Broad questions ("What did I promise?") write more and take about 6 s, against about 2 s for a question about one fact.
+  - The same question can come back with different points from one run to the next, even at temperature 0: in the window "What did they promise?" kept 2 points and dropped 2, and a replay kept 4.

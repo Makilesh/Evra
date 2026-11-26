@@ -5,6 +5,8 @@ import pytest
 from tests.unit.notes.fakes import FakeProvider
 from tools.bakeoff_notes import FIXTURES, load_case
 from tools.make_long_fixture import (
+    ABSENT,
+    PARTS,
     Fact,
     Part,
     assign_times,
@@ -15,7 +17,12 @@ from tools.make_long_fixture import (
     to_json,
 )
 
-DANA = Fact("Dana starts on the 14th", ("dana", "14"), ((1, "Dana starts on the 14th."),))
+DANA = Fact(
+    "Dana starts on the 14th",
+    ("dana", "14"),
+    ((1, "Dana starts on the 14th."),),
+    "When does Dana start?",
+)
 LONG = FIXTURES / "one_on_one_60min_synthetic.json"
 
 
@@ -25,7 +32,7 @@ def test_a_fact_the_model_already_said_is_not_planted_again() -> None:
 
 
 def test_either_spelling_of_a_keyword_counts() -> None:
-    beta = Fact("beta on March 3", ("beta", "march 3|3 march"), ((1, "Beta on March 3."),))
+    beta = Fact("beta on March 3", ("beta", "march 3|3 march"), ((1, "Beta on March 3."),), "When?")
     lines = [(0, "So the beta is 3 March now.")]
     assert plant(lines, [beta]) == (lines, 0)
 
@@ -97,8 +104,21 @@ def test_each_fact_is_placed_at_the_minute_it_is_first_said() -> None:
         {"ch": 1, "start_ms": 125_000, "end_ms": 128_000, "text": "Dana starts on the 14th."},
     ]
     assert expected_facts(utterances, [Part("intro"), Part("hiring", (DANA,))]) == [
-        {"what": "Dana starts on the 14th", "keywords": ["dana", "14"], "minute": 2}
+        {
+            "what": "Dana starts on the 14th",
+            "keywords": ["dana", "14"],
+            "minute": 2,
+            "question": "When does Dana start?",
+        }
     ]
+
+
+def test_the_long_fixture_asks_what_the_generator_plants() -> None:
+    data = json.loads(LONG.read_text(encoding="utf-8"))
+    facts = [fact for part in PARTS for fact in part.facts]
+    assert [e["question"] for e in data["expected"]] == [f.question for f in facts]
+    assert [e["what"] for e in data["expected"]] == [f.what for f in facts]
+    assert data["absent"] == list(ABSENT)
 
 
 def test_the_fixture_file_reads_back_unchanged() -> None:

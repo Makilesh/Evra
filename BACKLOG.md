@@ -142,6 +142,18 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - Live transcript off for slow PCs: record now, transcribe after. `live_transcript` is already in the settings file.
 - After a theme switch, WebView2's background behind a resizing window keeps the startup colour until the next start.
 
+## Asking, later (2026-11-26)
+
+- **Questions across meetings** (Phase 2): they need search, then a fixed plan → read-only lookups → answer flow.
+- **Asking during a recording:** Evra Live (Phase 3). Refused for now.
+- **Keeping an answer in the note:** turn a checked answer into a note point.
+- **Saved custom questions** next to the four one-click ones.
+- **The first question after a new note re-reads the call.** The title call (A8) runs between the note and the questions with its own prompt and replaces Ollama's cached meeting prompt: on gemma4 the first question then took 16.6 s instead of about 2 s, unless the Ask tab's pre-read had finished. Run A8 on the shared context (A0 as its system message, the note in its task), or pre-read once the title is written; measure both.
+- **Citations by time:** gemma4 once cited lines as `u:15:46` (the line's time) instead of their id, so a right answer had no valid citation. Map a `u:mm:ss` citation to the line that starts then, or say in A0 that the id is the number before the time.
+- **Broad questions drop paraphrases:** "What did I promise?" lost points whose detail sat in lines they didn't cite (only the short reply "Yeah, I can do that."). The short-reply rule (M3 finish follow-ups) and Plan B's meaning check cover it.
+- **The asking bake-off asks each question alone;** add a run with the window's three-turn history, and a run on a call too long for one prompt (the excerpt path is measured only by tests so far).
+- **Design sidecar:** `.impeccable/design.json` has no Ask component yet (DESIGN.md has the section).
+
 ## From the competitor review (2026-11-10)
 The full list (100 features, with links) is in `private/research/reports/`.
 - **Switch the microphone during a recording.** The picker is locked while recording, so a headset that drops can't be swapped mid-call.

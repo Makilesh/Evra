@@ -4,11 +4,13 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 **Source of truth: `BUILD.md`.** Read it fully before coding. `docs/archive/BUILD_PROMPT.v3.md` is reference only.
 
 ## Commands
+- Windows Smart App Control can block uv's `.exe` launchers (`uv run evra …`, `uv run pytest`):
+  `uv run python -m evra …` and `uv run python -m pytest` are the same commands.
 - Setup: `uv sync` · `npm ci --prefix frontend`
 - Run (built UI): `npm --prefix frontend run build` then `uv run evra run`
 - Run (dev UI): `npm --prefix frontend run dev` and `uv run evra run --dev --debug`
 - All checks: `uv run python tools/check.py` (must pass before every commit)
-- Python only: `uv run pytest` · `uv run ruff check .` · `uv run ruff format --check .` · `uv run mypy`
+- Python only: `uv run python -m pytest` · `uv run python -m ruff check .` · `uv run python -m ruff format --check .` · `uv run python -m mypy`
 - Frontend only: `npm --prefix frontend run lint|typecheck|test`
 - Licences: `uv run python tools/license_gate.py [--write-register]`
 - Capture check: `uv run evra capture-test 60` (list mics: `uv run evra capture-test 1 --list-devices`)
@@ -18,7 +20,9 @@ Evra: local-first Windows meeting-notes app (Python app process + model workers 
 - Record + live transcript (1:1): `uv run evra record 60`
 - Write the note for the latest recording: `uv run evra note [--model gemma4:12b]` (needs Ollama running)
 - Name meetings that have a note but still a "Recording …" title: `uv run evra titles` (needs Ollama running)
+- Ask the latest meeting a question: `uv run python -m evra ask "QUESTION" [--meeting-id ID] [--model gemma4:12b]` (needs Ollama running)
 - Compare note models: `uv run python tools/bakeoff_notes.py gemma4:12b qwen3.5:9b ministral-3:14b --runs 2`
+- Compare asking: `uv run python tools/bakeoff_ask.py gemma4:12b qwen3.5:9b [--show]` (needs Ollama)
 - Regenerate the 60-minute test call: `uv run python tools/make_long_fixture.py gemma4:12b` (needs Ollama)
 
 ## Rules (full list: BUILD.md §11)

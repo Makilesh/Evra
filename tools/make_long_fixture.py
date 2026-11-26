@@ -1,8 +1,10 @@
 """Make the 60-minute synthetic 1:1 fixture for the note bake-off (BUILD.md §9.5: note ready
 after a 60-minute 1:1). A local model writes the call in 24 parts of about two and a half
 minutes; known facts are planted word for word at set points, so the bake-off can check that a
-fact from minute 55 still reaches the note. Long turns are split at sentence ends, as voice
-detection cuts real speech at pauses. Everything in it is made up, so it is safe to commit.
+fact from minute 55 still reaches the note. Each fact carries the question the asking bake-off
+(tools/bakeoff_ask.py) puts to the call, and three topics the call never mentions are listed as
+"absent". Long turns are split at sentence ends, as voice detection cuts real speech at pauses.
+Everything in it is made up, so it is safe to commit.
 
     uv run python tools/make_long_fixture.py gemma4:12b
 """
@@ -45,6 +47,7 @@ class Fact:
     what: str
     keywords: tuple[str, ...]  # the bake-off's rule: every keyword in one line, "a|b" = either
     lines: tuple[Line, ...]  # planted word for word
+    question: str  # what tools/bakeoff_ask.py asks; it never gives the answer away
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,7 @@ PARTS = (
                 "38 customers signed up for the beta",
                 ("38", "customer"),
                 ((YOU, "We have 38 customers signed up for the beta so far."),),
+                "How many customers have signed up for the beta so far?",
             ),
         ),
     ),
@@ -76,6 +80,7 @@ PARTS = (
                     (THEM, "Okay, let's lock it in: the Atlas beta moves to March 3."),
                     (YOU, "Yes, March 3 works for us."),
                 ),
+                "When is the Atlas beta happening now?",
             ),
         ),
     ),
@@ -88,6 +93,7 @@ PARTS = (
                 "two contractors approved for the data pipeline",
                 ("two|2", "contractor"),
                 ((THEM, "Good news, I got approval for two contractors for the data pipeline."),),
+                "What did we agree about getting extra help for the data pipeline?",
             ),
         ),
     ),
@@ -98,6 +104,7 @@ PARTS = (
                 "Dana starts on the 14th",
                 ("dana", "14"),
                 ((THEM, "Dana starts on the 14th, so please plan her first week."),),
+                "When does Dana start?",
             ),
         ),
     ),
@@ -115,6 +122,7 @@ PARTS = (
                         "The outage on Saturday lasted 47 minutes from the first alert to the fix.",
                     ),
                 ),
+                "How long was the outage?",
             ),
         ),
     ),
@@ -128,6 +136,7 @@ PARTS = (
                     (THEM, "Can you write the postmortem by Friday?"),
                     (YOU, "Yes, I'll have the postmortem done by Friday."),
                 ),
+                "Who is writing the postmortem, and when is it due?",
             ),
         ),
     ),
@@ -140,6 +149,7 @@ PARTS = (
                 "18,000 approved for the load-testing tool",
                 ("18,000|18000|18k|18 thousand", "load"),
                 ((THEM, "Finance approved 18,000 for the load-testing tool."),),
+                "How much money was approved for the load-testing tool?",
             ),
         ),
     ),
@@ -153,6 +163,7 @@ PARTS = (
                     (YOU, "Let's move standup to 10:30 starting next week."),
                     (THEM, "Agreed, standup at 10:30 it is."),
                 ),
+                "Did anything change about the standup?",
             ),
         ),
     ),
@@ -165,6 +176,7 @@ PARTS = (
                 "conference in Lisbon in May approved",
                 ("lisbon",),
                 ((THEM, "Your trip to the conference in Lisbon in May is approved."),),
+                "Was any conference travel approved?",
             ),
         ),
     ),
@@ -175,6 +187,7 @@ PARTS = (
                 "promotion packet due by the end of the quarter",
                 ("promotion", "quarter"),
                 ((THEM, "Send me your promotion packet by the end of the quarter."),),
+                "What's the deadline for my promotion packet?",
             ),
         ),
     ),
@@ -186,6 +199,7 @@ PARTS = (
                 "Them asks finance about the laptop refresh",
                 ("laptop", "finance"),
                 ((THEM, "I'll ask finance about the laptop refresh this week."),),
+                "Who is checking on the laptop refresh, and with whom?",
             ),
         ),
     ),
@@ -199,6 +213,7 @@ PARTS = (
                     (YOU, "We still haven't decided whether to sunset the legacy API."),
                     (THEM, "Right, we don't have an answer on that yet."),
                 ),
+                "What's still undecided about the legacy API?",
             ),
         ),
     ),
@@ -209,9 +224,16 @@ PARTS = (
                 "next time: the roadmap offsite",
                 ("roadmap", "offsite"),
                 ((THEM, "Next time let's talk about the roadmap offsite."),),
+                "What did we say we'd talk about next time?",
             ),
         ),
     ),
+)
+# Topics the call never mentions: asked about, the answer must be "not discussed".
+ABSENT = (
+    "What salary increase did we agree on?",
+    "What did we decide about moving to a new office?",
+    "Which CRM did we choose?",
 )
 
 SYSTEM = (
@@ -353,7 +375,12 @@ def expected_facts(
     for fact in (f for p in parts for f in p.facts):
         start = next(int(u["start_ms"]) for u in utterances if has_fact(str(u["text"]), fact))
         expected.append(
-            {"what": fact.what, "keywords": list(fact.keywords), "minute": start // 60_000}
+            {
+                "what": fact.what,
+                "keywords": list(fact.keywords),
+                "minute": start // 60_000,
+                "question": fact.question,
+            }
         )
     return expected
 
@@ -399,6 +426,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "started_at": STARTED_AT,
         "utterances": utterances,
         "expected": expected_facts(utterances, PARTS),
+        "absent": list(ABSENT),
     }
     args.out.write_text(to_json(fixture), encoding="utf-8", newline="\n")
     words = sum(len(text.split()) for _, text in lines)
