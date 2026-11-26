@@ -155,10 +155,10 @@ class AskService:
             self._pending = False
 
     def _prefill_plan(self, meeting_id: str) -> str | list[Utterance] | None:
-        """What to read ahead: the meeting's shared system message when the whole meeting still
-        fits one prompt with a 500-character question and the history asked so far (the cache a
-        question reuses); otherwise its lines, whose parts a question would rank; None when it
-        has no lines."""
+        """What to read ahead: the meeting's shared system message when the whole meeting fits
+        one prompt with a 500-character question (the cache a question reuses); otherwise its
+        lines, whose parts a question would rank; None when it has no lines. The history is left
+        out, as `ask_meeting` decides: it drops the oldest exchanges before it reads parts."""
         conn = connect(self._paths.db_path)
         try:
             meetings = MeetingStore(conn)
@@ -168,10 +168,9 @@ class AskService:
             assert version_id is not None
             utterances = meetings.utterances(version_id)
             context = build_context(meeting=meetings.get_meeting(meeting_id), utterances=utterances)
-            history = QuestionStore(conn).history(meeting_id)
         finally:
             conn.close()
-        user = build_ask_messages(context, "x" * MAX_QUESTION_CHARS, history)[0][1].content
+        user = build_ask_messages(context, "x" * MAX_QUESTION_CHARS, ())[0][1].content
         if not whole_meeting_fits(context, estimate_tokens(user), ask_settings(self._llm())):
             return utterances
         return context.system
