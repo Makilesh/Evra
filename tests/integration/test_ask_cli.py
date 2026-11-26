@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,7 @@ import pytest
 
 from evra.config import LlmSettings, Settings, save_settings
 from evra.llm.provider import ChatMessage, LlmModelMissing
-from evra.notes.ask_cli import ask_command
+from evra.notes.ask_cli import EXCERPT_NOTHING, EXCERPT_PARTS, ask_command
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
@@ -144,19 +145,36 @@ def _long_call(tmp_path: Path) -> tuple[AppPaths, str]:
     return paths, mid
 
 
+class NoEmbeddings(FakeProvider):
+    """The embedding model is not installed: asking falls back to words alone."""
+
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        raise LlmModelMissing(model)
+
+
 def test_a_long_call_with_no_matching_part_says_so_and_asks_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     paths, mid = _long_call(tmp_path)
-    provider = FakeProvider([])
+    provider = NoEmbeddings([])
     assert ask_command(_args("zebra giraffe?"), paths, provider=provider) == 0
     out = capsys.readouterr().out
     assert "Not discussed in this meeting." in out
-    assert (
-        "This call is too long to read whole. "
-        "Evra looked only at the parts that match the words of your question." in out
-    )
+    assert EXCERPT_NOTHING in out
     assert provider.calls == []
+    assert _stored(paths, mid) == [("not_found", None)]
+
+
+def test_a_long_call_reads_parts_by_meaning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No line holds the word "promise"; the parts closest in meaning are read instead."""
+    paths, mid = _long_call(tmp_path)
+    provider = FakeProvider([NOT_FOUND])
+    assert ask_command(_args("What did I promise?"), paths, provider=provider) == 0
+    assert len(provider.calls) == 1 and provider.embed_calls
+    out = capsys.readouterr().out
+    assert "Not discussed in this meeting." in out and EXCERPT_NOTHING in out
     assert _stored(paths, mid) == [("not_found", None)]
 
 
@@ -184,3 +202,19 @@ def test_too_long_uses_the_windows_words(
         "This question needs more room than the model's settings allow." in capsys.readouterr().err
     )
     assert _stored(paths, mid) == [("failed", "too_long")]
+
+
+STRINGS_TS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "strings.ts"
+
+
+def _window_string(name: str) -> str:
+    """A plain double-quoted string from the window's strings.ts."""
+    source = STRINGS_TS.read_text(encoding="utf-8")
+    match = re.search(rf'\b{name}:\s*"((?:[^"\\]|\\.)*)"', source)
+    assert match is not None, name
+    return str(json.loads(f'"{match.group(1)}"'))
+
+
+def test_the_excerpt_sentences_are_the_windows() -> None:
+    assert _window_string("askExcerpt") == EXCERPT_PARTS
+    assert _window_string("askExcerptNothing") == EXCERPT_NOTHING

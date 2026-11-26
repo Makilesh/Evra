@@ -161,9 +161,14 @@ class OllamaProvider:
         if not isinstance(raw, list) or len(raw) != len(texts):
             raise LlmError("Ollama sent a reply without embeddings")
         try:
-            return [_unit([float(x) for x in vector]) for vector in raw]
+            vectors = [_unit([float(x) for x in vector]) for vector in raw]
         except (TypeError, ValueError):
             raise LlmError("Ollama sent a reply without embeddings") from None
+        # a cosine needs two whole vectors of one size: anything else is Ollama's error here,
+        # so the meaning check falls back to the word check instead of crashing
+        if not vectors[0] or any(len(v) != len(vectors[0]) for v in vectors):
+            raise LlmError("Ollama sent embeddings that are empty or of different sizes")
+        return vectors
 
     def installed_models(self) -> list[str]:
         return sorted(

@@ -1,8 +1,10 @@
 import json
 
 import pytest
+import structlog
 
 from evra.config import LlmSettings
+from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template
 from evra.notes.writer import (
     NoteCutOff,
@@ -141,3 +143,34 @@ def test_a_cut_off_repair_is_refused_too() -> None:
 
     with pytest.raises(NoteCutOff):
         write(CutRepair(["{", GOOD]))
+
+
+def test_the_meaning_check_reaches_the_note() -> None:
+    """A point the word check calls unsupported is kept when its meaning matches the line it
+    cites (the fake embeds a bag of words: here the point shares only small words)."""
+    lines = [utt("a", 1, 0, 4_000, "Yes, I will have it all done for you by then, as I said.")]
+    point = "They will have the report done for you by then, as they said."
+    reply = json.dumps({"summary": [{"text": point, "citations": ["u:1"]}], "sections": []})
+    provider = FakeProvider([reply])
+    semantic = SemanticCheck(Embedder(provider, "embed"), threshold=0.45)
+    with structlog.testing.capture_logs() as logs:
+        result = write_note(
+            provider,
+            model="fake:1b",
+            meeting=MEETING,
+            utterances=lines,
+            template=TEMPLATE,
+            settings=LlmSettings(),
+            semantic=semantic,
+        )
+    assert [b.text for b in result.note.summary] == [point]
+    assert (result.note.kept, result.note.rescued) == (1, 1)
+    written = next(e for e in logs if e["event"] == "note_written")
+    assert (written["kept"], written["dropped"], written["rescued"]) == (1, 0, 1)
+    assert len(provider.embed_calls) == 1  # after the model's reply, in one batch
+
+
+def test_no_meaning_check_by_default() -> None:
+    provider = FakeProvider([GOOD])
+    assert write(provider).note.rescued == 0
+    assert provider.embed_calls == []

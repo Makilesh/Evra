@@ -1,5 +1,7 @@
 """Writes one note in a single pass (BUILD.md §7.4-7.5): A1 -> JSON -> at most one A9 repair ->
-grounding. Nothing here logs or raises with prompt, reply or transcript text."""
+grounding (the word check, and the meaning check when one is given: its one embedding batch
+runs after the model's reply). Nothing here logs or raises with prompt, reply or transcript
+text."""
 
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from evra.notes.errors import (
     NoTranscript,
 )
 from evra.notes.prompt_input import build_note_prompt
+from evra.notes.semantic import SemanticCheck
 from evra.notes.structured import chat_structured
 from evra.notes.templates import Template
 from evra.notes.validate import CheckedNote, check_note
@@ -59,6 +62,7 @@ def write_note(
     template: Template,
     settings: LlmSettings,
     gaps: Sequence[Mapping[str, Any]] = (),
+    semantic: SemanticCheck | None = None,
 ) -> NoteResult:
     if not utterances:
         raise NoTranscript("no transcript")
@@ -93,12 +97,14 @@ def write_note(
         aliases=prompt.aliases,
         utterance_text={u.id: u.text for u in utterances},
         template=template,
+        semantic=semantic,
     )
     log.info(
         "note_written",
         model=model,
         kept=note.kept,
         dropped=note.dropped,
+        rescued=note.rescued,
         reasons=dict(note.drop_reasons),
         repaired=reply.repaired,
     )

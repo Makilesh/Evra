@@ -10,7 +10,9 @@ from collections.abc import Sequence
 
 from evra.llm.provider import LlmProvider
 
-SUPPORT_COSINE = 0.55  # Task 2 may raise it from its calibration
+# the smallest candidate at which at most 2% of mismatched pairs pass, measured by
+# tools/calibrate_semantic.py (DECISIONS.md "Meaning check threshold", 2026-11-26)
+SUPPORT_COSINE = 0.55
 QUERY_TASK = "Given a statement from meeting notes, retrieve the transcript lines that say it"
 
 
@@ -45,7 +47,8 @@ class SemanticCheck:
         self.threshold = threshold
 
     def similarities(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
-        """For each (claim, source): the cosine of the claim as a query and the source."""
-        claims = self._embedder.vectors([as_query(c) for c, _ in pairs])
-        sources = self._embedder.vectors([s for _, s in pairs])
+        """For each (claim, source): the cosine of the claim as a query and the source. Claims
+        and sources go in one batch, so a few pairs are one embedding request."""
+        vectors = self._embedder.vectors([*(as_query(c) for c, _ in pairs), *(s for _, s in pairs)])
+        claims, sources = vectors[: len(pairs)], vectors[len(pairs) :]
         return [cosine(c, s) for c, s in zip(claims, sources, strict=True)]

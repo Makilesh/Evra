@@ -97,6 +97,29 @@ def load_case(path: Path) -> Case:
     return Case(path.stem, meeting, utterances, expected)
 
 
+HOUR_MS = 3_600_000
+
+
+def repeat_case(case: Case, hours: int) -> Case:
+    """The call said `hours` times over, each copy an hour after the one before: the 60-minute
+    fixture becomes a 2-hour call, too long to read whole, with every fact said twice."""
+    if hours <= 1:
+        return case
+    n = len(case.utterances)
+    utterances = [
+        replace(
+            u,
+            id=u.id if k == 0 else f"{u.id}-h{k}",
+            seq=u.seq + k * n,
+            start_ms=u.start_ms + k * HOUR_MS,
+            end_ms=u.end_ms + k * HOUR_MS,
+        )
+        for k in range(hours)
+        for u in case.utterances
+    ]
+    return replace(case, name=f"{case.name}-{hours}h", utterances=utterances)
+
+
 def meeting_case(meeting_id: str) -> Case:
     conn = connect(resolve_paths().db_path)
     try:

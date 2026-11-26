@@ -313,3 +313,52 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** `qwen3-embedding:0.6b` is in the Ollama library: 639 MB, Q8_0, 32K context, 1024-dimension vectors (measured with one `/api/embed` call). Ollama's page and `ollama show --license` print no licence; the Hugging Face card `Qwen/Qwen3-Embedding-0.6B` (the same model) is Apache-2.0. `POST /api/embed` takes `model`, `input` (string or list), `truncate` (default true), `keep_alive`, `dimensions`, `options`; it returns `embeddings`, `prompt_eval_count`. Normalisation is not documented; measured output was already near unit length, but Evra normalises anyway.
 - **Decision:** embeddings go through `LlmProvider.embed` (Ollama, `/api/embed`, loopback only, cloud models refused) with `qwen3-embedding:0.6b` (`llm.embedding_model`). Queries carry Qwen3's instruction (`Instruct: …\nQuery:…`), documents none. Vectors are L2-normalised in Evra.
 - **Consequences:** no torch worker needed for embeddings; the model is one more Ollama pull (639 MB). The torch worker still comes with M4; pyannote stays there. An embedding failure never fails a note: callers fall back to the word check.
+
+## Meaning check threshold (2026-11-26)
+- **Context:** the word check (§7.5) drops a point that says what its cited lines say in other words, because fewer than 20% of its content words are in them. The meaning check scores such a point against the text it cites with `qwen3-embedding:0.6b` (the point as the query, with Qwen3's instruction) and keeps it at or above a threshold; its numbers and names must still be cited. §7.5 names 0.55. The plan's rule: the smallest of 0.55, 0.60, 0.65, 0.70 and 0.75 at which at most 2% of mismatched pairs pass.
+- **Evidence:** `tools/calibrate_semantic.py gemma4:12b` (Ollama 0.34.4, RTX 5070 Ti Laptop). Both synthetic fixtures; the note is written with the meaning check off, then three groups of pairs are embedded in one batch: each kept point against the text it cites (supported), against 3 random lines that are neither cited nor within 3 lines of a cited one (mismatched, `random.Random(7)`), and each point dropped as unsupported against the text it cites. Two runs, because temperature 0 does not repeat exactly (run 1: 53 kept points, 1 unsupported; run 2: 54 and 3):
+
+  | group (run 1 / run 2) | pairs | p5 | p50 | p95 | max |
+  | --- | --- | --- | --- | --- | --- |
+  | supported | 53 / 54 | 0.519 / 0.515 | 0.774 / 0.780 | 0.886 / 0.912 | - / 0.931 |
+  | mismatched | 159 / 162 | 0.208 / 0.213 | 0.318 / 0.318 | 0.446 / 0.456 | - / 0.525 |
+  | unsupported | 1 / 3 | 0.528 / 0.508 | 0.528 / 0.513 | 0.528 / 0.528 | 0.528 / 0.530 |
+
+  | threshold | mismatched at or above | supported at or above | dropped points it would keep |
+  | --- | --- | --- | --- |
+  | 0.55 | 0/159, 0/162 (0%) | 92.5%, 88.9% | 0, 0 |
+  | 0.60 | 0%, 0% | 90.6%, 83.3% | 0, 0 |
+  | 0.65 | 0%, 0% | 84.9%, 81.5% | 0, 0 |
+  | 0.70 | 0%, 0% | 77.4%, 75.9% | 0, 0 |
+  | 0.75 | 0%, 0% | 56.6%, 59.3% | 0, 0 |
+
+  - The four points dropped as unsupported (cosines 0.508–0.530), judged against the fixture: all four are true of the call, but part of each is said in lines they don't cite. "Reviewed the recent weekend outage and planned improvements for monitoring and alerting" cites the outage lines; the alerting plans come at 30:19–34:38. "The automated testing suite for the new module lacks a defined baseline": the suite is named the line before and the baseline two lines on. "You will prepare a plan for Dana's onboarding starting on the 14th": Dana and the 14th are in the line before, which the nearby-line rule would cite.
+  - Supplementary, `tools/calibrate_semantic.py qwen3.5:9b`: 1 of 123 mismatched pairs at or above 0.55 (0.8%, max 0.620), so the rule again gives 0.55. Both of its points dropped as unsupported (0.655, 0.609) pass at 0.55 and keep their numbers and names. Both are true of the call: team morale strained by the integration-layer bottleneck, and friction with the infrastructure team over subjective code-review comments. Again, part of their detail is in nearby lines they don't cite.
+- **Decision:** `SUPPORT_COSINE` stays 0.55, the rule's answer on every run. The meaning check runs once per note and once per answer, in one embedding batch after the model's reply, over the points the word check calls unsupported. A point it lets through still needs its numbers and names (with the nearby-line rule). An embedding failure logs `semantic_check_skipped` with the error type and keeps the word check's verdicts.
+- **Consequences:** on gemma4:12b's notes of the two synthetic calls the check rescues nothing: the points the word check drops there score 0.51–0.53, just under 0.55. The other drops (names or numbers not cited: 5 in run 1, 1 in run 2) are never overridden by meaning. A threshold of 0.50 would keep those true points with 1 of 162 mismatched pairs above it (0.6%), but it is below the rule's lowest candidate; real meetings, with more paraphrase than the synthetic calls, should re-measure it (BACKLOG). The note's log line now carries `rescued`, and so does the answer's.
+
+## Long-call asking reads by meaning (2026-11-26)
+- **Context:** a call too long for one prompt is asked through the transcript windows that best match the question. Words alone (BM25) choose nothing for a question that shares no word with its answer: Plan A's final review found that "What did I promise?" read nothing on such a call and answered "Not discussed in this meeting.".
+- **Evidence:** `tools/bakeoff_ask.py gemma4:12b --hours 2 --one-click`, first `--no-embed`, then `--embed`. The 60-minute synthetic call is joined to itself an hour later (1,680 lines, about 55,000 tokens), so every question reads parts of it. Asked: its 13 fact questions, the 3 topics it never mentions and the Ask tab's four one-click questions, each on its own. "In all" is the whole question (choosing parts, the answer, the check); the other times are the model's alone.
+
+  | | words only | words and meaning |
+  | --- | --- | --- |
+  | facts correct (still correct after the check) | 13/13 (13/13) | 13/13 (13/13) |
+  | not discussed, of 3 | 3/3 | 3/3 |
+  | answers passing the check | 13/13 | 13/13 |
+  | one-click questions that read any lines | 2/4 | 4/4 |
+  | one-click points shown | 3 | 12 |
+  | first question, cold: model / in all | 12.8 s / 12.8 s | 10.9 s / 18.0 s |
+  | follow-ups, model: median / worst | 5.9 s / 9.0 s | 7.6 s / 12.2 s |
+  | follow-ups in all: median / worst | 5.9 s / 9.0 s | 11.5 s / 16.1 s |
+  | prompt per question | 0–8,700 tokens | 8,200–9,000 tokens |
+
+  - Words only: neither "promise" question read anything (no line holds the word). "What did we decide?" read 1,500 tokens and found nothing. "What's still open?" answered with 3 points.
+  - Words and meaning: all four read 8,600–9,000 tokens. "What did I promise?" kept 3 points and dropped 1. The meaning check kept one of them: "You promised to notify the team about the new hire's arrival", which cites "I'll also make sure the team knows she's coming so they can... you know, be prepared to welcome her.". It is true.
+  - A re-run of the four questions, judged against the fixture: every point shown was true and given to the right person. The two dropped points were true too: a Lisbon summary whose name was in a line it didn't cite, and "Right. I'll get on that.", whose meaning is in the line before.
+  - Ollama kept both models on the GPU (gemma4:12b 7.5 GB with its 32k context, qwen3-embedding:0.6b 2.2 GB; 11.1 of 12.2 GB in use), so neither was evicted between the ranking, the answer and the check.
+- **Decision:** asking a long call ranks each window by `0.5 · BM25 / best BM25 + 0.5 · max(0, cosine)`. The cosine is between the question (with the question before it, for a follow-up) as a query with `ASK_TASK`, and the window's text, embedded by the same Ollama (`llm.embedding_model`). This holds in the window and on the console. When embedding fails, words alone choose (`semantic_check_skipped`). Answers also get the meaning check, one batch after the reply. In excerpt mode the oldest exchanges are dropped until the parts fit, as on the whole-meeting path, before `too_long`.
+- **Consequences:**
+  - A long call's question now always reads a full excerpt (about 8,000 tokens), so the model takes longer on questions that words matched narrowly. Each question also embeds every window again (about 560 for 2 hours, about 4 s). A question about a 2-hour call takes about 11–12 s instead of about 6 s. Keeping a meeting's window vectors between questions would save the 4 s (BACKLOG).
+  - The model is called without lines only when embeddings fail and no word matches. The "no part matches" sentence (`askExcerptNothing`; the console prints the same, and a test compares the two) now says Evra looked only at the parts that match the question, without "the words of".
+  - A call that fits one prompt is asked as before; its answer embeds only the points the word check drops, after the reply.

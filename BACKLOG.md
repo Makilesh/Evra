@@ -93,7 +93,7 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 
 ## M3b follow-ups (2026-09-28)
 
-- Embedding-based support check (cosine ≥ 0.55, §7.5) once Qwen3-Embedding runs (M5).
+- Meaning check (cosine ≥ 0.55, §7.5, shipped 2026-11-26): re-measure the threshold with `tools/calibrate_semantic.py` on real meetings. On the synthetic calls, gemma4:12b's points the word check dropped scored 0.51–0.53, just under 0.55, and all were true; 0.50 would have kept them with 0.6% of mismatched pairs above it (DECISIONS "Meaning check threshold").
 - Plain bullet-list fallback note after a failed repair (§9.1), built from extraction results (M5).
 - Spoken years ("twenty twenty-six") in the number check.
 - Map-reduce (per-window notes, A2/A3) — needed from about 30 minutes, not only over the budget: planted facts reaching a single-pass note were 30 min 3/6, 60 min 5–6/13 (2026-11-07).
@@ -149,12 +149,12 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - **Keeping an answer in the note:** turn a checked answer into a note point.
 - **Saved custom questions** next to the four one-click ones.
 - **Citations by time:** gemma4 once cited lines as `u:15:46` (the line's time) instead of their id, so a right answer had no valid citation. Map a `u:mm:ss` citation to the line that starts then, or say in A0 that the id is the number before the time.
-- **Broad questions drop paraphrases:** "What did I promise?" lost points whose detail sat in lines they didn't cite (only the short reply "Yeah, I can do that."). The short-reply rule (M3 finish follow-ups) and Plan B's meaning check cover it.
-- **The asking bake-off asks each question alone;** add a run with the window's three-turn history, and a run on a call too long for one prompt (the excerpt path is measured only by tests so far).
+- **Broad questions drop paraphrases:** "What did I promise?" lost points whose detail sat in lines they didn't cite (only the short reply "Yeah, I can do that."). The meaning check (2026-11-26) keeps a point that says what its cited line says in other words, but not a short reply whose meaning is in the line before ("Right. I'll get on that." was dropped on the 2-hour call): the short-reply rule (M3 finish follow-ups) still covers that.
+- **The asking bake-off asks each question alone;** add a run with the window's three-turn history (the call too long for one prompt is measured since 2026-11-26: `--hours 2`).
 - **Design sidecar:** `.impeccable/design.json` has no Ask component yet (DESIGN.md has the section).
 - **Asking timeout covers the pre-read:** the 180-second asking timeout also applies to the pre-read, so a cold read of a long call on a slow GPU could time out.
-- **Excerpt mode counts history in full:** excerpt mode sizes the question with the full conversation history; the whole-meeting path trims history, the parts path does not yet.
 - **Refused pre-read not retried:** a pre-read refused because another one is running is not retried.
+- **Long calls re-embed every window per question:** on a 2-hour call that is about 560 windows and 4 s a question, and every question now reads a full 8,000-token excerpt (11.5 s median against 5.9 s by words alone; DECISIONS "Long-call asking reads by meaning"). Keep a meeting's window vectors between questions (per transcript version), and consider a score cut-off so a question that words match narrowly reads fewer lines.
 
 ## From the competitor review (2026-11-10)
 The full list (100 features, with links) is in `private/research/reports/`.

@@ -326,6 +326,19 @@ def test_embed_count_mismatch_is_an_error() -> None:
         _provider(http).embed("qwen3-embedding:0.6b", ["a", "b"])
 
 
+@pytest.mark.parametrize(
+    "embeddings",
+    [[[]], [[1.0, 0.0], []], [[1.0, 0.0], [1.0]], [[1.0, 0.0], "ab"]],
+    ids=["empty", "one-empty", "different-sizes", "not-a-vector"],
+)
+def test_embed_vectors_must_be_whole_and_one_size(embeddings: list[object]) -> None:
+    """A vector the cosine cannot use is Ollama's error, never a crash in the note's check."""
+    http = FakeHttp({"/api/embed": {"embeddings": embeddings}})
+    texts = [f"t{i}" for i in range(len(embeddings))]
+    with pytest.raises(LlmError):
+        _provider(http).embed("qwen3-embedding:0.6b", texts)
+
+
 def test_embed_nothing_makes_no_request() -> None:
     http = FakeHttp({"/api/embed": {"embeddings": []}})
     assert _provider(http).embed("qwen3-embedding:0.6b", []) == []

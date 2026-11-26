@@ -15,19 +15,19 @@ from evra.notes.ask import NOT_DISCUSSED, ask_meeting, ask_settings, clean_quest
 from evra.notes.cli import FALLBACK_MODEL, cite_marks
 from evra.notes.errors import NoteError
 from evra.notes.job import failure_reason
+from evra.notes.semantic import Embedder
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
 from evra.store.questions import QuestionStore, StoredQuestion
 
-# the same sentences as the window's askExcerpt and askExcerptNothing
+# the window's askExcerpt and askExcerptNothing (frontend/src/strings.ts); a test compares them
 EXCERPT_PARTS = (
     "This call is too long to read whole, so Evra read the parts that match your question."
 )
 EXCERPT_NOTHING = (
-    "This call is too long to read whole. "
-    "Evra looked only at the parts that match the words of your question."
+    "This call is too long to read whole. Evra looked only at the parts that match your question."
 )
 
 FAILURES = {
@@ -106,6 +106,7 @@ def _run(
             question=question,
             settings=settings,
             history=questions.history(meeting_id),
+            embedder=Embedder(llm_provider, llm.embedding_model),  # as the window asks
         )
         questions.answer(stored.id, result, transcript_version_id=version_id)
     except KeyboardInterrupt:

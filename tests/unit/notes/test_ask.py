@@ -1,9 +1,11 @@
 import json
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import pytest
 
 from evra.config import LlmSettings
+from evra.llm.provider import ChatMessage, ChatResult
 from evra.llm.schemas import NoteDraft
 from evra.notes.ask import (
     NOT_DISCUSSED,
@@ -19,6 +21,7 @@ from evra.notes.ask import (
 from evra.notes.context import LOOKALIKE_GT, LOOKALIKE_LT, build_context, estimate_tokens
 from evra.notes.errors import NoteCutOff, NoteInvalid, NoteTooLong, NoTranscript
 from evra.notes.prompt_input import build_note_prompt
+from evra.notes.semantic import Embedder
 from evra.notes.templates import load_template
 from evra.store.meetings import Utterance
 from tests.unit.notes.fakes import FakeProvider, utt
@@ -334,3 +337,97 @@ def test_history_does_not_tip_a_short_meeting_into_excerpts() -> None:
     system, user = (m.content for m in provider.calls[0])
     assert result.excerpt is False and "[u:1]" in system
     assert "newest?" in user and "word word" not in user  # the older, big exchanges went first
+
+
+def test_long_call_question_finds_lines_by_meaning() -> None:
+    """ "What did I promise?" shares no word with the line that answers it, so BM25 alone reads
+    nothing; ranked by meaning too, that line's windows come first."""
+    lines = _long_meeting(200, "I will get it done, that is what I said.")
+    settings = LlmSettings(num_ctx=4096)
+    alone = FakeProvider([])
+    result = _ask(alone, utterances=lines, question="What did I promise?", settings=settings)
+    assert (result.state, result.excerpt, alone.calls) == ("not_found", True, [])
+    assert "x200" in excerpt_ids(lines, "What did I promise?", embedder=Embedder(alone, "e"))
+    provider = FakeProvider([NOT_FOUND])
+    result = _ask(
+        provider,
+        utterances=lines,
+        question="What did I promise?",
+        settings=settings,
+        embedder=Embedder(provider, "embed"),
+    )
+    system = provider.calls[0][0].content
+    assert result.excerpt is True and "that is what I said" in system
+    assert "[u:1]" not in system  # still only parts of the call
+
+
+def test_excerpt_without_embedder_is_unchanged() -> None:
+    lines = [
+        utt(f"x{i}", 0, i * 1000, i * 1000 + 900, f"Filler talk {i}.", seq=i) for i in range(30)
+    ]
+    lines[20] = utt("x20", 0, 20_000, 20_900, "The vendor quote is due.", seq=20)
+    assert excerpt_ids(lines, "vendor quote?") == {f"x{i}" for i in range(15, 24)}  # 2 windows
+    provider = FakeProvider([NOT_FOUND])
+    result = _ask(
+        provider,
+        utterances=_long_meeting(200, "The vendor quote is due Friday."),
+        question="What about the vendor quote?",
+        settings=LlmSettings(num_ctx=4096),
+    )
+    assert result.excerpt is True and provider.embed_calls == []
+
+
+class AllAlike(FakeProvider):
+    """Embeds every text to the same vector, so every pair means the same; records the order of
+    chat and embedding calls."""
+
+    def __init__(self, replies: list[str]) -> None:
+        super().__init__(replies)
+        self.order: list[str] = []
+
+    def chat_json(
+        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+    ) -> ChatResult:
+        self.order.append("chat")
+        return super().chat_json(model, messages, schema)
+
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        self.order.append("embed")
+        self.embed_calls.append(list(texts))
+        return [[1.0, 0.0] for _ in texts]
+
+
+def test_an_answer_point_is_kept_by_meaning() -> None:
+    point = "Them accepted the request."  # no word of "Yeah, I can do that."
+    reply = json.dumps({"found": True, "points": [{"text": point, "citations": ["u:2"]}]})
+    assert _ask(FakeProvider([reply])).state == "unchecked"
+    provider = AllAlike([reply])
+    result = _ask(provider, embedder=Embedder(provider, "embed"))
+    assert (result.state, [p.text for p in result.points], result.dropped) == (
+        "answered",
+        [point],
+        0,
+    )
+    assert provider.order == ["chat", "embed"]  # the whole call was read: nothing to rank first
+
+
+def test_excerpt_drops_the_oldest_exchanges_before_giving_up() -> None:
+    lines = _long_meeting(200, "The vendor quote is due Friday.")
+    big = "word " * 600
+    history = [
+        Exchange("oldest?", (big,)),
+        Exchange("older?", (big,)),
+        Exchange("What about the vendor quote?", ("short",)),
+    ]
+    provider = FakeProvider([NOT_FOUND])
+    result = _ask(
+        provider,
+        utterances=lines,
+        question="When is it due?",
+        settings=LlmSettings(num_ctx=4096),
+        history=history,
+    )
+    system, user = (m.content for m in provider.calls[0])
+    assert result.excerpt is True and "vendor quote is due Friday" in system
+    assert "oldest?" not in user and "older?" in user and "What about the vendor quote?" in user
+    assert estimate_tokens(system) + estimate_tokens(user) <= 4096 - 1024

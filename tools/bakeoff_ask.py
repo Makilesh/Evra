@@ -3,15 +3,18 @@
 
     uv run python tools/bakeoff_ask.py gemma4:12b qwen3.5:9b
     uv run python tools/bakeoff_ask.py gemma4:12b --show     # every answer and its check
+    uv run python tools/bakeoff_ask.py gemma4:12b --hours 2 --one-click --no-embed
 
 Per model: facts answered correctly (the model's answer holds every keyword of the fact, "a|b"
-meaning either, and again after the transcript check), absent topics answered "not
-discussed", answers the check lets through, the first question from a cold model, the first
-question after the same model wrote the note (A1) and named the meeting (A8), the window's
-order: seconds, Ollama's prompt token count
-and how many of those tokens it reused from its cache, then the follow-ups (median and worst
-seconds) and whether only parts of the call were read. Each question stands alone (no earlier
-turns). Synthetic fixtures only (BUILD.md §9.3).
+meaning either, and again after the transcript check), absent topics answered "not discussed",
+answers the check lets through, the first question from a cold model, the first question after
+the same model wrote the note (A1) and named the meeting (A8), the window's order: seconds,
+Ollama's prompt token count and how many of those tokens it reused, then the follow-ups (median
+and worst seconds) and whether only parts of the call were read. Each question stands alone.
+--hours 2 joins the call to itself an hour later (too long to read whole); --one-click adds the
+Ask tab's four one-click questions, scored on whether they read any lines; --no-embed chooses
+parts and checks points by words alone (the app also uses meaning). Synthetic fixtures only
+(BUILD.md §9.3).
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ import statistics
 import sys
 import time
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -36,6 +39,7 @@ from evra.llm.schemas import MeetingAnswer, MeetingTitle
 from evra.notes.ask import ask_meeting, ask_settings
 from evra.notes.context import MeetingContext, build_context
 from evra.notes.errors import NoteError
+from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.structured import parse_reply
 from evra.notes.templates import load_template
 from evra.notes.title import clean_generated_title, title_messages, title_settings
@@ -44,28 +48,35 @@ from evra.notes.writer import write_note
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
 
-from tools.bakeoff_notes import FIXTURES, Case, load_case
+from tools.bakeoff_notes import FIXTURES, Case, load_case, repeat_case
 
 Phase = Literal["cold", "warm", "after_note"]
 DEFAULT_FIXTURE = "one_on_one_60min_synthetic"
 _INLINE = re.compile(r"\s*\[[^\]]*\]")  # an inline citation mark such as " [u:12, u:13]"
+ONE_CLICK = tuple(  # the Ask tab's one-click questions (frontend/src/strings.ts askSuggestions)
+    ["What did I promise?", "What did they promise?", "What did we decide?", "What's still open?"]
+)
 
 
 @dataclass(frozen=True)
 class Probe:
     question: str
     keywords: tuple[str, ...]  # every one in the answer, "a|b" = either; () = never discussed
+    open: bool = False  # a one-click question: no one right answer, scored on reading lines
 
     @property
     def absent(self) -> bool:
-        return not self.keywords
+        return not self.keywords and not self.open
 
 
-def load_probes(path: Path) -> tuple[Probe, ...]:
-    """The fixture's fact questions in order, then the topics the call never mentions."""
+def load_probes(path: Path, *, one_click: bool = False) -> tuple[Probe, ...]:
+    """The fixture's fact questions in order, then the topics the call never mentions, then
+    (when asked for) the one-click questions."""
     data = json.loads(path.read_text(encoding="utf-8"))
     facts = [Probe(e["question"], tuple(e["keywords"])) for e in data["expected"]]
-    return (*facts, *(Probe(question, ()) for question in data["absent"]))
+    absent = [Probe(question, ()) for question in data["absent"]]
+    opens = [Probe(question, (), open=True) for question in ONE_CLICK] if one_click else []
+    return (*facts, *absent, *opens)
 
 
 def correct(answer_text: str, keywords: Sequence[str]) -> bool:
@@ -91,14 +102,20 @@ class Row:
     kept: int
     dropped: int
     seconds: float
-    tokens_in: int  # Ollama's prompt_eval_count: the whole prompt
+    tokens_in: int  # Ollama's prompt_eval_count: the whole prompt (0: the model was not asked)
     cached_tokens: int  # of those, reused from Ollama's cache
     excerpt: bool
     error: str = ""
+    open: bool = False  # a one-click question
+    total_seconds: float = 0.0  # the whole question: choosing parts, the answer, the check
 
     @property
     def absent(self) -> bool:
-        return not self.keywords
+        return not self.keywords and not self.open
+
+    @property
+    def read_lines(self) -> bool:  # a long call with no matching part sends the model nothing
+        return not self.error and self.tokens_in > 0
 
     @property
     def correct(self) -> bool:
@@ -132,18 +149,25 @@ class Summary:
     follow_up_reused: float | None  # median prompt tokens Ollama reused per follow-up
     after_note: Row | None
     excerpt: bool
+    one_click: int = 0
+    one_click_read: int = 0  # of those, how many sent the model any lines
+    one_click_kept: int = 0  # points shown for them
+    total_median: float | None = None  # per follow-up, choosing parts and the check included
+    total_worst: float | None = None
 
 
 def summary(rows: Sequence[Row]) -> Summary:
     """One model's rows. The cold and warm questions are scored; the question asked again right
     after the note is a timing only. Failed questions count as wrong and are left out of the
-    times."""
+    times. One-click questions count only for whether they read any lines."""
     scored = [r for r in rows if r.phase != "after_note"]
-    facts = [r for r in scored if not r.absent]
+    facts = [r for r in scored if not r.absent and not r.open]
     absent = [r for r in scored if r.absent]
+    opens = [r for r in scored if r.open]
     cold = next((r for r in scored if r.phase == "cold" and not r.error), None)
     warm = [r for r in scored if r.phase == "warm" and not r.error]
     seconds = [r.seconds for r in warm]
+    totals = [r.total_seconds for r in warm]
     return Summary(
         model=rows[0].model if rows else "",
         facts=len(facts),
@@ -162,6 +186,11 @@ def summary(rows: Sequence[Row]) -> Summary:
         follow_up_reused=statistics.median(r.cached_tokens for r in warm) if warm else None,
         after_note=next((r for r in rows if r.phase == "after_note" and not r.error), None),
         excerpt=any(r.excerpt for r in scored),
+        one_click=len(opens),
+        one_click_read=sum(r.read_lines for r in opens),
+        one_click_kept=sum(r.kept for r in opens),
+        total_median=statistics.median(totals) if totals else None,
+        total_worst=max(totals) if totals else None,
     )
 
 
@@ -192,9 +221,35 @@ class Recorder:
 
 
 def ask_one(
-    provider: Recorder, model: str, case: Case, probe: Probe, settings: LlmSettings, phase: Phase
+    provider: Recorder,
+    model: str,
+    case: Case,
+    probe: Probe,
+    settings: LlmSettings,
+    phase: Phase,
+    *,
+    embed: bool = False,
 ) -> Row:
+    """One question as the window asks it; with `embed`, through a new embedder (the app makes
+    one per question)."""
     provider.replies.clear()
+    failed = Row(
+        model=model,
+        phase=phase,
+        question=probe.question,
+        keywords=probe.keywords,
+        state="failed",
+        answer="",
+        shown="",
+        kept=0,
+        dropped=0,
+        seconds=0.0,
+        tokens_in=0,
+        cached_tokens=0,
+        excerpt=False,
+        open=probe.open,
+    )
+    started = time.monotonic()
     try:
         result = ask_meeting(
             provider,
@@ -203,34 +258,18 @@ def ask_one(
             utterances=case.utterances,
             question=probe.question,
             settings=settings,
+            embedder=Embedder(provider, settings.embedding_model) if embed else None,
         )
     except (LlmError, NoteError) as exc:
-        return Row(
-            model=model,
-            phase=phase,
-            question=probe.question,
-            keywords=probe.keywords,
-            state="failed",
-            answer="",
-            shown="",
-            kept=0,
-            dropped=0,
-            seconds=0.0,
-            tokens_in=0,
-            cached_tokens=0,
-            excerpt=False,
-            error=type(exc).__name__,
-        )
+        return replace(failed, error=type(exc).__name__)
+    total = time.monotonic() - started
     # ask_meeting used the last reply: the first, or its repair when that was not valid JSON
-    raw, _ = parse_reply(MeetingAnswer, provider.replies[-1])
-    said = answer_text(p.text for p in raw.points) if raw is not None and raw.found else ""
-    return Row(
-        model=model,
-        phase=phase,
-        question=probe.question,
-        keywords=probe.keywords,
+    # (none when a long call had no part to read)
+    raw = parse_reply(MeetingAnswer, provider.replies[-1])[0] if provider.replies else None
+    return replace(
+        failed,
         state=result.state,
-        answer=said,
+        answer=answer_text(p.text for p in raw.points) if raw is not None and raw.found else "",
         shown=answer_text(p.text for p in result.points),
         kept=len(result.points),
         dropped=result.dropped,
@@ -238,6 +277,7 @@ def ask_one(
         tokens_in=result.tokens_in,
         cached_tokens=result.cached_tokens,
         excerpt=result.excerpt,
+        total_seconds=total,
     )
 
 
@@ -250,13 +290,10 @@ def _explain(provider: Recorder, grounder: Grounder, context: MeetingContext) ->
     if not raw.found:
         return ["      (not discussed)"]
     lines: list[str] = []
-    for point in raw.points:
-        checked, reason = grounder.check(point)
-        lines.append(
-            f"      - {point.text} [{', '.join(point.citations)}]"
-            f" -> {'kept' if checked is not None else 'dropped: ' + reason}"
-        )
-        if checked is None:
+    for point, (checked, reason) in zip(raw.points, grounder.check_all(raw.points), strict=True):
+        verdict = f"dropped: {reason}" if checked is None else f"kept {reason}".strip()
+        lines.append(f"      - {point.text} [{', '.join(point.citations)}] -> {verdict}")
+        if checked is None or reason:  # what a dropped point, or one kept by meaning, cites
             for citation in point.citations:
                 if citation in context.aliases:
                     said = context.utterance_text[context.aliases[citation]]
@@ -293,7 +330,13 @@ def _unload(provider: OllamaProvider, model: str) -> None:
 
 
 def run_model(
-    model: str, case: Case, probes: Sequence[Probe], llm: LlmSettings, *, show: bool
+    model: str,
+    case: Case,
+    probes: Sequence[Probe],
+    llm: LlmSettings,
+    *,
+    show: bool,
+    embed: bool = True,
 ) -> tuple[list[Row], float | None]:
     """The first question loads the model (cold), the rest follow it (warm). Then the same model
     writes the note with the app's note settings, names the meeting from it, and the first question
@@ -302,13 +345,17 @@ def run_model(
     asker = Recorder(OllamaProvider(asking))
     noter = OllamaProvider(llm)
     context = build_context(meeting=case.meeting, utterances=case.utterances)
-    grounder = Grounder(aliases=context.aliases, utterance_text=context.utterance_text)
+    meaning = SemanticCheck(Embedder(asker, llm.embedding_model)) if embed else None
+    grounder = Grounder(
+        aliases=context.aliases, utterance_text=context.utterance_text, semantic=meaning
+    )
 
     def asked(probe: Probe, phase: Phase, n: int) -> Row:
-        row = ask_one(asker, model, case, probe, asking, phase)
+        row = ask_one(asker, model, case, probe, asking, phase, embed=embed)
         print(
-            f"{model} {phase} {n}/{len(probes)}: {row.error or row.state} in {row.seconds:.1f} s,"
-            f" {row.cached_tokens}/{row.tokens_in} prompt tokens reused · {probe.question}",
+            f"{model} {phase} {n}/{len(probes)}: {row.error or row.state} in {row.seconds:.1f} s"
+            f" ({row.total_seconds:.1f} s in all), {row.cached_tokens}/{row.tokens_in} prompt"
+            f" tokens reused | {probe.question}",
             flush=True,
         )
         if show:
@@ -351,13 +398,15 @@ def _yes(flag: bool) -> str:
 def format_rows(rows: Sequence[Row]) -> list[str]:
     lines = [
         "| model | when | question | state | correct | correct as shown | kept/dropped"
-        " | seconds | prompt tokens | reused |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        " | seconds | in all | prompt tokens | reused |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in rows:
+        scored = "-" if r.open else _yes(r.correct)
+        shown = "-" if r.open else _yes(r.shown_correct)
         lines.append(
-            f"| {r.model} | {r.phase} | {r.question} | {r.error or r.state} | {_yes(r.correct)}"
-            f" | {_yes(r.shown_correct)} | {r.kept}/{r.dropped} | {r.seconds:.1f}"
+            f"| {r.model} | {r.phase} | {r.question} | {r.error or r.state} | {scored}"
+            f" | {shown} | {r.kept}/{r.dropped} | {r.seconds:.1f} | {r.total_seconds:.1f}"
             f" | {r.tokens_in} | {r.cached_tokens} |"
         )
     return lines
@@ -393,6 +442,15 @@ def format_summary(s: Summary, note_seconds: float | None) -> list[str]:
         f" {_seconds(s.follow_up_worst)} (target median <= 3 s); median {reused} prompt"
         " tokens reused"
     )
+    lines.append(
+        f"- follow-ups in all (choosing parts, the answer and its check): median"
+        f" {_seconds(s.total_median)}, worst {_seconds(s.total_worst)}"
+    )
+    if s.one_click:
+        lines.append(
+            f"- one-click questions that read any lines: {s.one_click_read}/{s.one_click};"
+            f" points shown {s.one_click_kept}"
+        )
     lines.append(f"- excerpt mode: {_yes(s.excerpt)}")
     if s.errors:
         lines.append(f"- failed questions: {s.errors}")
@@ -405,18 +463,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("models", nargs="+")
     parser.add_argument("--fixture", default=DEFAULT_FIXTURE, help="in tests/fixtures/notes")
     parser.add_argument("--show", action="store_true", help="print every answer and its check")
+    parser.add_argument("--hours", type=int, default=1, help="say the call N times, an hour apart")
+    parser.add_argument("--one-click", action="store_true", help="add the one-click questions")
+    parser.add_argument(
+        "--embed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="choose parts and check points by meaning too (the app's way)",
+    )
     args = parser.parse_args(argv)
     path = FIXTURES / f"{args.fixture}.json"
     if not path.is_file():
         print(f"No fixture {path}", file=sys.stderr)
         return 2
     try:
-        probes = load_probes(path)
+        probes = load_probes(path, one_click=args.one_click)
     except KeyError:
         print(f"{path.name} has no questions (tools/make_long_fixture.py)", file=sys.stderr)
         return 2
-    case = load_case(path)
-    runs = [run_model(model, case, probes, LlmSettings(), show=args.show) for model in args.models]
+    case = repeat_case(load_case(path), args.hours)
+    print(f"# {case.name}: {len(case.utterances)} lines, by meaning too: {_yes(args.embed)}")
+    runs = [
+        run_model(model, case, probes, LlmSettings(), show=args.show, embed=args.embed)
+        for model in args.models
+    ]
     print()
     for line in format_rows([row for rows, _ in runs for row in rows]):
         print(line)

@@ -30,6 +30,7 @@ from evra.notes.ask import (
 from evra.notes.context import build_context, estimate_tokens
 from evra.notes.errors import NoteError
 from evra.notes.job import failure_reason
+from evra.notes.semantic import Embedder
 from evra.paths import AppPaths
 from evra.services.meetings import Emit
 from evra.services.views import question_view
@@ -212,14 +213,17 @@ class AskService:
             meetings, questions = MeetingStore(conn), QuestionStore(conn)
             version_id = meetings.current_transcript_version(asked.meeting_id)
             utterances = meetings.utterances(version_id) if version_id else []
+            provider = self._provider_factory(settings)
             result = ask_meeting(
-                self._provider_factory(settings),
+                provider,
                 model=llm.model,
                 meeting=meetings.get_meeting(asked.meeting_id),
                 utterances=utterances,
                 question=asked.text,
                 settings=settings,
                 history=questions.history(asked.meeting_id),
+                # the same Ollama: a long call's parts and the answer's points by meaning too
+                embedder=Embedder(provider, llm.embedding_model),
             )
             assert version_id is not None  # ask_meeting raised NoTranscript otherwise
             stored = questions.answer(asked.id, result, transcript_version_id=version_id)

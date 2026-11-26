@@ -117,10 +117,9 @@ it("excerpt answer says it read parts", () => {
 it("says a long call had no part matching the question, and when it read parts", () => {
   view({ questions: [question({ state: "not_found", excerpt: true })] });
   expect(screen.getByText("Not discussed in this meeting.")).toBeInTheDocument();
+  // parts are chosen by meaning as well as words, so the sentence names neither
   expect(
-    screen.getByText(
-      "This call is too long to read whole. Evra looked only at the parts that match the words of your question.",
-    ),
+    screen.getByText("This call is too long to read whole. Evra looked only at the parts that match your question."),
   ).toBeInTheDocument();
 });
 

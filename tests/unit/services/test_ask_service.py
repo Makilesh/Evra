@@ -418,9 +418,40 @@ def test_a_second_prepare_waits_for_the_first_to_finish(tmp_path: Path) -> None:
     conn.close()
     assert service.prepare(second) == {"ok": False}  # one pre-read at a time
     release.set()
+    _wait_calls(provider, 1)
+    # the slot is freed once the first call returns: the other meeting's pre-read now starts
     deadline = time.monotonic() + 10
-    while len(provider.calls) < 1 and time.monotonic() < deadline:
+    while service.prepare(second) != {"ok": True}:
+        assert time.monotonic() < deadline, "the first pre-read never freed its slot"
         time.sleep(0.01)
-    time.sleep(0.1)  # the thread frees the slot after its call returns
+    _wait_calls(provider, 2)
+    conn = connect(h.paths.db_path)
+    second_meeting = MeetingStore(conn).get_meeting(second)
+    second_lines = MeetingStore(conn).utterances(vid)
+    conn.close()
+    second_system = build_context(meeting=second_meeting, utterances=second_lines).system
+    assert provider.calls[1][0].content == second_system
     assert service.prepare(other) == {"ok": False}  # same meeting, still inside its window
-    assert len(provider.calls) == 1
+    assert len(provider.calls) == 2
+
+
+def test_answers_are_checked_by_meaning_with_the_embedding_model(tmp_path: Path) -> None:
+    class AllAlike(FakeProvider):
+        """Every text gets the same vector, so every pair means the same."""
+
+        def __init__(self, replies: list[str]) -> None:
+            super().__init__(replies)
+            self.embedded_with: list[str] = []
+
+        def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+            self.embedded_with.append(model)
+            return [[1.0, 0.0] for _ in texts]
+
+    point = "Them accepted the request."  # no word of "Yes, I will."
+    reply = json.dumps({"found": True, "points": [{"text": point, "citations": ["u:2"]}]})
+    h = Harness(tmp_path)
+    provider = AllAlike([reply])
+    h.service(provider).ask(h.meeting_id, "Did they agree?")
+    question = h.wait_event()["question"]
+    assert (question["state"], [p["text"] for p in question["points"]]) == ("answered", [point])
+    assert provider.embedded_with == ["qwen3-embedding:0.6b"]

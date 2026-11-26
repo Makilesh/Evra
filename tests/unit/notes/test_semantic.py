@@ -43,6 +43,7 @@ def test_similarities_pair_order() -> None:
     assert len(sims) == 2
     assert sims[0] > sims[1]
     assert check.threshold == 0.55
+    assert len(provider.embed_calls) == 1  # claims and sources in one batch
     queries = {t for call in provider.embed_calls for t in call}
     assert as_query("launch moves october") in queries
     assert "launch moves october" in queries

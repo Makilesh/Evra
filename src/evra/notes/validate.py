@@ -1,9 +1,10 @@
-"""Mechanical grounding (BUILD.md §7.5), lexical part. A kept bullet cites utterances that exist,
-shares at least 20% of its content words with them (5-letter prefixes, so "agreed" matches
-"agree"), and every number and name in it appears in what it cites ("twelve thousand" counts
-for 12,000, and so does "12k"). Conversation carries context across turns, so a name or number
-said up to three lines from a cited line gets that line added as a citation. The embedding
-check (cosine >= 0.55) joins in M5 with the embedding model."""
+"""Mechanical grounding (BUILD.md §7.5). A kept bullet cites utterances that exist and is
+supported by them: it shares at least 20% of its content words with them (5-letter prefixes, so
+"agreed" matches "agree") or, when the words fall short and a meaning check is given, its
+embedding is close enough to theirs (`SemanticCheck`, one batch for all such bullets). Every
+number and name in it must still appear in what it cites ("twelve thousand" counts for 12,000,
+and so does "12k"). Conversation carries context across turns, so a name or number said up to
+three lines from a cited line gets that line added as a citation."""
 
 from __future__ import annotations
 
@@ -12,9 +13,16 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+import structlog
+
+from evra.llm.provider import LlmError
 from evra.llm.schemas import NoteBullet, NoteDraft
+from evra.notes.semantic import SemanticCheck
 from evra.notes.templates import Template
 
+log = structlog.get_logger(__name__)
+
+KEPT_BY_MEANING = "meaning"  # check_all's mark on a bullet the meaning check kept
 MIN_OVERLAP = 0.2
 NEARBY = 3  # a name or number said up to 3 lines away is cited from there
 _THOUSANDS = re.compile(r"(\d+(?:\.\d+)?)\s?[kK]\b")
@@ -93,6 +101,14 @@ class CheckedNote:
     kept: int
     dropped: int
     drop_reasons: Mapping[str, int]
+    rescued: int = 0  # of the kept, how many the meaning check kept
+
+
+@dataclass(frozen=True)
+class _Claim:
+    text: str  # without inline citation marks
+    cited: tuple[str, ...]  # utterance ids, and "user"
+    source: str  # what the cited lines (and the user's notes) say
 
 
 def _base(word: str) -> str:
@@ -184,13 +200,13 @@ def _citations(bullet: NoteBullet) -> tuple[str, list[str]]:
     return text, [c.strip().strip("[]").strip() for c in raw]
 
 
-def _check(
+def _claim(
     bullet: NoteBullet,
     aliases: Mapping[str, str],
     utterance_text: Mapping[str, str],
     user_notes: str,
-    vocabulary: _Vocabulary,
-) -> tuple[CheckedBullet | None, str]:
+) -> tuple[_Claim | None, str]:
+    """Stage 1, the citations: the claim and what it validly cites, or why there is none."""
     text, raw = _citations(bullet)
     cited: list[str] = []
     for citation in raw:
@@ -209,11 +225,26 @@ def _check(
     if not cited:
         return None, "no_valid_citation"
     source = " ".join(user_notes if c == "user" else utterance_text[c] for c in cited)
-    source_words = _WORD.findall(source)
-    claim = _content(_WORD.findall(text))
-    if not claim or len(claim & {_key(w) for w in source_words}) / len(claim) < MIN_OVERLAP:
-        return None, "unsupported"
-    have_numbers, have_names = _facts(source)
+    return _Claim(text, tuple(cited), source), ""
+
+
+def _shares_words(claim: _Claim) -> bool:
+    """Stage 2, the words: at least MIN_OVERLAP of the claim's content words are cited."""
+    words = _content(_WORD.findall(claim.text))
+    said = {_key(w) for w in _WORD.findall(claim.source)}
+    return bool(words) and len(words & said) / len(words) >= MIN_OVERLAP
+
+
+def _details(
+    claim: _Claim,
+    aliases: Mapping[str, str],
+    utterance_text: Mapping[str, str],
+    vocabulary: _Vocabulary,
+) -> tuple[CheckedBullet | None, str]:
+    """Stage 3, numbers and names: each must be in what the claim cites, or said nearby (that
+    line is then cited too)."""
+    text, cited = claim.text, list(claim.cited)
+    have_numbers, have_names = _facts(claim.source)
     missing_numbers = _claim_numbers(text) - have_numbers
     missing_names = _names(text, vocabulary) - have_names
     contexts = _number_contexts(text)
@@ -293,7 +324,9 @@ def _nearby(
 
 
 class Grounder:
-    """Checks bullets against one meeting; the vocabulary is built once."""
+    """Checks bullets against one meeting; the vocabulary is built once. With a meaning check,
+    `check_all` also keeps a bullet whose words fall short of what it cites but whose meaning
+    is close enough to it."""
 
     def __init__(
         self,
@@ -301,16 +334,64 @@ class Grounder:
         aliases: Mapping[str, str],
         utterance_text: Mapping[str, str],
         user_notes: str = "",
+        semantic: SemanticCheck | None = None,
     ) -> None:
         self._aliases = aliases
         self._utterance_text = utterance_text
         self._user_notes = user_notes
+        self._semantic = semantic
         self._vocabulary = _vocabulary([*utterance_text.values(), user_notes])
 
     def check(self, bullet: NoteBullet) -> tuple[CheckedBullet | None, str]:
-        return _check(
-            bullet, self._aliases, self._utterance_text, self._user_notes, self._vocabulary
-        )
+        """One bullet, by its words alone (no meaning check)."""
+        claim, reason = _claim(bullet, self._aliases, self._utterance_text, self._user_notes)
+        if claim is None:
+            return None, reason
+        if not _shares_words(claim):
+            return None, "unsupported"
+        return _details(claim, self._aliases, self._utterance_text, self._vocabulary)
+
+    def check_all(self, bullets: Sequence[NoteBullet]) -> list[tuple[CheckedBullet | None, str]]:
+        """Each bullet's verdict, in order: `(bullet, "")` kept by its words, `(bullet,
+        KEPT_BY_MEANING)` kept by the meaning check, `(None, reason)` dropped. The bullets the
+        word check calls unsupported are scored in one batch; those close enough in meaning
+        then still need their numbers and names."""
+        verdicts: list[tuple[CheckedBullet | None, str]] = []
+        candidates: list[tuple[int, _Claim]] = []
+        for bullet in bullets:
+            claim, reason = _claim(bullet, self._aliases, self._utterance_text, self._user_notes)
+            if claim is None:
+                verdicts.append((None, reason))
+            elif _shares_words(claim):
+                verdicts.append(
+                    _details(claim, self._aliases, self._utterance_text, self._vocabulary)
+                )
+            else:
+                candidates.append((len(verdicts), claim))
+                verdicts.append((None, "unsupported"))
+        for index, claim in self._close_in_meaning(candidates):
+            checked, reason = _details(claim, self._aliases, self._utterance_text, self._vocabulary)
+            verdicts[index] = (checked, KEPT_BY_MEANING) if checked is not None else (None, reason)
+        return verdicts
+
+    def meaning_pair(self, bullet: NoteBullet) -> tuple[str, str] | None:
+        """The (claim, what it cites) pair the meaning check scores; None when the bullet is
+        empty or cites nothing valid."""
+        claim, _ = _claim(bullet, self._aliases, self._utterance_text, self._user_notes)
+        return None if claim is None else (claim.text, claim.source)
+
+    def _close_in_meaning(
+        self, candidates: Sequence[tuple[int, _Claim]]
+    ) -> list[tuple[int, _Claim]]:
+        if self._semantic is None or not candidates:
+            return []
+        try:
+            scores = self._semantic.similarities([(c.text, c.source) for _, c in candidates])
+        except LlmError as exc:  # never fails a note or an answer: the word check stands
+            log.info("semantic_check_skipped", error=type(exc).__name__)
+            return []
+        threshold = self._semantic.threshold
+        return [pair for pair, score in zip(candidates, scores, strict=True) if score >= threshold]
 
 
 def check_note(
@@ -320,25 +401,33 @@ def check_note(
     utterance_text: Mapping[str, str],
     template: Template,
     user_notes: str = "",
+    semantic: SemanticCheck | None = None,
 ) -> CheckedNote:
+    grounder = Grounder(
+        aliases=aliases, utterance_text=utterance_text, user_notes=user_notes, semantic=semantic
+    )
+    groups = [draft.summary, *(section.bullets for section in draft.sections)]
+    # the whole note in one pass, so the meaning check is one batch
+    verdicts = grounder.check_all([bullet for group in groups for bullet in group])
     reasons: Counter[str] = Counter()
-    grounder = Grounder(aliases=aliases, utterance_text=utterance_text, user_notes=user_notes)
-
-    def check_all(bullets: Sequence[NoteBullet]) -> list[CheckedBullet]:
-        kept: list[CheckedBullet] = []
-        for bullet in bullets:
-            checked, reason = grounder.check(bullet)
+    rescued = 0
+    kept_groups: list[list[CheckedBullet]] = []
+    start = 0
+    for group in groups:
+        kept_groups.append([])
+        for checked, reason in verdicts[start : start + len(group)]:
             if checked is None:
                 reasons[reason] += 1
-            else:
-                kept.append(checked)
-        return kept
-
-    summary = tuple(check_all(draft.summary))
+                continue
+            kept_groups[-1].append(checked)
+            if reason == KEPT_BY_MEANING:
+                rescued += 1
+        start += len(group)
+    summary = tuple(kept_groups[0])
     grouped: dict[str, list[CheckedBullet]] = {}
     given_titles: dict[str, str] = {}
-    for section in draft.sections:
-        grouped.setdefault(section.section_id, []).extend(check_all(section.bullets))
+    for section, kept_bullets in zip(draft.sections, kept_groups[1:], strict=True):
+        grouped.setdefault(section.section_id, []).extend(kept_bullets)
         given_titles.setdefault(section.section_id, section.title)
     titles = {s.id: s.title for s in template.sections}
     order = [s.id for s in template.sections] + [sid for sid in grouped if sid not in titles]
@@ -348,4 +437,4 @@ def check_note(
         if grouped.get(sid)
     )
     kept = len(summary) + sum(len(s.bullets) for s in sections)
-    return CheckedNote(summary, sections, kept, sum(reasons.values()), dict(reasons))
+    return CheckedNote(summary, sections, kept, sum(reasons.values()), dict(reasons), rescued)

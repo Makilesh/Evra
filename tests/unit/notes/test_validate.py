@@ -1,8 +1,14 @@
-import pytest
+from collections.abc import Sequence
 
+import pytest
+import structlog
+
+from evra.llm.provider import LlmModelMissing
 from evra.llm.schemas import NoteBullet, NoteDraft, NoteSection
+from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template
-from evra.notes.validate import CheckedBullet, CheckedNote, check_note
+from evra.notes.validate import CheckedBullet, CheckedNote, Grounder, check_note
+from tests.unit.notes.fakes import FakeProvider
 
 UTTERANCES = {
     "id-1": "I finished the search migration on Tuesday.",
@@ -253,8 +259,6 @@ def test_a_date_is_borrowed_from_the_line_that_said_it() -> None:
 
 
 def test_grounder_matches_check_note() -> None:
-    from evra.notes.validate import Grounder
-
     bullets = [
         b("I finished the search migration on Tuesday.", "u:1"),
         b("I finished the search migration.", "u:9"),
@@ -274,3 +278,134 @@ def test_grounder_matches_check_note() -> None:
         if c is None:
             reasons[reason] = reasons.get(reason, 0) + 1
     assert reasons == dict(note.drop_reasons)
+
+
+# The meaning check. FakeProvider embeds a bag of words, so in these tests a "paraphrase"
+# shares only small words with the line it cites (none of its content words); the real
+# model's threshold comes from tools/calibrate_semantic.py (DECISIONS.md).
+PROMISE = "Yes, I will have it all done for you by then, as I said I would."
+PARAPHRASE = "They will have the report done for you by then, as they said they would."
+WITH_A_NUMBER = "They will have the 5 reports done for you by then, as they said they would."
+UNRELATED = "The team celebrated the product launch with cake."
+PROMISE_LINES = {"p-1": PROMISE, "p-2": "I finished the search migration on Tuesday."}
+PROMISE_ALIASES = {"u:1": "p-1", "u:2": "p-2"}
+LOOSE = 0.45  # what the fake's cosines allow; see SemanticCheck's default for the real one
+
+
+def meaning(provider: FakeProvider | None = None) -> SemanticCheck:
+    return SemanticCheck(Embedder(provider or FakeProvider([]), "embed"), threshold=LOOSE)
+
+
+def check_promises(
+    summary: Sequence[NoteBullet],
+    *sections: tuple[str, Sequence[NoteBullet]],
+    semantic: SemanticCheck | None = None,
+) -> CheckedNote:
+    draft = NoteDraft(
+        summary=list(summary),
+        sections=[NoteSection(section_id=s, title=s, bullets=list(b)) for s, b in sections],
+    )
+    return check_note(
+        draft,
+        aliases=PROMISE_ALIASES,
+        utterance_text=PROMISE_LINES,
+        template=TEMPLATE,
+        semantic=semantic,
+    )
+
+
+def test_meaning_check_rescues_a_paraphrase() -> None:
+    semantic = meaning()
+    assert semantic.similarities([(PARAPHRASE, PROMISE)])[0] >= semantic.threshold
+    # none of its content words is in the line it cites, so the words alone drop it
+    assert check_promises([b(PARAPHRASE)]).drop_reasons == {"unsupported": 1}
+    note = check_promises([b(PARAPHRASE)], semantic=semantic)
+    assert [(x.text, x.citations) for x in note.summary] == [(PARAPHRASE, ("p-1",))]
+    assert (note.kept, note.dropped, note.rescued) == (1, 0, 1)
+
+
+def test_a_point_far_in_meaning_stays_unsupported() -> None:
+    semantic = meaning()
+    assert semantic.similarities([(UNRELATED, PROMISE)])[0] < semantic.threshold
+    note = check_promises([b(UNRELATED)], semantic=semantic)
+    assert (note.kept, note.drop_reasons, note.rescued) == (0, {"unsupported": 1}, 0)
+
+
+def test_rescued_bullet_still_needs_its_numbers() -> None:
+    semantic = meaning()
+    assert semantic.similarities([(WITH_A_NUMBER, PROMISE)])[0] >= semantic.threshold
+    note = check_promises([b(WITH_A_NUMBER)], semantic=semantic)
+    assert (note.kept, note.drop_reasons, note.rescued) == (0, {"number_not_cited": 1}, 0)
+
+
+def test_meaning_check_is_one_batch() -> None:
+    provider = FakeProvider([])
+    batches: list[int] = []
+
+    class Counting(SemanticCheck):
+        def similarities(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
+            batches.append(len(pairs))
+            return super().similarities(pairs)
+
+    note = check_promises(
+        [b(PARAPHRASE)],
+        ("discussion", [b(UNRELATED), b("You finished the search migration.", "u:2")]),
+        ("action_items", [b(WITH_A_NUMBER)]),
+        semantic=Counting(Embedder(provider, "embed"), threshold=LOOSE),
+    )
+    assert batches == [3]  # every candidate of the whole note in one call
+    assert len(provider.embed_calls) == 1  # three claims and their one cited line
+    assert (note.kept, note.dropped, note.rescued) == (2, 2, 1)
+
+
+def test_semantic_failure_keeps_lexical_verdicts() -> None:
+    class NoEmbeddingModel(FakeProvider):
+        def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+            raise LlmModelMissing(model)
+
+    bullets = [b(PARAPHRASE), b("You finished the search migration.", "u:2")]
+    with structlog.testing.capture_logs() as logs:
+        note = check_promises(bullets, semantic=meaning(NoEmbeddingModel([])))
+    assert note == check_promises(bullets)
+    assert (note.kept, note.drop_reasons, note.rescued) == (1, {"unsupported": 1}, 0)
+    skipped = [e for e in logs if e["event"] == "semantic_check_skipped"]
+    assert skipped == [
+        {"event": "semantic_check_skipped", "error": "LlmModelMissing", "log_level": "info"}
+    ]
+
+
+def test_check_note_without_semantic_is_unchanged() -> None:
+    """One pass over the whole note gives each bullet the verdict `check` gives it alone, and
+    puts the kept ones back in their sections."""
+    summary = [b(PARAPHRASE), b("You finished the search migration.", "u:2")]
+    discussion = [b(WITH_A_NUMBER), b("", "u:1"), b("You finished it.", "u:9")]
+    actions = [
+        b("Priya will finish the search migration.", "u:2"),
+        b("The migration finished on Tuesday.", "u:2"),
+    ]
+    note = check_promises(summary, ("discussion", discussion), ("action_items", actions))
+    grounder = Grounder(aliases=PROMISE_ALIASES, utterance_text=PROMISE_LINES)
+    assert [grounder.check(x) for x in summary] == [
+        (None, "unsupported"),
+        (note.summary[0], ""),
+    ]
+    assert [(s.section_id, s.bullets) for s in note.sections] == [
+        ("action_items", (grounder.check(actions[1])[0],))
+    ]
+    assert note.drop_reasons == {
+        "unsupported": 2,
+        "empty": 1,
+        "no_valid_citation": 1,
+        "name_not_cited": 1,
+    }
+    assert (note.kept, note.dropped, note.rescued) == (2, 5, 0)
+
+
+def test_single_check_has_no_meaning_step() -> None:
+    provider = FakeProvider([])
+    grounder = Grounder(
+        aliases=PROMISE_ALIASES, utterance_text=PROMISE_LINES, semantic=meaning(provider)
+    )
+    assert grounder.check(b(PARAPHRASE)) == (None, "unsupported")
+    assert provider.embed_calls == []
+    assert grounder.check_all([b(PARAPHRASE)]) == [(CheckedBullet(PARAPHRASE, ("p-1",)), "meaning")]

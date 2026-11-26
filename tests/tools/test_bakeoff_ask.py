@@ -1,8 +1,12 @@
 import json
+import re
+from dataclasses import replace
+from pathlib import Path
 
 from evra.config import LlmSettings
 from tests.unit.notes.fakes import FakeProvider
 from tools.bakeoff_ask import (
+    ONE_CLICK,
     Phase,
     Probe,
     Recorder,
@@ -13,9 +17,10 @@ from tools.bakeoff_ask import (
     load_probes,
     summary,
 )
-from tools.bakeoff_notes import FIXTURES, load_case
+from tools.bakeoff_notes import FIXTURES, load_case, repeat_case
 
 LONG = FIXTURES / "one_on_one_60min_synthetic.json"
+STRINGS_TS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "strings.ts"
 OUTAGE = Probe("How long was the outage?", ("47",))
 CRM = Probe("Which CRM did we choose?", ())
 
@@ -146,3 +151,51 @@ def test_a_failed_question_is_a_row_not_a_crash() -> None:
     row = ask_one(provider, "fake:1b", load_case(LONG), OUTAGE, LlmSettings(), "cold")
     assert (row.state, row.error, row.correct) == ("failed", "NoteInvalid", False)
     assert len(provider.replies) == 2  # the reply and its one repair
+
+
+def test_two_hours_is_the_call_said_twice_an_hour_apart() -> None:
+    one = load_case(LONG)
+    two = repeat_case(one, 2)
+    n = len(one.utterances)
+    assert len(two.utterances) == 2 * n
+    assert len({u.id for u in two.utterances}) == 2 * n
+    first, again = two.utterances[0], two.utterances[n]
+    assert (again.text, again.start_ms, again.end_ms) == (
+        first.text,
+        first.start_ms + 3_600_000,
+        first.end_ms + 3_600_000,
+    )
+    assert [u.seq for u in two.utterances] == list(range(2 * n))
+    assert two.expected == one.expected and two.name == f"{one.name}-2h"
+    assert repeat_case(one, 1) == one
+
+
+def test_one_click_questions_count_whether_they_read_lines() -> None:
+    probes = load_probes(LONG, one_click=True)
+    assert [p.question for p in probes if p.open] == list(ONE_CLICK)
+    window = re.search(r"askSuggestions: (\[[^\]]*\])", STRINGS_TS.read_text(encoding="utf-8"))
+    assert window is not None and tuple(json.loads(window.group(1))) == ONE_CLICK
+    assert len(load_probes(LONG)) == 16  # off by default
+    said = "38 customers signed up for the beta."
+    rows = [
+        _row("cold", answer=said, shown=said),
+        replace(_row("warm", (), "answered", "You send it.", "You send it.", kept=2), open=True),
+        replace(_row("warm", (), "not_found", kept=0), open=True, tokens_in=0),
+        replace(_row("warm", (), "not_found", kept=0), open=True),
+    ]
+    s = summary(rows)
+    assert (s.facts, s.correct, s.absent, s.not_discussed) == (1, 1, 0, 0)
+    assert (s.one_click, s.one_click_read, s.one_click_kept) == (3, 2, 2)
+
+
+def test_ask_one_chooses_parts_by_meaning_only_when_asked() -> None:
+    two = repeat_case(load_case(LONG), 2)
+    promise = Probe("What did I promise?", (), open=True)
+    not_found = json.dumps({"found": False, "points": []})
+    plain = FakeProvider([])
+    row = ask_one(Recorder(plain), "fake:1b", two, promise, LlmSettings(), "warm")
+    assert (row.excerpt, row.tokens_in, plain.embed_calls) == (True, 0, [])  # read nothing
+    meaning = FakeProvider([not_found])
+    row = ask_one(Recorder(meaning), "fake:1b", two, promise, LlmSettings(), "warm", embed=True)
+    assert (row.excerpt, row.tokens_in) == (True, 100) and meaning.embed_calls
+    assert row.total_seconds > 0  # wall time; the fake reports a fixed 0.5 s for the model

@@ -1,7 +1,8 @@
 """Asking one meeting one question: the meeting context (the same system message the note uses,
 so Ollama reuses its cache), a question, the last few turns, then every point is checked against
-the transcript before it is kept. Nothing here logs or raises with question, reply or transcript
-text."""
+the transcript before it is kept (by its words, and with an embedder by its meaning too). A call
+too long to read whole sends the parts that best match the question. Nothing here logs or raises
+with question, reply or transcript text."""
 
 from __future__ import annotations
 
@@ -14,13 +15,14 @@ import structlog
 
 from evra.config import LlmSettings
 from evra.llm.prompt_files import load_part
-from evra.llm.provider import ChatMessage, ChatResult, LlmProvider
+from evra.llm.provider import ChatMessage, ChatResult, LlmError, LlmProvider
 from evra.llm.schemas import MeetingAnswer
 from evra.notes.bm25 import Bm25, tokenize
 from evra.notes.context import NONE, MeetingContext, as_data, build_context, estimate_tokens
 from evra.notes.errors import NoteTooLong, NoTranscript
+from evra.notes.semantic import Embedder, SemanticCheck, as_query, cosine
 from evra.notes.structured import chat_structured
-from evra.notes.validate import CheckedBullet, Grounder
+from evra.notes.validate import KEPT_BY_MEANING, CheckedBullet, Grounder
 from evra.store.meetings import Utterance
 
 log = structlog.get_logger(__name__)
@@ -30,6 +32,7 @@ HISTORY_TURNS = 3
 WINDOW_LINES, WINDOW_STRIDE = 6, 3
 EXCERPT_TOKENS = 8000
 LINE_OVERHEAD_TOKENS = 10  # the printed "[u:N] [mm:ss] Speaker: " before each line
+ASK_TASK = "Given a question about a meeting, retrieve the transcript lines that answer it"
 NOT_DISCUSSED = "Not discussed in this meeting."
 AnswerState = Literal["answered", "not_found", "unchecked"]
 
@@ -84,16 +87,23 @@ def whole_meeting_fits(context: MeetingContext, user_tokens: int, settings: LlmS
 
 
 def excerpt_ids(
-    utterances: Sequence[Utterance], question: str, budget_tokens: int = EXCERPT_TOKENS
+    utterances: Sequence[Utterance],
+    question: str,
+    budget_tokens: int = EXCERPT_TOKENS,
+    *,
+    embedder: Embedder | None = None,
 ) -> set[str]:
     """The lines of the windows that best match the question, best window first, while their
-    printed size stays within the budget."""
+    printed size stays within the budget. A window scores by its words (BM25); with an
+    embedder, half by its words (scaled to the best window's) and half by its meaning, so a
+    question that shares no word with its answer ("What did I promise?") still finds it."""
     ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
     starts = range(0, len(ordered), WINDOW_STRIDE)
     windows = [ordered[i : i + WINDOW_LINES] for i in starts]
-    scores = Bm25([tokenize(" ".join(u.text for u in w)) for w in windows]).scores(
-        tokenize(question)
-    )
+    texts = [" ".join(u.text for u in w) for w in windows]
+    scores = Bm25([tokenize(t) for t in texts]).scores(tokenize(question))
+    if embedder is not None:
+        scores = _with_meaning(scores, texts, question, embedder)
     ranked = sorted((i for i, s in enumerate(scores) if s > 0), key=lambda i: (-scores[i], i))
     chosen: set[str] = set()
     used = 0
@@ -105,6 +115,23 @@ def excerpt_ids(
         chosen.update(u.id for u in fresh)
         used += cost
     return chosen
+
+
+def _with_meaning(
+    scores: Sequence[float], texts: Sequence[str], question: str, embedder: Embedder
+) -> list[float]:
+    """0.5 * BM25 / best BM25 + 0.5 * max(0, cosine of the question and the window); the
+    BM25 scores alone when embedding fails."""
+    try:
+        query, *windows = embedder.vectors([as_query(question, ASK_TASK), *texts])
+    except LlmError as exc:  # asking still works, by words alone
+        log.info("semantic_check_skipped", error=type(exc).__name__)
+        return list(scores)
+    best = max(scores, default=0.0)
+    return [
+        0.5 * (score / best if best else 0.0) + 0.5 * max(0.0, cosine(query, window))
+        for score, window in zip(scores, windows, strict=True)
+    ]
 
 
 def _conversation(history: Sequence[Exchange]) -> str:
@@ -128,6 +155,59 @@ def build_ask_messages(
     return messages, f"{context.version}+{task.version}"
 
 
+def _trimmed(recent: Sequence[Exchange]) -> list[Sequence[Exchange]]:
+    """The history, then without its oldest exchange, and so on down to none."""
+    return [recent[i:] for i in range(len(recent) + 1)]
+
+
+@dataclass(frozen=True)
+class _Prompt:
+    context: MeetingContext
+    messages: list[ChatMessage]
+    version: str
+
+
+def _parts_prompt(
+    question: str,
+    recent: Sequence[Exchange],
+    *,
+    meeting: Mapping[str, Any],
+    utterances: Sequence[Utterance],
+    gaps: Sequence[Mapping[str, Any]],
+    user_notes: str,
+    settings: LlmSettings,
+    embedder: Embedder | None,
+) -> _Prompt | None:
+    """The prompt with only the parts of the call that best match the question. While it does
+    not fit, the oldest exchanges go first; NoteTooLong when even none leaves no room, None when
+    no part matches the question."""
+    limit = min(settings.context_budget, settings.num_ctx - output_tokens(settings))
+
+    def context_of(only: set[str]) -> MeetingContext:
+        return build_context(
+            meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes, only=only
+        )
+
+    skeleton = context_of(set())
+    # a follow-up ("When is it due?") is found through the question before it
+    query = f"{question} {recent[-1].question}" if recent else question
+    needed = 0
+    for turns in _trimmed(recent):
+        user_tokens = estimate_tokens(build_ask_messages(skeleton, question, turns)[0][1].content)
+        needed = skeleton.estimated_tokens + user_tokens
+        if needed > limit:
+            continue
+        budget = min(EXCERPT_TOKENS, limit - needed)
+        chosen = excerpt_ids(utterances, query, budget, embedder=embedder)
+        if not chosen:
+            return None
+        part = context_of(chosen)
+        needed = part.estimated_tokens + user_tokens
+        if whole_meeting_fits(part, user_tokens, settings):
+            return _Prompt(part, *build_ask_messages(part, question, turns))
+    raise NoteTooLong(needed, limit)
+
+
 def ask_meeting(
     provider: LlmProvider,
     *,
@@ -139,7 +219,11 @@ def ask_meeting(
     history: Sequence[Exchange] = (),
     gaps: Sequence[Mapping[str, Any]] = (),
     user_notes: str = NONE,
+    embedder: Embedder | None = None,
 ) -> AskResult:
+    """With an embedder, a long call's parts are chosen by meaning as well as words, and the
+    answer's points are checked by meaning too. That check's one batch runs after the answer;
+    choosing the parts needs its batch before it."""
     if not utterances:
         raise NoTranscript("no transcript")
     context = build_context(
@@ -149,49 +233,37 @@ def ask_meeting(
     # the oldest exchanges go first.
     recent = list(history)[-HISTORY_TURNS:]
     room = settings.num_ctx - output_tokens(settings)
-    limit = min(settings.context_budget, room)
-    whole: tuple[list[ChatMessage], str] | None = None
-    for keep in range(len(recent), -1, -1):
-        messages, version = build_ask_messages(context, question, recent[len(recent) - keep :])
+    prompt: _Prompt | None = None
+    for turns in _trimmed(recent):
+        messages, version = build_ask_messages(context, question, turns)
         if whole_meeting_fits(context, estimate_tokens(messages[1].content), settings):
-            whole = (messages, version)
+            prompt = _Prompt(context, messages, version)
             break
-    if whole is None:
-        messages, version = build_ask_messages(context, question, recent)
-        user_tokens = estimate_tokens(messages[1].content)
-        skeleton = build_context(
-            meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes, only=set()
-        ).estimated_tokens
-        if skeleton + user_tokens > limit:
-            raise NoteTooLong(skeleton + user_tokens, limit)
-        # a follow-up ("When is it due?") is found through the question before it
-        query = f"{question} {recent[-1].question}" if recent else question
-        chosen = excerpt_ids(utterances, query, min(EXCERPT_TOKENS, limit - user_tokens - skeleton))
-        if not chosen:
-            log.info("question_answered", state="not_found", kept=0, dropped=0, excerpt=True)
-            return AskResult(
-                state="not_found",
-                points=(),
-                excerpt=True,
-                model=model,
-                prompt_version=version,
-                tokens_in=0,
-                tokens_out=0,
-                seconds=0.0,
-                dropped=0,
-            )
-        context = build_context(
+    if prompt is None:
+        prompt = _parts_prompt(
+            question,
+            recent,
             meeting=meeting,
             utterances=utterances,
             gaps=gaps,
             user_notes=user_notes,
-            only=chosen,
+            settings=settings,
+            embedder=embedder,
         )
-        if not whole_meeting_fits(context, user_tokens, settings):
-            raise NoteTooLong(context.estimated_tokens + user_tokens, limit)
-        messages, version = build_ask_messages(context, question, recent)
-    else:
-        messages, version = whole
+    if prompt is None:
+        log.info("question_answered", state="not_found", kept=0, dropped=0, excerpt=True)
+        return AskResult(
+            state="not_found",
+            points=(),
+            excerpt=True,
+            model=model,
+            prompt_version=build_ask_messages(context, question, ())[1],
+            tokens_in=0,
+            tokens_out=0,
+            seconds=0.0,
+            dropped=0,
+        )
+    context, version = prompt.context, prompt.version
 
     def too_long(first: ChatResult) -> None:
         if first.tokens_in >= room:  # Ollama cut the prompt to fit its context window
@@ -200,7 +272,7 @@ def ask_meeting(
     reply = chat_structured(
         provider,
         model,
-        messages,
+        prompt.messages,
         MeetingAnswer,
         max_output_tokens=output_tokens(settings),
         invalid_event="question_json_invalid",
@@ -211,26 +283,29 @@ def ask_meeting(
     answer = reply.value
 
     kept: list[CheckedBullet] = []
-    dropped = 0
+    dropped = rescued = 0
     state: AnswerState = "not_found"
     if answer.found and answer.points:
         grounder = Grounder(
             aliases=context.aliases,
             utterance_text=context.utterance_text,
             user_notes="" if user_notes == NONE else user_notes,
+            semantic=None if embedder is None else SemanticCheck(embedder),
         )
-        for point in answer.points:
-            checked, _ = grounder.check(point)
+        for checked, how in grounder.check_all(answer.points):
             if checked is None:
                 dropped += 1
-            else:
-                kept.append(checked)
+                continue
+            kept.append(checked)
+            if how == KEPT_BY_MEANING:
+                rescued += 1
         state = "answered" if kept else "unchecked"
     log.info(
         "question_answered",
         state=state,
         kept=len(kept),
         dropped=dropped,
+        rescued=rescued,
         excerpt=context.excerpt,
         seconds=round(reply.seconds, 1),
         cached_tokens=reply.cached_tokens,
