@@ -41,8 +41,8 @@ export function SettingsView({
   }, [onLoadModels]);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="px-[var(--gutter)] pt-[30px] pb-10">
+    <div className="enter h-full overflow-y-auto">
+      <div className="measure-pad px-[var(--gutter)] pt-[30px] pb-10">
         <header className="flex items-start justify-between gap-6">
           <h1
             ref={heading}

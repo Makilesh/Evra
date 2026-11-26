@@ -193,7 +193,7 @@ components:
 
 Evra's main window is a reporter's steno pad. A pale green pad holds the open meeting; a tan chipboard rail owns the left edge with the record control, the meetings by day and the microphone; one deep green rule runs down the middle of the note and the transcript, with the point on one side and the words it came from on the other. Navy ink carries the text. Checking a note takes a glance, because every point and its quote share a row across that rule.
 
-The system is flat and quiet. Colour is laid down as whole areas: a darker green band fills a row when it is hovered, focused, being written or has failed; the selected meeting takes the pad's own colour and merges into it; recording turns the record block red. Type is two faces doing two jobs: condensed capitals for titles, section heads, speakers and labels, and one plain sans for everything that is read. Motion is short and purposeful: what just arrived lands emphasised and settles.
+The system is flat and quiet. Colour is laid down as whole areas: a darker green band fills a row when it is hovered, focused, being written or has failed; the selected meeting takes the pad's own colour and merges into it; recording turns the record block red. Type is two faces doing two jobs: condensed capitals for titles, section heads, speakers and labels, and one plain sans for everything that is read. Motion is short and purposeful: what just arrived lands emphasised and settles, a button gives a pixel when pressed, and a meeting comes in once from just below.
 
 The world runs in light and dark. Light is the default; Dark, or Match Windows (which follows Windows' app mode), is chosen in Settings. At night the pad goes almost black-green, the chipboard goes brown, the rule and ink brighten; the roles and structure do not change.
 
@@ -267,7 +267,9 @@ A two-column window: the chipboard rail at a fixed width (264px, 232px below 860
 
 The pad has a gutter of 44px (24px below 860px wide) and starts 30px down: title and date line on the left, the stamp at the top right, then the tab bar at a fixed 42px minimum height with 28px between tabs and Copy as Markdown pushed to its end, so the heavy rule never moves between states.
 
-The note sheet is a container-queried grid. At 600px of sheet or wider each row is point | rule cell (5.75rem) | quotes (0.9fr), with a column head over the quotes. Narrower, the rule cell (4.75rem) moves to the left and the quotes fold beneath the point. The transcript uses the same 4.75rem rule cell on the left with the time sitting on the rule. Extra space for a speaker turn is padded inside the cells so the rule runs through unbroken.
+The note sheet is a container-queried grid. At 600px of sheet or wider each row is point | rule cell (5.75rem) | quotes (0.9fr), with a column head over the quotes. Narrower, the rule cell (4.75rem) moves to the left and the quotes fold beneath the point. The transcript uses the same 4.75rem rule cell on the left with the time sitting on the rule, then a 4rem speaker column, then the words, so every wrapped line keeps one left edge. Extra space for a speaker turn is padded inside the cells so the rule runs through unbroken.
+
+On a wide window a meeting's content stops at 66rem (the measure) and stays left-aligned on the pad, so a row never stretches too far to read across.
 
 ### Named Rules
 **The One Rule Rule.** The centre rule is drawn by every row's middle cell (a 2px rule-green line), so it is continuous across sections and turns. Square 10px detents mark section heads on the note and speaker changes in the transcript.
@@ -300,7 +302,7 @@ Gently rounded, never pill-shaped except for dots and meters. Small marks (time 
 
 ### Navigation
 - **Meetings in the rail:** grouped under caps day heads; each item is the title (semibold) over a 13px meta line (time and duration). Hover fills chipboard-well; the selected item takes the pad colour and merges into the pad. A live meeting shows a red pip and "Recording"; a meeting whose note is being written shows a rule-green pip.
-- **Tabs:** Note and Transcript (with a line count) on a 2px ink rule; unselected muted, selected ink with a 5px ink bar.
+- **Tabs:** Note and Transcript (with a line count) on a 2px ink rule; unselected muted (ink on hover), selected ink with a 5px ink bar that draws out from its middle over 220ms. Arrow keys move between the tabs; only the selected tab is in the Tab order.
 - **Settings in the rail:** at the foot, below the microphone, as Windows apps place it: the sliders icon, the word and a Ctrl , hint, in chipboard ink. Hover fills chipboard-well; while Settings is open it keeps that fill with ink text.
 
 ### The Note Sheet (signature)
@@ -310,7 +312,7 @@ Each note point sits on a row with its time tabs on the centre rule and its quot
 The writing and failed states are drawn as rows on the sheet. Writing: a band row with a caps title in deep rule green, a sentence, and a short stretch of rule running down a faint one in the rule cell. Failed: a band-deep row with the reason and a Retry button.
 
 ### Transcript
-Lines sit on the same rule with their time on it in 13px meta type; a detent and a coloured caps speaker name mark each change of speaker. A newly arrived line lands at heavier weight (640) and settles to 400 over 900ms; a cited line fills band-deep and settles to band over 1400ms.
+Lines sit on the same rule with their time on it in 13px meta type; the speaker is named once per turn, in coloured caps in its own column, and an 8px detent sits on the rule in the space between turns. Hover fills a line with half a band. While live, a row below the last line says "Listening…" beside a pulsing rule-green dot, where the rule fades out; it shows before the first line too. A newly arrived line lands at heavier weight (640) and settles to 400 over 900ms; a cited line fills band-deep and settles to band over 1400ms.
 
 ### Stamp (signature)
 Provenance as one mark: a 2px rule-green bordered box, 7px radius, rotated -1.2deg, in rule green, with a caps first line ("written on this PC"), the model, and the number of points checked against the transcript. Shown only once a note is settled.
@@ -331,7 +333,7 @@ Authored inline SVG at 16px with a single 1.5px round-capped stroke in the text 
 - **Do** show hover, focus, progress, failure and selection by filling the whole row or block (band, band-deep, pad).
 - **Do** keep Libre Franklin at 15px/23px for reading and 13px for metadata, and use the condensed bold uppercase face (0.05em) for titles, heads, speakers and labels.
 - **Do** use tabular figures for every time, duration and count.
-- **Do** keep motion on cubic-bezier(0.16, 1, 0.3, 1) at 140ms for state changes, and wrap anything longer in a reduced-motion check.
+- **Do** keep motion on cubic-bezier(0.16, 1, 0.3, 1) at 140ms for state changes, and wrap anything longer in a reduced-motion check. The set: buttons move 1px down while pressed; a meeting, Settings and the welcome fade up 6px over 260ms when they open; the welcome steps follow 90ms apart; the recording pip and the listening dot pulse every 1.6s. Nothing moves because the pad scrolled.
 - **Do** give every token its dark value under the same name, and check both modes.
 
 ### Don't:

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { MeetingDetail } from "@/bridge";
 import { copyText } from "@/clipboard";
 import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
@@ -36,14 +36,25 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
   const line = [meetingLine(meeting), strings.oneOnOne].join(" · ");
   const settled = note !== null && !stage;
 
+  // Arrow keys move between the two tabs, as Windows tab strips do; Tab leaves the strip.
+  function onTabKey(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    if ((event.target as HTMLElement).getAttribute("role") !== "tab") return;
+    event.preventDefault();
+    const next: Tab = tab === "note" ? "transcript" : "note";
+    setTab(next);
+    const tabs = event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]');
+    tabs[next === "note" ? 0 : 1]?.focus();
+  }
+
   function cite(utteranceId: string) {
     setHighlight(utteranceId);
     setTab("transcript");
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 px-[var(--gutter)] pt-[30px]">
+    <div className="enter flex h-full flex-col">
+      <div className="measure-pad shrink-0 px-[var(--gutter)] pt-[30px]">
         <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 flex-[1_1_20rem]">
             <Title title={meeting.title} onRename={onRename} />
@@ -58,14 +69,22 @@ export function MeetingView({ detail, isLive, noteStatus, hints, canWrite, onWri
           </div>
           {settled && <Stamp model={note.model} points={pointCount(note)} />}
         </header>
-        <div role="tablist" aria-label={strings.meetingTabs} className="tabs mt-6">
-          <button type="button" role="tab" aria-selected={tab === "note"} onClick={() => setTab("note")} className="tab">
+        <div role="tablist" aria-label={strings.meetingTabs} onKeyDown={onTabKey} className="tabs mt-6">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "note"}
+            tabIndex={tab === "note" ? 0 : -1}
+            onClick={() => setTab("note")}
+            className="tab"
+          >
             {strings.noteTab}
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={tab === "transcript"}
+            tabIndex={tab === "transcript" ? 0 : -1}
             onClick={() => setTab("transcript")}
             className="tab"
           >

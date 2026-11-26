@@ -35,7 +35,9 @@ export function TranscriptView({ utterances, follow, highlightId }: TranscriptVi
     if (el) atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
   }
 
-  if (utterances.length === 0) return <p className="px-[var(--gutter)] pt-8 text-muted">{strings.noTranscript}</p>;
+  if (utterances.length === 0 && !follow) {
+    return <p className="px-[var(--gutter)] pt-8 text-muted">{strings.noTranscript}</p>;
+  }
   return (
     <div
       ref={box}
@@ -43,7 +45,7 @@ export function TranscriptView({ utterances, follow, highlightId }: TranscriptVi
       data-testid="transcript-scroll"
       className="h-full overflow-y-auto px-[var(--gutter)] pt-2 pb-12"
     >
-      <ol aria-label={strings.transcriptTab} className="-mx-2.5">
+      <ol aria-label={strings.transcriptTab} className="measure -mx-2.5">
         {utterances.map((u, index) => {
           const turn = index === 0 || utterances[index - 1].channel !== u.channel;
           return (
@@ -56,23 +58,27 @@ export function TranscriptView({ utterances, follow, highlightId }: TranscriptVi
               className="line-row"
             >
               <span className="line-mid on-rule">
-                {turn && <span className="detent" />}
+                {turn && <span aria-hidden="true" className="line-detent detent" />}
                 <span className="line-time">{formatClock(u.start_ms)}</span>
               </span>
+              <span className={turn ? cn("line-speaker caps", u.channel === 0 ? "text-you" : "text-them") : "sr-only"}>
+                {u.speaker}
+              </span>
               <p className="line-body">
-                <span
-                  className={
-                    turn ? cn("caps mr-1.5 text-[14px]", u.channel === 0 ? "text-you" : "text-them") : "sr-only"
-                  }
-                >
-                  {u.speaker}
-                </span>
                 <span className="line-text">{u.text}</span>
               </p>
             </li>
           );
         })}
       </ol>
+      {follow && (
+        <div role="status" className="measure line-row listening -mx-2.5" data-turn={utterances.length === 0 ? undefined : "true"}>
+          <span className="line-mid on-rule-fade">
+            <span aria-hidden="true" className="listening-dot" />
+          </span>
+          <span className="line-speaker caps text-muted">{strings.listening}</span>
+        </div>
+      )}
     </div>
   );
 }

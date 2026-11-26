@@ -111,7 +111,7 @@ function MeetingMeta({ meeting, live, writing }: { meeting: MeetingSummary; live
   if (live) {
     return (
       <span className="flex items-center gap-1.5 text-[13px] leading-[18px] font-semibold">
-        <span aria-hidden="true" className="size-2 rounded-full bg-rec" />
+        <span aria-hidden="true" className="rec-pulse size-2 rounded-full bg-rec" />
         {strings.liveNow}
       </span>
     );

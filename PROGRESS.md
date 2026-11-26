@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-26 — UI polish (branch `ui-polish`)
+
+- **Built:** a craft pass over the whole window, in the Steno pad world (DESIGN.md updated):
+  - **Transcript:** time | speaker | words, with the speaker named once per turn in its own column, so wrapped lines line up. The detent now sits between turns, not on top of the time. While recording, a "Listening…" row waits below the last line.
+  - **Tabs:** the underline draws out when a tab is chosen; arrow keys move between Note and Transcript.
+  - **Motion:** buttons give a pixel when pressed; a meeting, Settings and the welcome fade up once when opened; the recording pips pulse. All of it is off under reduced motion.
+  - **Wide windows:** content stops at a 66rem measure.
+  - **Time tabs:** a lighter 1px outline.
+  - **Welcome:** shows the Ctrl K and Ctrl , shortcuts.
+- **Skills used:** taste-skill (its hover and press rules; the rest is for marketing sites); GSAP ScrollTrigger (read, not used: GSAP's licence is not on the allow list, and nothing in the window should move because it scrolled); HyperFrames makes videos, not app UI.
+- Tests: frontend 101 (+4).
+
 ## 2026-11-11 — Meetings name themselves (branch `meeting-titles`)
 
 - **Merged** `settings` (PR #8) into `main`.

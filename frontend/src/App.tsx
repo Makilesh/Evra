@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { Banner } from "@/components/Banner";
 import { MeetingList } from "@/components/MeetingList";
 import { MeetingView } from "@/components/MeetingView";
@@ -124,14 +124,18 @@ export default function App() {
 
 // First run: what pressing Record will do, on the same rule the note uses.
 function Welcome() {
+  const shortcuts = [
+    { keys: strings.searchShortcut, label: strings.searchShortcutHelp },
+    { keys: strings.settingsShortcut, label: strings.settings },
+  ];
   return (
-    <div className="px-[var(--gutter)] pt-[30px]">
+    <div className="enter px-[var(--gutter)] pt-[30px]">
       <h1 className="max-w-[18ch] font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[0.95] font-extrabold text-balance">
         {strings.welcomeTitle}
       </h1>
       <ol className="mt-8 max-w-[34rem]">
-        {strings.welcomeSteps.map((step) => (
-          <li key={step} className="grid grid-cols-[2.5rem_minmax(0,1fr)]">
+        {strings.welcomeSteps.map((step, index) => (
+          <li key={step} className="welcome-step grid grid-cols-[2.5rem_minmax(0,1fr)]" style={{ "--i": index } as CSSProperties}>
             <span className="on-rule flex justify-center pt-[7px]">
               <span className="detent" />
             </span>
@@ -139,6 +143,14 @@ function Welcome() {
           </li>
         ))}
       </ol>
+      <ul aria-label={strings.shortcuts} className="mt-6 flex flex-wrap gap-x-6 gap-y-2 pl-[3rem] text-[13px] leading-5 text-muted">
+        {shortcuts.map((shortcut) => (
+          <li key={shortcut.keys} className="flex items-center gap-2">
+            <span className="kbd">{shortcut.keys}</span>
+            {shortcut.label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -78,7 +78,7 @@ export function Rail({
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="caps flex items-center gap-1.5 text-[13px] leading-4">
-                  <span aria-hidden="true" className="size-2 rounded-full bg-on-rec" />
+                  <span aria-hidden="true" className="rec-pulse size-2 rounded-full bg-on-rec" />
                   {strings.liveNow}
                 </p>
                 <p

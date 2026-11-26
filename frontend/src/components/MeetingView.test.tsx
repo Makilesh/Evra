@@ -112,3 +112,21 @@ it("says when the note could not be copied", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
   expect(await screen.findByRole("button", { name: "Couldn't copy" })).toBeInTheDocument();
 });
+
+it("moves between the tabs with the arrow keys, keeping one tab in the Tab order", async () => {
+  view();
+  const note = screen.getByRole("tab", { name: "Note" });
+  const transcript = screen.getByRole("tab", { name: "Transcript" });
+  expect(note).toHaveAttribute("tabindex", "0");
+  expect(transcript).toHaveAttribute("tabindex", "-1");
+  note.focus();
+  await userEvent.keyboard("{ArrowRight}");
+  expect(transcript).toHaveAttribute("aria-selected", "true");
+  expect(transcript).toHaveFocus();
+  expect(note).toHaveAttribute("tabindex", "-1");
+  await userEvent.keyboard("{ArrowRight}");
+  expect(note).toHaveAttribute("aria-selected", "true");
+  expect(note).toHaveFocus();
+  await userEvent.keyboard("{ArrowLeft}");
+  expect(transcript).toHaveAttribute("aria-selected", "true");
+});

@@ -180,3 +180,14 @@ it("says so when Python can't be reached", async () => {
   render(<App />);
   expect(await screen.findByRole("alert")).toHaveTextContent("couldn't reach its Python side");
 });
+
+it("welcomes a first run with what Record does and the two shortcuts", async () => {
+  setApiForTests(makeFakeApi({ list_meetings: async () => [] }));
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Press Record when the call starts." })).toBeInTheDocument();
+  const shortcuts = screen.getByRole("list", { name: "Shortcuts" });
+  expect(shortcuts).toHaveTextContent("Ctrl K");
+  expect(shortcuts).toHaveTextContent("Search your meetings");
+  expect(shortcuts).toHaveTextContent("Ctrl ,");
+  expect(shortcuts).toHaveTextContent("Settings");
+});

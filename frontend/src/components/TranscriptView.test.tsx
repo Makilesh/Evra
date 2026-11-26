@@ -62,7 +62,20 @@ it("highlights and scrolls to a cited line", () => {
   spy.mockRestore();
 });
 
-it("says when nothing has been transcribed", () => {
-  render(<TranscriptView utterances={[]} follow highlightId={null} />);
+it("says when a finished meeting has nothing transcribed", () => {
+  render(<TranscriptView utterances={[]} follow={false} highlightId={null} />);
   expect(screen.getByText("Nothing has been transcribed yet.")).toBeInTheDocument();
+});
+
+it("says it is listening below the last line while live, and not afterwards", () => {
+  const { rerender } = render(<TranscriptView utterances={DETAIL.utterances} follow highlightId={null} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Listening…");
+  rerender(<TranscriptView utterances={DETAIL.utterances} follow={false} highlightId={null} />);
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+it("says it is listening before the first line arrives", () => {
+  render(<TranscriptView utterances={[]} follow highlightId={null} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Listening…");
+  expect(screen.queryByText("Nothing has been transcribed yet.")).toBeNull();
 });
