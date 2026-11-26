@@ -243,3 +243,21 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Consequences:**
   - When a recording has no speech, the model sits loaded for its 30 s `keep_alive` and then unloads.
   - When M4's torch worker (diarization) runs after Stop, the load moves to after the worker frees the GPU (BUILD.md §8.3).
+
+## Shared meeting context (A0) and note prompt A1 v3 (2026-11-26)
+- **Context:** the note and the coming questions about a meeting should start with the same text, so Ollama reuses the prompt it has already processed. A1 v2 put its rules first and the transcript in the user message, so nothing was shared.
+- **Evidence:** gemma4:12b, 2 runs each, the two fixtures (kept/dropped are note points that passed the transcript check; coverage is the share of the fixture's facts found):
+
+  | prompt | case | seconds | tokens in/out | kept | dropped | validity | coverage |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | v2 | 60 min | 102.9 (cold, other work running) | 27878/1715 | 21 | 5 | 81% | 38% |
+  | v2 | 60 min | 40.4 | 27878/1697 | 19 | 7 | 73% | 46% |
+  | v2 | short | 29.0 | 2062/944 | 15 | 0 | 100% | 100% |
+  | v2 | short | 22.9 | 2062/946 | 15 | 0 | 100% | 100% |
+  | v3 | 60 min | 77.7 | 27948/2517 | 38 | 6 | 86% | 46% |
+  | v3 | 60 min | 56.4 | 27948/2408 | 39 | 4 | 91% | 54% |
+  | v3 | short | 22.7 | 2132/913 | 15 | 0 | 100% | 100% |
+  | v3 | short | 21.4 | 2132/913 | 15 | 0 | 100% | 100% |
+
+- **Decision:** A0 (`a0-v1`) is the system message of every call about a meeting: the transcript first, then gaps, the user's notes and metadata. A1 v3 (`a1-v3`) is only the task, sent as the user message. Rule applied: the short call keeps 15 (>= 14) with 10/10 facts in both runs; the 60-minute call's validity (86%, 91%) is not below v2's (81%, 73%) by 5 points, and its facts (46%, 54%) are at least v2's lower run (38%). v3 kept. Prompt version is recorded as `a0-v1+a1-v3`.
+- **Consequences:** the note prompt is about 70 tokens larger on the short call. The 60-minute call writes about 40 points instead of about 20 (more output, about 2400 tokens). Notes written before this carry `a1-v2`. Token estimates stay at 2.7 characters a token and now track Ollama's counts within 0% to 26% above.

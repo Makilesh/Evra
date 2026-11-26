@@ -1,5 +1,6 @@
 import pytest
 
+from evra.notes.context import build_context
 from evra.notes.prompt_input import EN_DASH, as_data, build_note_prompt, transcript_lines
 from evra.notes.templates import load_template
 from evra.store.meetings import Utterance
@@ -40,7 +41,7 @@ def test_data_cannot_close_its_tag() -> None:
         template=load_template("one_on_one"),
         schema=SCHEMA,
     )
-    assert prompt.user.count("</transcript>") == 1  # only the real closing tag
+    assert prompt.system.count("</transcript>") == 1  # only the real closing tag
 
 
 def test_braces_in_data_are_not_placeholders() -> None:
@@ -50,8 +51,8 @@ def test_braces_in_data_are_not_placeholders() -> None:
         template=load_template("one_on_one"),
         schema=SCHEMA,
     )
-    assert "title: {transcript}" in prompt.user
-    assert "You: say {title} and {gaps}" in prompt.user
+    assert "title: {transcript}" in prompt.system
+    assert "You: say {title} and {gaps}" in prompt.system
 
 
 def test_prompt_carries_meeting_template_and_empty_blocks() -> None:
@@ -61,19 +62,19 @@ def test_prompt_carries_meeting_template_and_empty_blocks() -> None:
         template=load_template("one_on_one"),
         schema=SCHEMA,
     )
-    assert prompt.prompt_version == "a1-v2"
-    assert '{"type":"object"}' in prompt.system
-    assert "Write in English." in prompt.system
+    assert prompt.prompt_version == "a0-v1+a1-v3"
+    assert '{"type":"object"}' in prompt.user
+    assert "Write in English." in prompt.user
     for expected in [
         "title: Weekly 1:1",
         "duration_minutes: 2",
         "setting: call headphones",
         "participants: You (the owner of this note), Them (the other person on the call)",
-        "template: 1:1",
-        "- id: discussion",
     ]:
+        assert expected in prompt.system
+    for expected in ['<template name="1:1">', "- id: discussion"]:
         assert expected in prompt.user
-    assert prompt.user.count("(none)") == 2  # no user notes, no gaps
+    assert prompt.system.count("(none)") == 2  # no user notes, no gaps
     assert prompt.aliases == {"u:1": "a"}
 
 
@@ -85,7 +86,7 @@ def test_gaps_are_listed_with_cause() -> None:
         schema=SCHEMA,
         gaps=[{"start_ms": 61_000, "end_ms": 64_000, "cause": "device_change"}],
     )
-    assert f"GAP 01:01{EN_DASH}01:04 (device_change)" in prompt.user
+    assert f"GAP 01:01{EN_DASH}01:04 (device_change)" in prompt.system
 
 
 def test_estimate_grows_with_the_transcript() -> None:
@@ -100,7 +101,7 @@ def test_estimate_grows_with_the_transcript() -> None:
         schema=SCHEMA,
     )
     assert 0 < short.estimated_tokens < long.estimated_tokens
-    assert long.estimated_tokens >= len(long.user) // 4
+    assert long.estimated_tokens >= len(long.system) // 4
 
 
 def test_no_utterances_is_an_error() -> None:
@@ -108,3 +109,33 @@ def test_no_utterances_is_an_error() -> None:
         build_note_prompt(
             meeting=MEETING, utterances=[], template=load_template("one_on_one"), schema=SCHEMA
         )
+
+
+def test_note_prompt_system_is_the_meeting_context() -> None:
+    utterances = [utt("a", 0, 0, 125_000, "We shipped it.")]
+    prompt = build_note_prompt(
+        meeting=MEETING, utterances=utterances, template=load_template("one_on_one"), schema=SCHEMA
+    )
+    assert prompt.system == build_context(meeting=MEETING, utterances=utterances).system
+
+
+def test_note_prompt_task_is_the_user_message() -> None:
+    prompt = build_note_prompt(
+        meeting=MEETING,
+        utterances=[utt("a", 0, 0, 1000, "Hi")],
+        template=load_template("one_on_one"),
+        schema=SCHEMA,
+    )
+    assert prompt.user.startswith("Write the note for the meeting above.")
+    assert "</transcript>" not in prompt.user
+    assert prompt.user.endswith('{"type":"object"}')
+
+
+def test_prompt_version() -> None:
+    prompt = build_note_prompt(
+        meeting=MEETING,
+        utterances=[utt("a", 0, 0, 1000, "Hi")],
+        template=load_template("one_on_one"),
+        schema=SCHEMA,
+    )
+    assert prompt.prompt_version == "a0-v1+a1-v3"

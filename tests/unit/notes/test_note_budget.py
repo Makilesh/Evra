@@ -1,5 +1,5 @@
 """The prompt-size estimate against gemma4:12b's real counts (Ollama's prompt_eval_count for
-prompt a1-v2, measured 2026-11-07), and the default budget against an hour-long 1:1."""
+prompts a0-v1+a1-v3, measured 2026-11-26), and the default budget against an hour-long 1:1."""
 
 import pytest
 
@@ -22,7 +22,7 @@ def _prompt(fixture: str) -> NotePrompt:
 
 @pytest.mark.parametrize(
     ("fixture", "ollama_count"),
-    [("one_on_one_synthetic", 2062), ("one_on_one_60min_synthetic", 27878)],
+    [("one_on_one_synthetic", 2132), ("one_on_one_60min_synthetic", 27948)],
 )
 def test_the_size_estimate_never_falls_far_below_the_real_count(
     fixture: str, ollama_count: int

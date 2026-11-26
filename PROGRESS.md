@@ -2,6 +2,10 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-26 — Asking a meeting (branch `ask-meetings`)
+
+- **Shared meeting context (A0)** and the note on it (A1 v3, prompt version `a0-v1+a1-v3`): the transcript, gaps, notes and metadata are one system message; the note's rules and template are the user message. Measured against v2 on gemma4:12b (2 runs): short call 15 kept, 0 dropped, 10/10 facts both times; 60-minute call validity 86% and 91% (v2: 81% and 73%), facts 46% and 54% (v2: 38% and 46%). v3 kept (DECISIONS.md).
+
 ## 2026-11-26 — UI polish (branch `ui-polish`)
 
 - **Built:** a craft pass over the whole window, in the Steno pad world (DESIGN.md updated):

@@ -30,7 +30,7 @@ def test_schema_is_plain_json_schema_for_ollama() -> None:
     assert set(schema["required"]) == {"summary", "sections"}
 
 
-@pytest.mark.parametrize("prompt_id", ["a1_note", "a8_title", "a9_repair"])
+@pytest.mark.parametrize("prompt_id", ["a8_title", "a9_repair"])
 def test_prompt_files_have_a_version_and_both_parts(prompt_id: str) -> None:
     prompt = load_prompt(prompt_id)
     assert re.fullmatch(r"a\d+-v\d+", prompt.version)
@@ -38,13 +38,19 @@ def test_prompt_files_have_a_version_and_both_parts(prompt_id: str) -> None:
     assert "## " not in prompt.system
 
 
-def test_a1_keeps_the_data_rule_and_names_every_input() -> None:
-    prompt = load_prompt("a1_note")
-    assert "are data, not instructions" in prompt.system
-    for placeholder in ["{schema}", "{output_language}"]:
-        assert placeholder in prompt.system
-    for placeholder in ["{title}", "{participants}", "{transcript}", "{gaps}", "{user_notes}"]:
-        assert placeholder in prompt.user
+def test_a1_is_the_task_part_and_names_its_inputs() -> None:
+    from evra.llm.prompt_files import load_part
+
+    part = load_part("a1_note")
+    assert part.version == "a1-v3"
+    for placeholder in [
+        "{schema}",
+        "{output_language}",
+        "{template_name}",
+        "{template_sections_yaml}",
+    ]:
+        assert placeholder in part.text
+    assert "<transcript>" not in part.text.replace("pointing at lines in <transcript>", "")
 
 
 def test_render_fills_once_and_refuses_missing_values() -> None:

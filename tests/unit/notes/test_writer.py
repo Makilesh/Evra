@@ -63,12 +63,12 @@ def test_a_valid_reply_becomes_a_checked_note() -> None:
     provider = FakeProvider([GOOD])
     result = write(provider)
     assert (result.note.kept, result.note.dropped, result.repaired) == (2, 0, False)
-    assert result.prompt_version == "a1-v2"
+    assert result.prompt_version == "a0-v1+a1-v3"
     assert (result.tokens_in, result.tokens_out) == (100, 50)
     assert result.template == "one_on_one"
     system, user = provider.calls[0]
     assert system.role == "system" and user.role == "user"
-    assert "[u:1] [00:00] You: I finished" in user.content
+    assert "[u:1] [00:00] You: I finished" in system.content
 
 
 def test_fenced_json_is_accepted() -> None:
@@ -80,7 +80,7 @@ def test_invalid_json_gets_one_repair() -> None:
     provider = FakeProvider(['{"summary": [', GOOD])
     result = write(provider)
     assert result.repaired
-    assert result.prompt_version == "a1-v2+a9-v1"
+    assert result.prompt_version == "a0-v1+a1-v3+a9-v1"
     assert result.tokens_in == 200
     repair_user = provider.calls[1][1].content
     assert "<error>" in repair_user and '{"summary": [' in repair_user
