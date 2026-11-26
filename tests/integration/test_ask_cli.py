@@ -153,8 +153,8 @@ def test_a_long_call_with_no_matching_part_says_so_and_asks_nothing(
     out = capsys.readouterr().out
     assert "Not discussed in this meeting." in out
     assert (
-        "This call is too long to read whole, and no part of it matches the words of your question."
-        in out
+        "This call is too long to read whole. "
+        "Evra looked only at the parts that match the words of your question." in out
     )
     assert provider.calls == []
     assert _stored(paths, mid) == [("not_found", None)]

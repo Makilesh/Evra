@@ -26,7 +26,8 @@ EXCERPT_PARTS = (
     "This call is too long to read whole, so Evra read the parts that match your question."
 )
 EXCERPT_NOTHING = (
-    "This call is too long to read whole, and no part of it matches the words of your question."
+    "This call is too long to read whole. "
+    "Evra looked only at the parts that match the words of your question."
 )
 
 FAILURES = {

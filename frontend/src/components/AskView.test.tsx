@@ -119,7 +119,7 @@ it("says a long call had no part matching the question, and when it read parts",
   expect(screen.getByText("Not discussed in this meeting.")).toBeInTheDocument();
   expect(
     screen.getByText(
-      "This call is too long to read whole, and no part of it matches the words of your question.",
+      "This call is too long to read whole. Evra looked only at the parts that match the words of your question.",
     ),
   ).toBeInTheDocument();
 });

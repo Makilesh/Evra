@@ -152,6 +152,9 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - **Broad questions drop paraphrases:** "What did I promise?" lost points whose detail sat in lines they didn't cite (only the short reply "Yeah, I can do that."). The short-reply rule (M3 finish follow-ups) and Plan B's meaning check cover it.
 - **The asking bake-off asks each question alone;** add a run with the window's three-turn history, and a run on a call too long for one prompt (the excerpt path is measured only by tests so far).
 - **Design sidecar:** `.impeccable/design.json` has no Ask component yet (DESIGN.md has the section).
+- **Asking timeout covers the pre-read:** the 180-second asking timeout also applies to the pre-read, so a cold read of a long call on a slow GPU could time out.
+- **Excerpt mode counts history in full:** excerpt mode sizes the question with the full conversation history; the whole-meeting path trims history, the parts path does not yet.
+- **Refused pre-read not retried:** a pre-read refused because another one is running is not retried.
 
 ## From the competitor review (2026-11-10)
 The full list (100 features, with links) is in `private/research/reports/`.
