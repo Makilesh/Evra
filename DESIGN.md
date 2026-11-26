@@ -5,16 +5,16 @@ colors:
   pad: "#e7efdb"
   band: "#d6e4c6"
   band-deep: "#c2d8ae"
-  chip: "#d3c8b3"
-  chip-edge: "#bdb19a"
-  chip-well: "#e2d9c8"
-  chip-ink: "#5a5041"
-  ink: "#1b2433"
+  chip: "#cddcbd"
+  chip-edge: "#b4c7a1"
+  chip-well: "#dde8d1"
+  chip-ink: "#45563f"
+  ink: "#16231a"
   muted: "#536052"
   rule: "#2e6b4b"
   rule-ink: "#24563c"
-  you: "#23407a"
-  them: "#7a4a1e"
+  you: "#1d5a3a"
+  them: "#56611a"
   rec: "#e0352b"
   rec-fill: "#b42a21"
   on-rec: "#fff7f2"
@@ -191,14 +191,15 @@ components:
 
 **Creative North Star: "The Steno Pad"**
 
-Evra's main window is a reporter's steno pad. A pale green pad holds the open meeting; a tan chipboard rail owns the left edge with the record control, the meetings by day and the microphone; one deep green rule runs down the middle of the note and the transcript, with the point on one side and the words it came from on the other. Navy ink carries the text. Checking a note takes a glance, because every point and its quote share a row across that rule.
+Evra's main window is a reporter's steno pad. A pale green pad holds the open meeting; a deeper green rail owns the left edge with the record control, the meetings by day and the microphone; one deep green rule runs down the middle of the note and the transcript, with the point on one side and the words it came from on the other. Green-black ink carries the text. Everything is one green in different shades; only recording has a colour of its own. Checking a note takes a glance, because every point and its quote share a row across that rule.
 
 The system is flat and quiet. Colour is laid down as whole areas: a darker green band fills a row when it is hovered, focused, being written or has failed; the selected meeting takes the pad's own colour and merges into it; recording turns the record block red. Type is two faces doing two jobs: condensed capitals for titles, section heads, speakers and labels, and one plain sans for everything that is read. Motion is short and purposeful: what just arrived lands emphasised and settles, a button gives a pixel when pressed, and a meeting comes in once from just below.
 
-The world runs in light and dark. Light is the default; Dark, or Match Windows (which follows Windows' app mode), is chosen in Settings. At night the pad goes almost black-green, the chipboard goes brown, the rule and ink brighten; the roles and structure do not change.
+The world runs in light and dark. Light is the default; Dark, or Match Windows (which follows Windows' app mode), is chosen in Settings. At night the pad goes almost black-green, the rail a step lighter, the rule and ink brighten; the roles and structure do not change.
 
 **Key Characteristics:**
-- A chipboard rail (264px) beside a pale green pad, no other panels.
+- A deeper green rail (264px) beside a pale green pad, no other panels.
+- One hue: every surface, ink and speaker is a shade of the same green; red is the only other colour.
 - One timed centre rule (2px, rule green) drawn row by row, with square detents at section heads and speaker changes.
 - State shown as filled areas in band greens, never as outlines.
 - Red only while recording.
@@ -207,7 +208,7 @@ The world runs in light and dark. Light is the default; Dark, or Match Windows (
 
 ## Colors
 
-A paper-and-board palette: two greens of pad, a tan board, a deep green rule, navy ink, two speaker inks and one red kept for recording. Every token has a dark-mode value (in the sidecar) under the same name.
+A one-green palette: the pad and its bands, a deeper rail, a deep green rule, green-black ink and two speaker greens, all shades of one hue, plus one red kept for recording. Every token has a dark-mode value (in the sidecar) under the same name.
 
 ### Primary
 - **Steno Rule Green** (rule): the structural colour. Draws the centre rule, the detents, the time tabs, the stamp, the focus ring, the caret, the thin scrollbar and the record button while a note is being written. Section heads on the note sheet are set in it.
@@ -219,21 +220,23 @@ A paper-and-board palette: two greens of pad, a tan board, a deep green rule, na
 - **Warm White** (on-rec): text, level meters and the Stop button on the red block.
 
 ### Tertiary
-- **Navy Speaker Ink** (you): the owner's speaker name in quotes and the transcript.
-- **Umber Speaker Ink** (them): the other side's speaker name.
+- **Deep Speaker Green** (you): the owner's speaker name in quotes and the transcript.
+- **Olive Speaker Green** (them): the other side's speaker name.
 
 ### Neutral
 - **Steno Pad** (pad): the main surface, the selected meeting in the rail, the background of time tabs and transcript times so they sit on the rule.
 - **Pad Band** (band): row fill for hover and focus on note points, the highlighted transcript line, the writing row, the Copy button, the title being edited.
 - **Deep Band** (band-deep): stronger fill for the failed-note row, notices (banners), text selection, Copy hover, and the first frame of a landing line.
-- **Chipboard** (chip): the rail.
-- **Chipboard Edge** (chip-edge): the 1px line where the rail meets the pad and above the microphone.
-- **Chipboard Well** (chip-well): wells cut into the rail (search, microphone) and meeting hover.
-- **Chipboard Ink** (chip-ink): secondary text on the rail (claim, day heads, times, placeholder, icons).
-- **Navy Ink** (ink): all primary text, the heavy rule under the tabs, primary buttons.
+- **Rail Green** (chip): the rail, a deeper shade of the pad.
+- **Rail Edge** (chip-edge): the 1px line where the rail meets the pad and above the microphone.
+- **Rail Well** (chip-well): wells cut into the rail (search, microphone) and meeting hover.
+- **Rail Ink** (chip-ink): secondary text on the rail (claim, day heads, times, placeholder, icons).
+- **Green-Black Ink** (ink): all primary text, the heavy rule under the tabs, primary buttons.
 - **Muted Green-Grey** (muted): metadata, unselected tabs, quotes at rest, transcript times.
 
 ### Named Rules
+**The One Green Rule.** Every surface, text and speaker colour is a shade of the one green. A new colour needs a job no shade can do; so far only recording has one.
+
 **The Red Is Recording Rule.** Red appears only for recording: the Record dot, the red record block with its meters, and the live pip in the rail. Errors and failures are not red; they fill with Deep Band.
 
 **The Colour As Area Rule.** A state fills the whole row or block it applies to (band on hover, focus and writing; band-deep on failure and notices; pad for the selected meeting). It is never a thin coloured border.
@@ -263,7 +266,7 @@ A paper-and-board palette: two greens of pad, a tan board, a deep green rule, na
 
 ## Layout
 
-A two-column window: the chipboard rail at a fixed width (264px, 232px below 860px wide) and the pad filling the rest. The rail stacks wordmark and claim, the record block, search, the meetings scrolling by day (fading out over the last 28px), and the microphone at the foot; its contents sit 18px in. On short windows (600px tall or less) the rail tightens: smaller top padding, a 44px record button, and the claim and microphone label become screen-reader only.
+A two-column window: the green rail at a fixed width (264px, 232px below 860px wide) and the pad filling the rest. The rail stacks wordmark and claim, the record block, search, the meetings scrolling by day (fading out over the last 28px), and the microphone at the foot; its contents sit 18px in. On short windows (600px tall or less) the rail tightens: smaller top padding, a 44px record button, and the claim and microphone label become screen-reader only.
 
 The pad has a gutter of 44px (24px below 860px wide) and starts 30px down: title and date line on the left, the stamp at the top right, then the tab bar at a fixed 42px minimum height with 28px between tabs and Copy as Markdown pushed to its end, so the heavy rule never moves between states.
 
@@ -276,7 +279,7 @@ On a wide window a meeting's content stops at 66rem (the measure) and stays left
 
 ## Elevation & Depth
 
-Flat. There are no drop shadows anywhere. Depth comes from tonal areas: the chipboard rail against the pad, wells cut a step lighter into the rail, band greens over the pad. Lines are drawn, never shadowed into depth. The 2px ink rule under the tabs and the 5px ink bar under the selected tab are painted backgrounds (a gradient sized to the bottom edge), because at 150% display scaling an inset shadow leaves a hairline down a tab's side. The 1px chipboard edge on the rail and above the microphone is an inset box-shadow; those edges sit on whole pixels.
+Flat. There are no drop shadows anywhere. Depth comes from tonal areas: the green rail against the pad, wells cut a step lighter into the rail, band greens over the pad. Lines are drawn, never shadowed into depth. The 2px ink rule under the tabs and the 5px ink bar under the selected tab are painted backgrounds (a gradient sized to the bottom edge), because at 150% display scaling an inset shadow leaves a hairline down a tab's side. The 1px rail edge on the rail and above the microphone is an inset box-shadow; those edges sit on whole pixels.
 
 ### Named Rules
 **The Flat Pad Rule.** Nothing floats. If something needs to stand out, it gets an area of colour or a line, not a shadow.
@@ -289,21 +292,21 @@ Gently rounded, never pill-shaped except for dots and meters. Small marks (time 
 
 ### Buttons
 - **Shape:** gently curved (8px); the record button and record block 11px.
-- **Primary:** navy ink fill with pad-coloured text, semibold, 8px 16px (Write note, Retry, banner action); hover lightens the ink to 88%.
+- **Primary:** green-black ink fill with pad-coloured text, semibold, 8px 16px (Write note, Retry, banner action); hover lightens the ink to 88%.
 - **Record:** full rail width, 48px tall (44px on short windows), ink fill, a 12px red dot then the word. While busy it is disabled and shows the stage; while a note is being written it fills rule green.
 - **Recording block:** the record button becomes a red-filled block (rec-fill) with a "Recording" caps label, the running timer, a warm-white Stop button (36px) and two level meters (you, them).
 - **Copy as Markdown:** band fill, 13px semibold with a 16px icon, 6px 12px; hover fills band-deep; the label changes to Copied or the failure text for 2 seconds.
 - **Icon button:** 32px square, muted icon, fills band on hover (rename).
 
 ### Inputs / Fields
-- **Style:** wells in the rail: chipboard-well fill, no border, 10px radius, 40px tall, ink text, chipboard-ink placeholder and icons. Search shows a Ctrl K keyboard hint (1px outline, 4px radius) that hides below 860px.
+- **Style:** wells in the rail: rail-well fill, no border, 10px radius, 40px tall, ink text, rail-ink placeholder and icons. Search shows a Ctrl K keyboard hint (1px outline, 4px radius) that hides below 860px.
 - **Title edit:** the title becomes an input in the same display type on a band fill.
 - **Focus:** a 2px rule-green outline offset 2px, everywhere.
 
 ### Navigation
-- **Meetings in the rail:** grouped under caps day heads; each item is the title (semibold) over a 13px meta line (time and duration). Hover fills chipboard-well; the selected item takes the pad colour and merges into the pad. A live meeting shows a red pip and "Recording"; a meeting whose note is being written shows a rule-green pip.
+- **Meetings in the rail:** grouped under caps day heads; each item is the title (semibold) over a 13px meta line (time and duration). Hover fills rail-well; the selected item takes the pad colour and merges into the pad. A live meeting shows a red pip and "Recording"; a meeting whose note is being written shows a rule-green pip.
 - **Tabs:** Note and Transcript (with a line count) on a 2px ink rule; unselected muted (ink on hover), selected ink with a 5px ink bar that draws out from its middle over 220ms. Arrow keys move between the tabs; only the selected tab is in the Tab order.
-- **Settings in the rail:** at the foot, below the microphone, as Windows apps place it: the sliders icon, the word and a Ctrl , hint, in chipboard ink. Hover fills chipboard-well; while Settings is open it keeps that fill with ink text.
+- **Settings in the rail:** at the foot, below the microphone, as Windows apps place it: the sliders icon, the word and a Ctrl , hint, in rail ink. Hover fills rail-well; while Settings is open it keeps that fill with ink text.
 
 ### The Note Sheet (signature)
 Each note point sits on a row with its time tabs on the centre rule and its quotes on the far side, each quote led by a coloured caps speaker name, clamped to four lines. Hovering or focusing a row fills it band green, brings the quotes from muted to ink, and keeps the time tabs on the band. A time tab is a small rule-green outlined tab on the pad; hover and keyboard focus both fill it rule green with pad text (no second ring). Pressing one opens the transcript at that line, filled the same band.

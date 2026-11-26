@@ -23,7 +23,8 @@
     format("woff2-variations");
 }
 
-/* Steno pad: a pale green pad, a tan chipboard rail, a deep green rule, navy ink.
+/* Steno pad, all in one green: a pale pad, a deeper green rail, a deep green rule, green-black
+   ink. Only recording keeps its own colour (red).
    `.light` and `.dark` also scope a subtree, so the theme previews in Settings show both. */
 :root,
 .light {
@@ -31,16 +32,16 @@
   --pad: #e7efdb;
   --band: #d6e4c6;
   --band-deep: #c2d8ae;
-  --chip: #d3c8b3;
-  --chip-edge: #bdb19a;
-  --chip-well: #e2d9c8;
-  --chip-ink: #5a5041;
-  --ink: #1b2433;
+  --chip: #cddcbd;
+  --chip-edge: #b4c7a1;
+  --chip-well: #dde8d1;
+  --chip-ink: #45563f;
+  --ink: #16231a;
   --muted: #536052;
   --rule: #2e6b4b;
   --rule-ink: #24563c;
-  --you: #23407a;
-  --them: #7a4a1e;
+  --you: #1d5a3a;
+  --them: #56611a;
   --rec: #e0352b;
   --rec-fill: #b42a21;
   --on-rec: #fff7f2;
@@ -51,22 +52,22 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* The same pad at night: the green goes almost black, the chipboard goes brown. */
+/* The same pad at night: the greens go almost black, the rail a step lighter than the pad. */
 .dark {
   color-scheme: dark;
   --pad: #131a15;
   --band: #1e2a21;
   --band-deep: #2a3d2e;
-  --chip: #2a251e;
-  --chip-edge: #3b342a;
-  --chip-well: #352f26;
-  --chip-ink: #bdb29e;
+  --chip: #1b251d;
+  --chip-edge: #2e3c31;
+  --chip-well: #253228;
+  --chip-ink: #adbba7;
   --ink: #e3eadb;
   --muted: #a2ae9b;
   --rule: #74c394;
   --rule-ink: #74c394;
-  --you: #9db8f2;
-  --them: #e0b07e;
+  --you: #86d3a5;
+  --them: #cdd58a;
   --rec: #ff5a4e;
   --rec-fill: #b83026;
   --on-rec: #fff7f2;
