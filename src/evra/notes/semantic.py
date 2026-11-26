@@ -7,6 +7,7 @@ arrive at unit length, so the cosine is a dot product.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from threading import Lock
 
 from evra.llm.provider import LlmProvider
 
@@ -25,20 +26,25 @@ def cosine(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 class Embedder:
-    """Embeds texts in batches; each distinct text is embedded once per instance."""
+    """Embeds texts in batches; each distinct text is embedded once per instance. Callers on
+    one instance take turns (the Ask tab's pre-read and a question about the same meeting), so
+    a text another caller is embedding is never embedded twice."""
 
     def __init__(self, provider: LlmProvider, model: str, *, batch: int = 64) -> None:
         self._provider = provider
         self._model = model
         self._batch = batch
         self._cache: dict[str, list[float]] = {}
+        self._lock = Lock()
 
     def vectors(self, texts: Sequence[str]) -> list[list[float]]:
-        missing = list(dict.fromkeys(t for t in texts if t not in self._cache))
-        for start in range(0, len(missing), self._batch):
-            chunk = missing[start : start + self._batch]
-            self._cache.update(zip(chunk, self._provider.embed(self._model, chunk), strict=True))
-        return [self._cache[t] for t in texts]
+        with self._lock:
+            missing = list(dict.fromkeys(t for t in texts if t not in self._cache))
+            for start in range(0, len(missing), self._batch):
+                chunk = missing[start : start + self._batch]
+                vectors = self._provider.embed(self._model, chunk)
+                self._cache.update(zip(chunk, vectors, strict=True))
+            return [self._cache[t] for t in texts]
 
 
 class SemanticCheck:

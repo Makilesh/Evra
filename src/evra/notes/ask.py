@@ -86,6 +86,31 @@ def whole_meeting_fits(context: MeetingContext, user_tokens: int, settings: LlmS
     return context.estimated_tokens + user_tokens <= limit
 
 
+def _windows(utterances: Sequence[Utterance]) -> list[Sequence[Utterance]]:
+    """WINDOW_LINES lines every WINDOW_STRIDE, in time order."""
+    ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
+    return [ordered[i : i + WINDOW_LINES] for i in range(0, len(ordered), WINDOW_STRIDE)]
+
+
+def _window_text(window: Sequence[Utterance]) -> str:
+    return " ".join(u.text for u in window)
+
+
+def window_texts(utterances: Sequence[Utterance]) -> list[str]:
+    """The text of every window `excerpt_ids` ranks, in order: what a long call embeds."""
+    return [_window_text(w) for w in _windows(utterances)]
+
+
+def embed_parts(embedder: Embedder, utterances: Sequence[Utterance]) -> None:
+    """Embed a long call's windows ahead of its questions (the Ask tab's pre-read), so each
+    question on that embedder sends only its query. A failure is logged; the questions then
+    embed what they need themselves, or go by words."""
+    try:
+        embedder.vectors(window_texts(utterances))
+    except LlmError as exc:
+        log.info("semantic_check_skipped", error=type(exc).__name__)
+
+
 def excerpt_ids(
     utterances: Sequence[Utterance],
     question: str,
@@ -97,10 +122,8 @@ def excerpt_ids(
     printed size stays within the budget. A window scores by its words (BM25); with an
     embedder, half by its words (scaled to the best window's) and half by its meaning, so a
     question that shares no word with its answer ("What did I promise?") still finds it."""
-    ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
-    starts = range(0, len(ordered), WINDOW_STRIDE)
-    windows = [ordered[i : i + WINDOW_LINES] for i in starts]
-    texts = [" ".join(u.text for u in w) for w in windows]
+    windows = _windows(utterances)
+    texts = [_window_text(w) for w in windows]
     scores = Bm25([tokenize(t) for t in texts]).scores(tokenize(question))
     if embedder is not None:
         scores = _with_meaning(scores, texts, question, embedder)

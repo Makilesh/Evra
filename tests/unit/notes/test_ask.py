@@ -3,11 +3,13 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import pytest
+import structlog
 
 from evra.config import LlmSettings
-from evra.llm.provider import ChatMessage, ChatResult
+from evra.llm.provider import ChatMessage, ChatResult, LlmModelMissing
 from evra.llm.schemas import NoteDraft
 from evra.notes.ask import (
+    ASK_TASK,
     NOT_DISCUSSED,
     AskResult,
     Exchange,
@@ -15,13 +17,15 @@ from evra.notes.ask import (
     ask_settings,
     build_ask_messages,
     clean_question,
+    embed_parts,
     excerpt_ids,
     whole_meeting_fits,
+    window_texts,
 )
 from evra.notes.context import LOOKALIKE_GT, LOOKALIKE_LT, build_context, estimate_tokens
 from evra.notes.errors import NoteCutOff, NoteInvalid, NoteTooLong, NoTranscript
 from evra.notes.prompt_input import build_note_prompt
-from evra.notes.semantic import Embedder
+from evra.notes.semantic import Embedder, as_query
 from evra.notes.templates import load_template
 from evra.store.meetings import Utterance
 from tests.unit.notes.fakes import FakeProvider, utt
@@ -431,3 +435,34 @@ def test_excerpt_drops_the_oldest_exchanges_before_giving_up() -> None:
     assert result.excerpt is True and "vendor quote is due Friday" in system
     assert "oldest?" not in user and "older?" in user and "What about the vendor quote?" in user
     assert estimate_tokens(system) + estimate_tokens(user) <= 4096 - 1024
+
+
+def test_embedding_the_parts_ahead_leaves_each_question_only_its_query() -> None:
+    """The Ask tab's pre-read embeds the windows a long call's question ranks; with the same
+    embedder the question then sends only its own query."""
+    lines = _long_meeting(200, "I will get it done, that is what I said.")
+    provider = FakeProvider([NOT_FOUND])
+    embedder = Embedder(provider, "embed")
+    embed_parts(embedder, lines)
+    assert [t for call in provider.embed_calls for t in call] == window_texts(lines)
+    before = len(provider.embed_calls)
+    _ask(
+        provider,
+        utterances=lines,
+        question="What did I promise?",
+        settings=LlmSettings(num_ctx=4096),
+        embedder=embedder,
+    )
+    assert provider.embed_calls[before:] == [[as_query("What did I promise?", ASK_TASK)]]
+
+
+def test_a_failed_pre_read_is_logged_and_harmless() -> None:
+    class NoEmbeddingModel(FakeProvider):
+        def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+            raise LlmModelMissing(model)
+
+    with structlog.testing.capture_logs() as logs:
+        embed_parts(Embedder(NoEmbeddingModel([]), "embed"), LINES)
+    assert [e for e in logs if e["event"] == "semantic_check_skipped"] == [
+        {"event": "semantic_check_skipped", "error": "LlmModelMissing", "log_level": "info"}
+    ]

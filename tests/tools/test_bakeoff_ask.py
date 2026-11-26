@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from evra.config import LlmSettings
+from evra.notes.semantic import Embedder
 from tests.unit.notes.fakes import FakeProvider
 from tools.bakeoff_ask import (
     ONE_CLICK,
@@ -195,7 +196,19 @@ def test_ask_one_chooses_parts_by_meaning_only_when_asked() -> None:
     plain = FakeProvider([])
     row = ask_one(Recorder(plain), "fake:1b", two, promise, LlmSettings(), "warm")
     assert (row.excerpt, row.tokens_in, plain.embed_calls) == (True, 0, [])  # read nothing
-    meaning = FakeProvider([not_found])
-    row = ask_one(Recorder(meaning), "fake:1b", two, promise, LlmSettings(), "warm", embed=True)
+    meaning = FakeProvider([not_found, not_found])
+    asker = Recorder(meaning)
+    embedder = Embedder(asker, "embed")  # one per meeting, as the window keeps it
+    row = ask_one(asker, "fake:1b", two, promise, LlmSettings(), "warm", embedder=embedder)
     assert (row.excerpt, row.tokens_in) == (True, 100) and meaning.embed_calls
     assert row.total_seconds > 0  # wall time; the fake reports a fixed 0.5 s for the model
+    first = len(meaning.embed_calls)
+    again = ask_one(asker, "fake:1b", two, promise, LlmSettings(), "warm", embedder=embedder)
+    assert again.read_lines and len(meaning.embed_calls) == first  # all cached: nothing sent
+
+
+def test_the_first_question_after_a_pre_read_is_a_timing_only() -> None:
+    said = "38 customers signed up for the beta."
+    prepared = _row("after_prepare", answer=said, shown=said, seconds=4.0)
+    s = summary([_row("cold", answer=said, shown=said, seconds=12.0), prepared])
+    assert (s.facts, s.correct, s.cold_seconds, s.after_prepare) == (1, 1, 12.0, prepared)

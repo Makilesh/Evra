@@ -6,10 +6,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import structlog
 
 from evra.config import LlmSettings
-from evra.llm.provider import ChatMessage, ChatResult, LlmProvider, LlmUnavailable
-from evra.notes.ask import build_ask_messages
+from evra.llm.provider import (
+    ChatMessage,
+    ChatResult,
+    LlmModelMissing,
+    LlmProvider,
+    LlmUnavailable,
+)
+from evra.notes.ask import build_ask_messages, window_texts
 from evra.notes.context import build_context, estimate_tokens
 from evra.paths import AppPaths
 from evra.services.ask import PREPARE_EVERY_S, AskService
@@ -361,13 +368,44 @@ def test_prepare_refused_while_a_question_is_pending(tmp_path: Path) -> None:
     assert len(provider.calls) == 1
 
 
-def test_prepare_does_nothing_when_the_meeting_does_not_fit(tmp_path: Path) -> None:
+class Watching(FakeProvider):
+    """Records the order of loads, chats and embeddings; `embedded` is set once every text of
+    `expected` has been embedded."""
+
+    def __init__(self, replies: list[str], expected: Sequence[str] = ()) -> None:
+        super().__init__(replies)
+        self.expected = set(expected)
+        self.embedded = threading.Event()
+        self.order: list[str] = []
+
+    def load(self, model: str) -> None:
+        self.order.append("load")
+        super().load(model)
+
+    def chat_json(
+        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+    ) -> ChatResult:
+        self.order.append("chat")
+        return super().chat_json(model, messages, schema)
+
+    def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+        self.order.append("embed")
+        vectors = super().embed(model, texts)
+        if self.expected <= {t for call in self.embed_calls for t in call}:
+            self.embedded.set()
+        return vectors
+
+
+def test_prepare_reads_a_long_meeting_by_its_parts(tmp_path: Path) -> None:
+    """A meeting too long to read whole is not prefilled whole (the cache would not match the
+    excerpt a question reads): the model is loaded, then the windows are embedded."""
     h = Harness(tmp_path, filler_chars=20_000)
-    provider = FakeProvider(['{"ready": true}'])
+    provider = Watching(['{"ready": true}'], window_texts(h.lines))
     service = h.service(provider, llm=lambda: LlmSettings(model="fake:1b", context_budget=1000))
-    assert service.prepare(h.meeting_id) == {"ok": False}
-    time.sleep(0.1)
-    assert provider.calls == []
+    assert service.prepare(h.meeting_id) == {"ok": True}
+    assert provider.embedded.wait(10)
+    assert provider.order[0] == "load" and "chat" not in provider.order
+    assert provider.loaded == ["fake:1b"] and provider.calls == []
 
 
 def test_prepare_counts_the_real_ask_prompt(tmp_path: Path) -> None:
@@ -382,10 +420,10 @@ def test_prepare_counts_the_real_ask_prompt(tmp_path: Path) -> None:
     assert ask_user > estimate_tokens('Reply with {"ready": true}.')
     budget = context.estimated_tokens + ask_user - 1
     assert budget >= 1000
-    provider = FakeProvider(['{"ready": true}'])
+    provider = Watching(['{"ready": true}'], window_texts(h.lines))
     service = h.service(provider, llm=lambda: LlmSettings(model="fake:1b", context_budget=budget))
-    assert service.prepare(h.meeting_id) == {"ok": False}
-    time.sleep(0.1)
+    assert service.prepare(h.meeting_id) == {"ok": True}  # its parts, not the whole
+    assert provider.embedded.wait(10)
     assert provider.calls == []
     roomy_llm = LlmSettings(model="fake:1b", context_budget=budget + 1)
     assert h.service(provider, llm=lambda: roomy_llm).prepare(h.meeting_id) == {"ok": True}
@@ -455,3 +493,179 @@ def test_answers_are_checked_by_meaning_with_the_embedding_model(tmp_path: Path)
     question = h.wait_event()["question"]
     assert (question["state"], [p["text"] for p in question["points"]]) == ("answered", [point])
     assert provider.embedded_with == ["qwen3-embedding:0.6b"]
+
+
+LONG = 400  # filler lines: far more than long_call_llm's budget reads whole
+
+
+def long_call_llm() -> LlmSettings:
+    return LlmSettings(model="fake:1b", context_budget=2000)
+
+
+def long_meeting(h: Harness, title: str = "Weekly 1:1") -> tuple[str, list[Utterance]]:
+    """Another meeting of LONG lines, each naming the title, so its windows are its own."""
+    conn = connect(h.paths.db_path)
+    try:
+        store = MeetingStore(conn)
+        mid = store.create_meeting(
+            title=title, mode="one_on_one", situation="call_headphones", template="one_on_one"
+        )
+        vid = store.create_transcript_version(mid, kind="live", model="fake")
+        lines = [
+            store.add_utterance(
+                version_id=vid,
+                meeting_id=mid,
+                channel=i % 2,
+                start_ms=i * 1_000,
+                end_ms=i * 1_000 + 900,
+                text=f"Filler talk number {i} about {title}.",
+            )
+            for i in range(LONG)
+        ]
+    finally:
+        conn.close()
+    return mid, lines
+
+
+def filler_lines(h: Harness) -> None:
+    """LONG filler lines after the harness meeting's two lines, so it is a long call."""
+    conn = connect(h.paths.db_path)
+    try:
+        store = MeetingStore(conn)
+        vid = store.current_transcript_version(h.meeting_id)
+        assert vid is not None
+        for i in range(LONG):
+            start = 10_000 + i * 1_000
+            store.add_utterance(
+                version_id=vid,
+                meeting_id=h.meeting_id,
+                channel=1,
+                start_ms=start,
+                end_ms=start + 900,
+                text=f"Filler talk number {i}.",
+            )
+    finally:
+        conn.close()
+
+
+def embedded_since(provider: FakeProvider, start: int) -> list[str]:
+    return [t for call in provider.embed_calls[start:] for t in call]
+
+
+def test_a_second_question_on_a_long_call_embeds_no_window_again(tmp_path: Path) -> None:
+    h = Harness(tmp_path)
+    mid, lines = long_meeting(h)
+    windows = set(window_texts(lines))
+    provider = FakeProvider([NOT_FOUND, NOT_FOUND])
+    service = h.service(provider, llm=long_call_llm)
+    service.ask(mid, "What did I promise?")
+    assert h.wait_event()["question"]["excerpt"] is True
+    assert windows <= set(embedded_since(provider, 0))  # the first question embedded them
+    first = len(provider.embed_calls)
+    service.ask(mid, "What did they promise?")
+    h.wait_event()
+    later = embedded_since(provider, first)
+    assert later and not windows & set(later)  # only its own query (and check)
+
+
+def test_after_prepare_the_first_question_embeds_no_window(tmp_path: Path) -> None:
+    h = Harness(tmp_path)
+    mid, lines = long_meeting(h)
+    windows = window_texts(lines)
+    provider = Watching([NOT_FOUND], windows)
+    service = h.service(provider, llm=long_call_llm)
+    assert service.prepare(mid) == {"ok": True}
+    assert provider.embedded.wait(10)
+    assert provider.order[0] == "load"  # the model first, the embeddings after (§8.3)
+    start = len(provider.embed_calls)
+    service.ask(mid, "What did I promise?")
+    h.wait_event()
+    later = embedded_since(provider, start)
+    assert later and not set(windows) & set(later)
+
+
+def test_a_failing_embed_in_prepare_still_answers(tmp_path: Path) -> None:
+    attempted = threading.Event()
+
+    class NoEmbeddingModel(FakeProvider):
+        def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+            attempted.set()
+            raise LlmModelMissing(model)
+
+    h = Harness(tmp_path)
+    filler_lines(h)
+    provider = NoEmbeddingModel([ANSWER])
+    service = h.service(provider, llm=long_call_llm)
+    with structlog.testing.capture_logs() as logs:
+        assert service.prepare(h.meeting_id) == {"ok": True}
+        assert attempted.wait(10)
+        service.ask(h.meeting_id, "What about the vendor quote?")  # found by its words alone
+        question = h.wait_event()["question"]
+    assert (question["state"], question["excerpt"]) == ("answered", True)
+    skipped = [e for e in logs if e["event"] == "semantic_check_skipped"]
+    assert skipped and all(e["error"] == "LlmModelMissing" for e in skipped)
+
+
+def test_the_embedders_are_kept_for_two_meetings(tmp_path: Path) -> None:
+    h = Harness(tmp_path)
+    meetings = {name: long_meeting(h, name) for name in ("Alpha", "Bravo", "Charlie")}
+    provider = FakeProvider([NOT_FOUND] * 5)
+    service = h.service(provider, llm=long_call_llm)
+
+    def ask(name: str) -> set[str]:
+        """The windows of `name` this question embedded."""
+        start = len(provider.embed_calls)
+        service.ask(meetings[name][0], "What did I promise?")
+        h.wait_event()
+        return set(window_texts(meetings[name][1])) & set(embedded_since(provider, start))
+
+    assert ask("Alpha") and ask("Bravo") and ask("Charlie")
+    assert not ask("Charlie")  # kept: Bravo and Charlie
+    assert ask("Alpha")  # Alpha was let go when Charlie came in
+
+
+def test_a_question_during_a_prepare_waits_for_its_embedding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pre-read is embedding a long call's windows when a question about it arrives: the
+    question waits on that meeting's embedder and then embeds only its query."""
+    contended = threading.Event()
+
+    class ObservedLock:
+        """A lock that says when a second caller has to wait for it."""
+
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+
+        def __enter__(self) -> "ObservedLock":
+            if not self._lock.acquire(blocking=False):
+                contended.set()
+                self._lock.acquire()
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            self._lock.release()
+
+    monkeypatch.setattr("evra.notes.semantic.Lock", ObservedLock)
+    h = Harness(tmp_path)
+    mid, lines = long_meeting(h)
+    windows = set(window_texts(lines))
+    in_embed, release = threading.Event(), threading.Event()
+
+    class Gated(FakeProvider):
+        def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
+            if windows & set(texts) and not in_embed.is_set():
+                in_embed.set()  # the pre-read's first batch waits here
+                assert release.wait(10)
+            return super().embed(model, texts)
+
+    provider = Gated([NOT_FOUND])
+    service = h.service(provider, llm=long_call_llm)
+    assert service.prepare(mid) == {"ok": True}
+    assert in_embed.wait(10)
+    assert service.ask(mid, "What did I promise?")["ok"] is True
+    assert contended.wait(10), "the question did not wait for the pre-read's embedding"
+    release.set()
+    assert h.wait_event()["question"]["excerpt"] is True
+    embedded = [t for t in embedded_since(provider, 0) if t in windows]
+    assert sorted(embedded) == sorted(windows)  # every window once

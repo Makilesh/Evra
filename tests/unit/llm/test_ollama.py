@@ -308,6 +308,8 @@ def test_embed_posts_inputs_and_normalises() -> None:
                 "input": ["hello"],
                 "truncate": True,
                 "keep_alive": "30s",
+                # always this one size, so Ollama never reloads the model for a new one
+                "options": {"num_ctx": 1536},
             },
         )
     ]

@@ -20,7 +20,6 @@ parts and checks points by words alone (the app also uses meaning). Synthetic fi
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import re
 import statistics
@@ -35,22 +34,22 @@ from evra.config import LlmSettings
 from evra.console import safe_console
 from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import ChatMessage, ChatResult, LlmError, LlmProvider
-from evra.llm.schemas import MeetingAnswer, MeetingTitle
+from evra.llm.schemas import MeetingAnswer
 from evra.notes.ask import ask_meeting, ask_settings
 from evra.notes.context import MeetingContext, build_context
 from evra.notes.errors import NoteError
 from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.structured import parse_reply
 from evra.notes.templates import load_template
-from evra.notes.title import clean_generated_title, title_messages, title_settings
-from evra.notes.validate import CheckedNote, Grounder
+from evra.notes.validate import Grounder
 from evra.notes.writer import write_note
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
 
 from tools.bakeoff_notes import FIXTURES, Case, load_case, repeat_case
+from tools.bakeoff_steps import pre_read, title_after_note, unload
 
-Phase = Literal["cold", "warm", "after_note"]
+Phase = Literal["cold", "warm", "after_note", "after_prepare"]
 DEFAULT_FIXTURE = "one_on_one_60min_synthetic"
 _INLINE = re.compile(r"\s*\[[^\]]*\]")  # an inline citation mark such as " [u:12, u:13]"
 ONE_CLICK = tuple(  # the Ask tab's one-click questions (frontend/src/strings.ts askSuggestions)
@@ -154,13 +153,15 @@ class Summary:
     one_click_kept: int = 0  # points shown for them
     total_median: float | None = None  # per follow-up, choosing parts and the check included
     total_worst: float | None = None
+    cold_total: float | None = None
+    after_prepare: Row | None = None  # the first question again, after the Ask tab's pre-read
 
 
 def summary(rows: Sequence[Row]) -> Summary:
     """One model's rows. The cold and warm questions are scored; the question asked again right
-    after the note is a timing only. Failed questions count as wrong and are left out of the
-    times. One-click questions count only for whether they read any lines."""
-    scored = [r for r in rows if r.phase != "after_note"]
+    after the note or after a pre-read is a timing only. Failed questions count as wrong and are
+    left out of the times. One-click questions count only for whether they read any lines."""
+    scored = [r for r in rows if r.phase in ("cold", "warm")]
     facts = [r for r in scored if not r.absent and not r.open]
     absent = [r for r in scored if r.absent]
     opens = [r for r in scored if r.open]
@@ -191,6 +192,8 @@ def summary(rows: Sequence[Row]) -> Summary:
         one_click_kept=sum(r.kept for r in opens),
         total_median=statistics.median(totals) if totals else None,
         total_worst=max(totals) if totals else None,
+        cold_total=cold.total_seconds if cold else None,
+        after_prepare=next((r for r in rows if r.phase == "after_prepare" and not r.error), None),
     )
 
 
@@ -228,10 +231,10 @@ def ask_one(
     settings: LlmSettings,
     phase: Phase,
     *,
-    embed: bool = False,
+    embedder: Embedder | None = None,
 ) -> Row:
-    """One question as the window asks it; with `embed`, through a new embedder (the app makes
-    one per question)."""
+    """One question as the window asks it; with an embedder (the meeting's, kept across its
+    questions as the window keeps it), by meaning too."""
     provider.replies.clear()
     failed = Row(
         model=model,
@@ -258,7 +261,7 @@ def ask_one(
             utterances=case.utterances,
             question=probe.question,
             settings=settings,
-            embedder=Embedder(provider, settings.embedding_model) if embed else None,
+            embedder=embedder,
         )
     except (LlmError, NoteError) as exc:
         return replace(failed, error=type(exc).__name__)
@@ -301,34 +304,6 @@ def _explain(provider: Recorder, grounder: Grounder, context: MeetingContext) ->
     return lines
 
 
-def title_after_note(
-    llm: LlmSettings, model: str, case: Case, note: CheckedNote
-) -> tuple[str | None, float]:
-    """The window's next step: the title call (A8) on the meeting's shared context, from the
-    note just written. Returns the cleaned title and the seconds it took."""
-    bullets = [b.text for b in note.summary] + [b.text for s in note.sections for b in s.bullets]
-    text = "\n".join("- " + " ".join(b.split()) for b in bullets)
-    context = build_context(meeting=case.meeting, utterances=case.utterances)
-    messages, _ = title_messages(context, text)
-    started = time.monotonic()
-    reply = OllamaProvider(title_settings(llm)).chat_json(
-        model, messages, MeetingTitle.model_json_schema()
-    )
-    seconds = time.monotonic() - started
-    raw, _ = parse_reply(MeetingTitle, reply.content)
-    return (None if raw is None else clean_generated_title(raw.title)), seconds
-
-
-def _unload(provider: OllamaProvider, model: str) -> None:
-    """Unload the model and wait until Ollama no longer lists it, so the next call is cold."""
-    with contextlib.suppress(LlmError):
-        provider.unload(model)
-        for _ in range(60):
-            if provider.gpu_share(model) is None:
-                return
-            time.sleep(0.25)
-
-
 def run_model(
     model: str,
     case: Case,
@@ -340,18 +315,21 @@ def run_model(
 ) -> tuple[list[Row], float | None]:
     """The first question loads the model (cold), the rest follow it (warm). Then the same model
     writes the note with the app's note settings, names the meeting from it, and the first question
-    is asked again at once, inside the note's keep-alive."""
+    is asked again at once, inside the note's keep-alive. With `embed`, every question shares one
+    embedder, as the window keeps one per meeting; a long call's first question is then asked
+    once more after the Ask tab's pre-read (both models unloaded first)."""
     asking = ask_settings(llm)
     asker = Recorder(OllamaProvider(asking))
     noter = OllamaProvider(llm)
     context = build_context(meeting=case.meeting, utterances=case.utterances)
-    meaning = SemanticCheck(Embedder(asker, llm.embedding_model)) if embed else None
+    meaning = SemanticCheck(Embedder(asker, llm.embedding_model)) if embed else None  # --show
     grounder = Grounder(
         aliases=context.aliases, utterance_text=context.utterance_text, semantic=meaning
     )
+    cold = [model, llm.embedding_model] if embed else [model]
 
-    def asked(probe: Probe, phase: Phase, n: int) -> Row:
-        row = ask_one(asker, model, case, probe, asking, phase, embed=embed)
+    def asked(probe: Probe, phase: Phase, n: int, embedder: Embedder | None) -> Row:
+        row = ask_one(asker, model, case, probe, asking, phase, embedder=embedder)
         print(
             f"{model} {phase} {n}/{len(probes)}: {row.error or row.state} in {row.seconds:.1f} s"
             f" ({row.total_seconds:.1f} s in all), {row.cached_tokens}/{row.tokens_in} prompt"
@@ -363,8 +341,10 @@ def run_model(
                 print(line)
         return row
 
-    _unload(noter, model)
-    rows = [asked(p, "cold" if i == 0 else "warm", i + 1) for i, p in enumerate(probes)]
+    for name in cold:
+        unload(noter, name)
+    meeting = Embedder(asker, llm.embedding_model) if embed else None  # the window's, per meeting
+    rows = [asked(p, "cold" if i == 0 else "warm", i + 1, meeting) for i, p in enumerate(probes)]
     note_seconds: float | None = None
     try:
         note = write_note(
@@ -386,8 +366,15 @@ def run_model(
     except (LlmError, NoteError) as exc:
         print(f"{model} note: {type(exc).__name__}", flush=True)
     if note_seconds is not None:
-        rows.append(asked(probes[0], "after_note", 1))
-    _unload(noter, model)  # one model in VRAM at a time
+        rows.append(asked(probes[0], "after_note", 1, meeting))
+    if embed and any(r.excerpt for r in rows):  # a long call: the first question after a pre-read
+        for name in cold:
+            unload(noter, name)
+        prepared = Embedder(asker, llm.embedding_model)
+        seconds = pre_read(asker, model, prepared, case.utterances)
+        print(f"{model} pre-read: model loaded, parts embedded in {seconds:.1f} s", flush=True)
+        rows.append(asked(probes[0], "after_prepare", 1, prepared))
+    unload(noter, model)  # one model in VRAM at a time
     return rows, note_seconds
 
 
@@ -424,8 +411,13 @@ def format_summary(s: Summary, note_seconds: float | None) -> list[str]:
         f"- not discussed: {s.not_discussed}/{s.absent} (target {s.absent}/{s.absent})",
         f"- answers passing the check: {s.checked}/{s.facts} (target >= {s.facts - 2});"
         f" points kept {s.kept}, dropped {s.dropped}",
-        f"- first question, cold: {_seconds(s.cold_seconds)}",
+        f"- first question, cold: {_seconds(s.cold_seconds)} ({_seconds(s.cold_total)} in all)",
     ]
+    if s.after_prepare is not None:
+        lines.append(
+            f"- first question after the Ask tab's pre-read: {s.after_prepare.seconds:.1f} s"
+            f" ({s.after_prepare.total_seconds:.1f} s in all)"
+        )
     after = s.after_note
     if after is None:
         lines.append("- first question right after the note: -")

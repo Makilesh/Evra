@@ -154,7 +154,7 @@ Each one arrives with its feature, never before it (DECISIONS: Settings, first s
 - **Design sidecar:** `.impeccable/design.json` has no Ask component yet (DESIGN.md has the section).
 - **Asking timeout covers the pre-read:** the 180-second asking timeout also applies to the pre-read, so a cold read of a long call on a slow GPU could time out.
 - **Refused pre-read not retried:** a pre-read refused because another one is running is not retried.
-- **Long calls re-embed every window per question:** on a 2-hour call that is about 560 windows and 4 s a question, and every question now reads a full 8,000-token excerpt (11.5 s median against 5.9 s by words alone; DECISIONS "Long-call asking reads by meaning"). Keep a meeting's window vectors between questions (per transcript version), and consider a score cut-off so a question that words match narrowly reads fewer lines.
+- **Long calls read a full excerpt every time:** with meaning, every window scores above zero, so each question on a 2-hour call reads 8,200–9,050 tokens, against 0–8,700 by words alone. Follow-ups take a median of 7.5 s in all against 5.9 s (the windows themselves are now embedded once per meeting; DECISIONS "Long-call asking reads by meaning"). A score cut-off could let a question that words match narrowly read fewer lines.
 
 ## From the competitor review (2026-11-10)
 The full list (100 features, with links) is in `private/research/reports/`.

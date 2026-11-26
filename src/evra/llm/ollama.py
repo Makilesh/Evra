@@ -57,6 +57,13 @@ def _is_remote_entry(entry: Mapping[str, Any]) -> bool:
     return bool(entry.get("remote_host") or entry.get("remote_model"))
 
 
+# The embedding model's context, sent with every /api/embed so Ollama loads it once at this
+# size (a different size reloads it). 2.21 GiB of VRAM at Ollama's default 4096, 1.63 GiB here,
+# with the same vectors; at least 4x Evra's longest input (a 600-character point as a query,
+# 321 tokens). A longer input is cut at its end (`truncate`). DECISIONS.md, 2026-11-26.
+EMBED_NUM_CTX = 1536
+
+
 def _unit(vector: list[float]) -> list[float]:
     norm = math.sqrt(sum(x * x for x in vector))
     return [x / norm for x in vector] if norm else vector
@@ -154,6 +161,7 @@ class OllamaProvider:
                 "input": list(texts),
                 "truncate": True,
                 "keep_alive": self._settings.keep_alive,
+                "options": {"num_ctx": EMBED_NUM_CTX},
             },
             model=model,
         )

@@ -340,26 +340,60 @@ One entry per decision. Format: context · evidence · decision · consequences.
 
 ## Long-call asking reads by meaning (2026-11-26)
 - **Context:** a call too long for one prompt is asked through the transcript windows that best match the question. Words alone (BM25) choose nothing for a question that shares no word with its answer: Plan A's final review found that "What did I promise?" read nothing on such a call and answered "Not discussed in this meeting.".
-- **Evidence:** `tools/bakeoff_ask.py gemma4:12b --hours 2 --one-click`, first `--no-embed`, then `--embed`. The 60-minute synthetic call is joined to itself an hour later (1,680 lines, about 55,000 tokens), so every question reads parts of it. Asked: its 13 fact questions, the 3 topics it never mentions and the Ask tab's four one-click questions, each on its own. "In all" is the whole question (choosing parts, the answer, the check); the other times are the model's alone.
+- **Evidence:** `tools/bakeoff_ask.py gemma4:12b --hours 2 --one-click` (with `--no-embed` for words only). The 60-minute synthetic call is joined to itself an hour later (1,680 lines, about 55,000 tokens), so every question reads parts of it. Asked: its 13 fact questions, the 3 topics it never mentions and the Ask tab's four one-click questions, each on its own. "In all" is the whole question (choosing parts, the answer, the check); the other times are the model's alone. Meaning was measured twice: first with a new embedder for every question, then as the app now runs (one embedder per meeting, embedding context 1536):
 
-  | | words only | words and meaning |
-  | --- | --- | --- |
-  | facts correct (still correct after the check) | 13/13 (13/13) | 13/13 (13/13) |
-  | not discussed, of 3 | 3/3 | 3/3 |
-  | answers passing the check | 13/13 | 13/13 |
-  | one-click questions that read any lines | 2/4 | 4/4 |
-  | one-click points shown | 3 | 12 |
-  | first question, cold: model / in all | 12.8 s / 12.8 s | 10.9 s / 18.0 s |
-  | follow-ups, model: median / worst | 5.9 s / 9.0 s | 7.6 s / 12.2 s |
-  | follow-ups in all: median / worst | 5.9 s / 9.0 s | 11.5 s / 16.1 s |
-  | prompt per question | 0–8,700 tokens | 8,200–9,000 tokens |
+  | | words only | meaning, new embedder each question | meaning, one embedder per meeting |
+  | --- | --- | --- | --- |
+  | facts correct (still correct after the check) | 13/13 (13/13) | 13/13 (13/13) | 13/13 (13/13) |
+  | not discussed, of 3 | 3/3 | 3/3 | 3/3 |
+  | answers passing the check | 13/13 | 13/13 | 13/13 |
+  | one-click questions that read any lines | 2/4 | 4/4 | 4/4 |
+  | one-click points shown | 3 | 12 | 13 |
+  | first question, cold: model / in all | 12.8 s / 12.8 s | 10.9 s / 18.0 s | 10.2 s / 15.8 s |
+  | first question after the Ask tab's pre-read: model / in all | - | - | 5.8 s / 5.9 s |
+  | follow-ups, model: median / worst | 5.9 s / 9.0 s | 7.6 s / 12.2 s | 7.4 s / 13.5 s |
+  | follow-ups in all: median / worst | 5.9 s / 9.0 s | 11.5 s / 16.1 s | 7.5 s / 13.5 s |
+  | prompt per question | 0–8,700 tokens | 8,200–9,050 tokens | 8,200–9,050 tokens |
 
   - Words only: neither "promise" question read anything (no line holds the word). "What did we decide?" read 1,500 tokens and found nothing. "What's still open?" answered with 3 points.
-  - Words and meaning: all four read 8,600–9,000 tokens. "What did I promise?" kept 3 points and dropped 1. The meaning check kept one of them: "You promised to notify the team about the new hire's arrival", which cites "I'll also make sure the team knows she's coming so they can... you know, be prepared to welcome her.". It is true.
-  - A re-run of the four questions, judged against the fixture: every point shown was true and given to the right person. The two dropped points were true too: a Lisbon summary whose name was in a line it didn't cite, and "Right. I'll get on that.", whose meaning is in the line before.
-  - Ollama kept both models on the GPU (gemma4:12b 7.5 GB with its 32k context, qwen3-embedding:0.6b 2.2 GB; 11.1 of 12.2 GB in use), so neither was evicted between the ranking, the answer and the check.
-- **Decision:** asking a long call ranks each window by `0.5 · BM25 / best BM25 + 0.5 · max(0, cosine)`. The cosine is between the question (with the question before it, for a follow-up) as a query with `ASK_TASK`, and the window's text, embedded by the same Ollama (`llm.embedding_model`). This holds in the window and on the console. When embedding fails, words alone choose (`semantic_check_skipped`). Answers also get the meaning check, one batch after the reply. In excerpt mode the oldest exchanges are dropped until the parts fit, as on the whole-meeting path, before `too_long`.
+  - With meaning, all four read 8,600–9,050 tokens. In the first run "What did I promise?" kept 3 points and dropped 1. The meaning check kept one of them: "You promised to notify the team about the new hire's arrival", which cites "I'll also make sure the team knows she's coming so they can... you know, be prepared to welcome her.". It is true. In the second run it kept 3 and dropped 1 with no point kept by meaning (the answers differ between runs, even at temperature 0).
+  - A re-run of the four questions after the first run, judged against the fixture: every point shown was true and given to the right person. The two dropped points were true too: a Lisbon summary whose name was in a line it didn't cite, and "Right. I'll get on that.", whose meaning is in the line before.
+  - The pre-read, run with both models unloaded, loaded gemma4:12b and embedded the call's 560 windows in 10.3 s. The question after it embedded only its query.
+  - Ollama kept both models on the GPU (`ollama ps`: gemma4:12b 8.1 GB with its 32k context, qwen3-embedding:0.6b 1.8 GB at context 1536, "Embedding model context: 1536 tokens"), so neither was evicted between the ranking, the answer and the check.
+- **Decision:**
+  - Asking a long call ranks each window by `0.5 · BM25 / best BM25 + 0.5 · max(0, cosine)`. The cosine is between the question (with the question before it, for a follow-up) as a query with `ASK_TASK`, and the window's text, embedded by the same Ollama (`llm.embedding_model`). This holds in the window and on the console. When embedding fails, words alone choose (`semantic_check_skipped`).
+  - Answers also get the meaning check, one batch after the reply. In excerpt mode the oldest exchanges are dropped until the parts fit, as on the whole-meeting path, before `too_long`.
+  - The window keeps one embedder per meeting for the session (the two meetings asked most recently; the console keeps one per run). The Ask tab's pre-read of a long call loads the model, then embeds the call's windows into it. A question that arrives meanwhile waits for that embedding instead of doing it again. So a long call's windows are embedded once, and each question embeds only its query and its check.
 - **Consequences:**
-  - A long call's question now always reads a full excerpt (about 8,000 tokens), so the model takes longer on questions that words matched narrowly. Each question also embeds every window again (about 560 for 2 hours, about 4 s). A question about a 2-hour call takes about 11–12 s instead of about 6 s. Keeping a meeting's window vectors between questions would save the 4 s (BACKLOG).
+  - A long call's question always reads a full excerpt (about 8,000 tokens), so the model takes longer on questions that words matched narrowly: a median of 7.4 s against 5.9 s by words alone. A follow-up adds about 0.1 s for its query and check (median 7.5 s in all).
+  - The first question pays for the windows unless the pre-read ran: 15.8 s cold (both models loaded and every window embedded first) against 5.9 s after the pre-read.
+  - A meeting's vectors stay in memory while it is one of the two asked most recently, about 18 MB for a 2-hour call.
   - The model is called without lines only when embeddings fail and no word matches. The "no part matches" sentence (`askExcerptNothing`; the console prints the same, and a test compares the two) now says Evra looked only at the parts that match the question, without "the words of".
   - A call that fits one prompt is asked as before; its answer embeds only the points the word check drops, after the reply.
+
+## Embedding model context: 1536 tokens (2026-11-26)
+- **Context:** with both models loaded, Ollama held gemma4:12b at 7.54 GiB (its 32k context) and qwen3-embedding:0.6b at 2.21 GiB (Ollama's default 4096 context), 11.1 of the GPU's 12.2 GB. Evra's embedding inputs are short. The plan's rule: send a smaller `options.num_ctx` with `/api/embed` only if Ollama honours it, it saves at least 0.5 GB, the vectors stay the same (cosine ≥ 0.9999 against the default for 20 fixture windows), and it is at least 4× the longest input Evra sends.
+- **Evidence:** Ollama 0.34.4's API doc lists `options` ("additional model parameters listed in the documentation for the Modelfile") for `/api/embed` but does not name `num_ctx`, so a spike measured it, reading `/api/ps` after each load:
+
+  | num_ctx | size in VRAM | context Ollama reports | min cosine against the default (20 windows) |
+  | --- | --- | --- | --- |
+  | default | 2.21 GiB | 4096 | 1.000000 in 5 of 8 reloads, 0.999826 in 3 |
+  | 2048 | 1.98 GiB | 2048 | 1.000000 (1 trial) |
+  | 1536 | 1.63 GiB | 1536 | 1.000000 in 4 of 5 trials against a default of the same session, 0.999826 in 1 |
+  | 1024 | 1.28 GiB | 1024 | 1.000000 or 0.999826 |
+
+  - Honoured: Ollama reloads the model at the size asked for and reports it; a second call with the same size does not reload it.
+  - The 0.999826 is one of the 20 windows, whose vector flips between two values from one load to the next. It happens at every size, the default against itself included, so `num_ctx` does not change the vectors beyond what a reload already does.
+  - Longest inputs by `prompt_eval_count`:
+    - a 6-line window: 158 tokens (median 86, over the 289 windows of both fixtures);
+    - every question of the bake-offs as a query: at most 129;
+    - the longest point the schema allows (600 characters) as a query: 321.
+  - Past the context, `truncate: true` cuts the end of each input to fit (the doc's wording; measured: a 4,095-token text at `num_ctx` 1024 was read as 1,023 tokens), and `truncate: false` answers HTTP 400.
+  - A model unloads with `/api/generate` and `keep_alive: 0` (done_reason `unload`), embedding models too.
+  - `ollama ps` with both models loaded as Evra loads them after this change: gemma4:12b 8.1 GB at context 32768 and qwen3-embedding:0.6b 1.8 GB at context 1536, both 100% GPU (at the default context the embedding model took 2.4 GB).
+- **Decision:** every `/api/embed` request sends `options.num_ctx = 1536` (`EMBED_NUM_CTX` in `evra.llm.ollama`, one value, so Ollama loads the model once at that size). That saves 0.58 GiB against the default, is 4.8× the longest point query the schema allows and 9.7× the longest window, and leaves the vectors as they are.
+- **Consequences:**
+  - Both models together now take about 9.2 GiB instead of 9.75.
+  - An input past 1,536 tokens (a point citing very many lines) is embedded from its first 1,536 tokens.
+  - The first embedding after this change reloads the model once at the new size.
+  - 1024 would save more (0.93 GiB) but is under 4× the longest point query.
