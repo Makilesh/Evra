@@ -83,18 +83,49 @@ function without<T>(map: Record<string, T>, key: string): Record<string, T> {
   return rest;
 }
 
-/** The question replaced in place, or added when the meeting doesn't have it yet. */
-function withQuestion(detail: MeetingDetail, question: Question): MeetingDetail {
-  const known = detail.questions.some((q) => q.id === question.id);
-  const questions = known
-    ? detail.questions.map((q) => (q.id === question.id ? question : q))
-    : [...detail.questions, question];
+/** A question never goes back to "asking": a settled copy wins over an asking one. */
+function later(known: Question, incoming: Question): Question {
+  return known.state !== "asking" && incoming.state === "asking" ? known : incoming;
+}
+
+/** The question merged in place, or added when the list doesn't have it yet. */
+function withQuestion(questions: Question[], question: Question): Question[] {
+  const index = questions.findIndex((q) => q.id === question.id);
+  if (index < 0) return [...questions, question];
+  return questions.map((q, i) => (i === index ? later(q, question) : q));
+}
+
+/** The state with a question merged into its meeting, when that meeting is open. */
+function withMeetingQuestion(s: EvraState, meetingId: string, question: Question): EvraState {
+  const detail = s.detail;
+  if (detail?.meeting.id !== meetingId) return s;
+  return { ...s, detail: { ...detail, questions: withQuestion(detail.questions, question) } };
+}
+
+type Heard = Map<string, Map<string, Question>>;
+
+function hear(heard: Heard, meetingId: string, question: Question): void {
+  const byId = heard.get(meetingId) ?? new Map<string, Question>();
+  const known = byId.get(question.id);
+  byId.set(question.id, known ? later(known, question) : question);
+  heard.set(meetingId, byId);
+}
+
+/** A meeting as Python read it, with the questions heard of since laid over its own. */
+function withHeard(detail: MeetingDetail, heard: Map<string, Question> | undefined): MeetingDetail {
+  if (!heard) return detail;
+  let questions = detail.questions;
+  for (const question of heard.values()) questions = withQuestion(questions, question);
   return { ...detail, questions };
 }
 
 export function useEvra() {
   const [state, setState] = useState<EvraState>(INITIAL);
   const selected = useRef<string | null>(null);
+  // Every question view this window has heard of (ask replies, question.updated), by meeting. A
+  // reload of the meeting that read it a moment earlier must not put an answer back to
+  // "asking", and an answer that lands while its meeting is still loading must not be lost.
+  const heard = useRef<Heard>(new Map());
 
   const refreshMeetings = useCallback(async () => {
     try {
@@ -108,7 +139,9 @@ export function useEvra() {
   const loadDetail = useCallback(async (id: string) => {
     try {
       const detail = await (await getApi()).get_meeting(id);
-      if (selected.current === id) setState((s) => ({ ...s, detail }));
+      if (selected.current === id) {
+        setState((s) => ({ ...s, detail: detail && withHeard(detail, heard.current.get(id)) }));
+      }
     } catch {
       // keep what is shown
     }
@@ -176,11 +209,12 @@ export function useEvra() {
             s.detail?.meeting.id === meeting_id ? { ...s.detail, meeting: { ...s.detail.meeting, title } } : s.detail,
         }));
       }),
-      // An answer lands on the open meeting. It may beat the reply to ask_meeting (a fast
-      // failure), so an unknown question is added rather than dropped.
+      // An answer lands. It may beat the reply to ask_meeting (a fast failure), so an unknown
+      // question is added rather than dropped; a meeting still loading gets it from `heard`.
       onEvent("question.updated", (payload) => {
         const { meeting_id, question } = payload as QuestionUpdated;
-        setState((s) => (s.detail?.meeting.id === meeting_id ? { ...s, detail: withQuestion(s.detail, question) } : s));
+        hear(heard.current, meeting_id, question);
+        setState((s) => withMeetingQuestion(s, meeting_id, question));
       }),
     ];
     getApi()
@@ -240,12 +274,9 @@ export function useEvra() {
     }
     const question = reply.question;
     if (!reply.ok || !question) return reply.reason ?? "busy";
-    setState((s) => {
-      const detail = s.detail;
-      // already there when its answer came first: keep the answer
-      if (!detail || detail.meeting.id !== meetingId || detail.questions.some((q) => q.id === question.id)) return s;
-      return { ...s, detail: { ...detail, questions: [...detail.questions, question] } };
-    });
+    // when its answer came first, the settled copy stays (see `later`)
+    hear(heard.current, meetingId, question);
+    setState((s) => withMeetingQuestion(s, meetingId, question));
     return null;
   }, []);
 

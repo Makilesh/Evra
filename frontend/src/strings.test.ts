@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AskFailureReason } from "@/bridge";
-import { askFailureText, askRefusalText, canRetry, noteFailureText } from "@/strings";
+import { askFailureText, askRefusalText, canAskAgain, canRetry, noteFailureText } from "@/strings";
 
 describe("cloud_model failure", () => {
   it("says what happened and what to do", () => {
@@ -50,5 +50,14 @@ describe("asking", () => {
     expect(askRefusalText("busy")).toBe("Evra is still answering the last question.");
     expect(askRefusalText("recording")).toBe("You can ask once the recording ends.");
     expect(askRefusalText("no_transcript")).toBe("There's no transcript to ask about yet.");
+  });
+
+  it("offers to ask again only where asking again can help", () => {
+    expect(canAskAgain("too_long")).toBe(false);
+    expect(canAskAgain("no_transcript")).toBe(false);
+    for (const reason of reasons.filter((r) => r !== "too_long" && r !== "no_transcript")) {
+      expect(canAskAgain(reason)).toBe(true);
+    }
+    expect(canAskAgain(undefined)).toBe(true);
   });
 });

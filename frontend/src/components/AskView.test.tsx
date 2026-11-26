@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import type { Question, Utterance } from "@/bridge";
@@ -154,6 +154,53 @@ it("announces when an answer is ready", () => {
   expect(status).toHaveTextContent("");
   rerender(<AskView {...props} questions={[ANSWERED]} />);
   expect(status).toHaveTextContent("Answer ready");
+});
+
+it("announces a failed question with its reason", () => {
+  const { props, rerender } = view({ questions: [question({ state: "asking" })] });
+  rerender(<AskView {...props} questions={[question({ state: "failed", reason: "ollama_down" })]} />);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Ollama isn't running. Start it from the system tray (or install it from ollama.com).",
+  );
+});
+
+it("announces that an accepted question is being read", async () => {
+  view();
+  await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Reading the meeting…"));
+});
+
+it("keeps the answer's announcement when the answer lands before the reply", async () => {
+  let land = () => {};
+  const { props, rerender } = view({
+    onAsk: vi.fn(async () => {
+      land();
+      return null;
+    }),
+  });
+  land = () => rerender(<AskView {...props} questions={[ANSWERED]} />);
+  await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
+  await waitFor(() => expect(props.onAsk).toHaveBeenCalled());
+  expect(screen.getByRole("status")).toHaveTextContent("Answer ready");
+});
+
+it("offers Ask again only where asking again can help", () => {
+  view({
+    questions: [
+      question({ state: "failed", reason: "too_long" }),
+      question({ id: "q2", text: "When is it due?", state: "failed", reason: "no_transcript" }),
+    ],
+  });
+  expect(screen.getByText("This question needs more room than the model's settings allow.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ask again" })).toBeNull();
+});
+
+it("prepares once though its callback is a new function on every render", () => {
+  const prepare = vi.fn();
+  const { props, rerender } = view({ onPrepare: () => prepare() });
+  rerender(<AskView {...props} onPrepare={() => prepare()} />);
+  rerender(<AskView {...props} onPrepare={() => prepare()} questions={[ANSWERED]} />);
+  expect(prepare).toHaveBeenCalledTimes(1);
 });
 
 it("scrolls the newest question into view when it is added, and again when its answer lands", () => {

@@ -123,6 +123,12 @@ export function canRetry(reason: NoteFailureReason): boolean {
   return reason !== "too_long" && reason !== "no_transcript" && reason !== "cloud_model";
 }
 
+/** Asking the same question again can't help when it needs more room or there's no transcript.
+ *  A cloud model can: the owner may pick another model in Settings first. */
+export function canAskAgain(reason: AskFailureReason | undefined): boolean {
+  return reason !== "too_long" && reason !== "no_transcript";
+}
+
 /** The note's failure texts in answer words; Ollama's own problems read the same for both. */
 export function askFailureText(reason: AskFailureReason | undefined): string {
   switch (reason) {

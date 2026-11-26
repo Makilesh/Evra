@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { emit, setApiForTests, type AskRefusal, type MeetingSummary, type Question } from "@/bridge";
+import { emit, setApiForTests, type AskRefusal, type MeetingDetail, type MeetingSummary, type Question } from "@/bridge";
 import { DETAIL, MEETING, makeFakeApi } from "@/test/fakeApi";
 import { useEvra } from "@/useEvra";
 
@@ -188,6 +188,59 @@ it("keeps an answer that arrives before the reply to the question", async () => 
     await result.current.ask("m1", "What did I promise?");
   });
   expect(result.current.state.detail?.questions).toEqual([ANSWERED]);
+});
+
+/** get_meeting answers DETAIL at once the first `quick` times, then waits for `release`. */
+function slowReload(quick: number) {
+  let calls = 0;
+  const reload = { release: (_detail: MeetingDetail) => {} };
+  const get_meeting = vi.fn(() =>
+    calls++ < quick
+      ? Promise.resolve(DETAIL)
+      : new Promise<MeetingDetail | null>((resolve) => {
+          reload.release = resolve;
+        }),
+  );
+  return { get_meeting, reload };
+}
+
+it("keeps an answer when a slower reload of the meeting lands after it", async () => {
+  const { get_meeting, reload } = slowReload(1);
+  setApiForTests(makeFakeApi({ get_meeting }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => result.current.select("m1")); // read before the answer was stored
+  await waitFor(() => expect(get_meeting).toHaveBeenCalledTimes(2));
+  act(() => emit("question.updated", { meeting_id: "m1", question: ANSWERED }));
+  expect(result.current.state.detail?.questions).toEqual([ANSWERED]);
+  await act(async () => reload.release({ ...DETAIL, questions: [ASKING] }));
+  expect(result.current.state.detail?.questions).toEqual([ANSWERED]);
+});
+
+it("keeps an answer that arrives while its meeting is still loading", async () => {
+  const { get_meeting, reload } = slowReload(0);
+  setApiForTests(makeFakeApi({ get_meeting }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(get_meeting).toHaveBeenCalledTimes(1));
+  expect(result.current.state.selectedId).toBe("m1");
+  expect(result.current.state.detail).toBeNull();
+  act(() => emit("question.updated", { meeting_id: "m1", question: ANSWERED }));
+  await act(async () => reload.release({ ...DETAIL, questions: [] }));
+  expect(result.current.state.detail?.questions).toEqual([ANSWERED]);
+});
+
+it("keeps a question just asked when a reload read the meeting before it", async () => {
+  const { get_meeting, reload } = slowReload(1);
+  setApiForTests(makeFakeApi({ get_meeting, ask_meeting: vi.fn(async () => ({ ok: true, question: ASKING })) }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => result.current.select("m1"));
+  await waitFor(() => expect(get_meeting).toHaveBeenCalledTimes(2));
+  await act(async () => {
+    await result.current.ask("m1", "What did I promise?");
+  });
+  await act(async () => reload.release({ ...DETAIL, questions: [] }));
+  expect(result.current.state.detail?.questions).toEqual([ASKING]);
 });
 
 it("asks Python to read the meeting ahead, ignoring the reply and errors", async () => {

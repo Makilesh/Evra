@@ -201,7 +201,8 @@ it("asks about the open meeting and shows the answer when it arrives", async () 
   expect(api.prepare_ask).toHaveBeenCalledWith("m1");
   await userEvent.type(screen.getByRole("textbox", { name: "Ask about this meeting" }), "What did I promise?{Enter}");
   expect(api.ask_meeting).toHaveBeenCalledWith("m1", "What did I promise?");
-  expect(await screen.findByText("Reading the meeting…")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Reading the meeting…"));
+  expect(screen.getByRole("textbox", { name: "Ask about this meeting" })).toBeDisabled();
   act(() =>
     emit("question.updated", {
       meeting_id: "m1",
@@ -218,5 +219,6 @@ it("asks about the open meeting and shows the answer when it arrives", async () 
   );
   expect(screen.getByText("You'll send the proposal by Thursday.")).toBeInTheDocument();
   expect(screen.queryByText("Reading the meeting…")).toBeNull();
+  expect(screen.getByRole("status")).toHaveTextContent("Answer ready");
   expect(screen.getByRole("textbox", { name: "Ask about this meeting" })).toBeEnabled();
 });

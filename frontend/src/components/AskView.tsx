@@ -3,7 +3,7 @@ import type { AskRefusal, Question, Utterance } from "@/bridge";
 import { PointRow } from "@/components/PointRow";
 import { cn } from "@/lib/utils";
 import { noteQuotes } from "@/note";
-import { askFailureText, askRefusalText, strings } from "@/strings";
+import { askFailureText, askRefusalText, canAskAgain, strings } from "@/strings";
 
 interface AskViewProps {
   questions: Question[];
@@ -33,12 +33,13 @@ export function AskView({ questions, utterances, isLive, onAsk, onPrepare, onCit
   const sending = useRef(false);
   const refocus = useRef(false);
 
-  // An answer landing is announced once: a question left "asking" (or arrived settled).
+  // How a question ended is announced once, when it leaves "asking" (or arrives settled): the
+  // answer is ready, or why it failed.
   const settled = questions.filter((q) => q.state !== "asking").length;
   const [seenSettled, setSeenSettled] = useState(settled);
   if (settled !== seenSettled) {
     setSeenSettled(settled);
-    if (settled > seenSettled) setAnnounced(strings.askAnswered);
+    if (settled > seenSettled) setAnnounced(outcomeText(questions.findLast((q) => q.state !== "asking")));
   }
 
   // Python reads the meeting ahead while the owner types: once, when the tab opens.
@@ -77,9 +78,11 @@ export function AskView({ questions, utterances, isLive, onAsk, onPrepare, onCit
     if (refused) {
       refocus.current = false;
       setRefusal(refused);
-    } else if (typed) {
-      setDraft("");
+      return;
     }
+    // taken: say it is being read, unless its answer has already landed (cleared above)
+    setAnnounced((now) => now || strings.askThinking);
+    if (typed) setDraft("");
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -227,14 +230,16 @@ function Answer({ question, byId, busy, onAskAgain, onCite }: Omit<QuestionBlock
           <p className="sheet-point py-3.5">{askFailureText(question.reason)}</p>
           <span className="sheet-mid on-rule" />
           <div className="sheet-quotes py-3.5">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onAskAgain}
-              className="rounded-lg bg-ink px-3 py-1 font-semibold text-pad transition-colors enabled:hover:bg-ink/88 disabled:cursor-not-allowed disabled:bg-ink/40"
-            >
-              {strings.askAgain}
-            </button>
+            {canAskAgain(question.reason) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onAskAgain}
+                className="rounded-lg bg-ink px-3 py-1 font-semibold text-pad transition-colors enabled:hover:bg-ink/88 disabled:cursor-not-allowed disabled:bg-ink/40"
+              >
+                {strings.askAgain}
+              </button>
+            )}
           </div>
         </div>
       );
@@ -248,4 +253,8 @@ function BandRow({ text }: { text: string }) {
       <span className="sheet-mid on-rule" />
     </div>
   );
+}
+
+function outcomeText(question: Question | undefined): string {
+  return question?.state === "failed" ? askFailureText(question.reason) : strings.askAnswered;
 }
