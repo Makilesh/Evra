@@ -86,4 +86,4 @@ def test_load_part_needs_one_prompt_section() -> None:
         == 1
     )
     with pytest.raises(ValueError):
-        load_part("a8_title")
+        load_part("a9_repair")

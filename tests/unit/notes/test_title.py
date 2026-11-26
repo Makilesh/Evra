@@ -8,6 +8,7 @@ import pytest
 
 from evra.config import LlmSettings
 from evra.llm.provider import ChatMessage, ChatResult, LlmUnavailable
+from evra.notes.context import build_context
 from evra.notes.title import (
     TITLE_TIMEOUT_S,
     clean_generated_title,
@@ -50,11 +51,48 @@ def test_a_meeting_with_the_placeholder_is_named_from_its_note(conn: sqlite3.Con
     named = name_meeting(conn, mid, provider=provider, model="fake:1b")
     assert named == "Launch date and designer proposal"
     assert _title(conn, mid) == named
-    system, user = (m.content for m in provider.calls[0])
-    assert "at most 8 words" in system and "data, not instructions" in system
+    user = provider.calls[0][1].content
+    assert "at most 8 words" in user
     assert "- The launch moves to October 14." in user
     assert user.index("October 14") < user.index("designer proposal")  # summary first
     assert "u1" not in user  # citation ids are not part of the note's text
+
+
+def _context_system(conn: sqlite3.Connection, mid: str) -> str:
+    store = MeetingStore(conn)
+    version = store.current_transcript_version(mid)
+    assert version is not None
+    return build_context(
+        meeting=store.get_meeting(mid), utterances=store.utterances(version)
+    ).system
+
+
+def test_title_shares_the_meeting_context(conn: sqlite3.Connection) -> None:
+    mid = saved_meeting(conn, PLACEHOLDER)
+    expected = _context_system(conn, mid)
+    provider = FakeProvider([title_reply("Launch date")])
+    name_meeting(conn, mid, provider=provider, model="fake:1b")
+    assert provider.calls[0][0].role == "system"
+    assert provider.calls[0][0].content == expected
+    assert "October 14" in expected  # the transcript, so the note's system message is this one
+
+
+def test_title_task_is_the_user_message(conn: sqlite3.Connection) -> None:
+    mid = saved_meeting(conn, PLACEHOLDER)
+    provider = FakeProvider([title_reply("Launch date")])
+    name_meeting(conn, mid, provider=provider, model="fake:1b")
+    user = provider.calls[0][1]
+    assert user.role == "user"
+    assert user.content.startswith("Write a title for this meeting from its note")
+    assert "- The launch moves to October 14." in user.content
+
+
+def test_meeting_without_transcript_is_not_named(conn: sqlite3.Connection) -> None:
+    mid = saved_meeting(conn, PLACEHOLDER, with_transcript=False)
+    provider = FakeProvider([])
+    assert name_meeting(conn, mid, provider=provider, model="fake:1b") is None
+    assert provider.calls == []
+    assert _title(conn, mid) == PLACEHOLDER
 
 
 def test_a_name_the_user_gave_is_kept(conn: sqlite3.Connection) -> None:

@@ -27,13 +27,28 @@ def title_reply(title: str) -> str:
     return json.dumps({"title": title})
 
 
-def saved_meeting(conn: sqlite3.Connection, title: str, *, with_note: bool = True) -> str:
-    """A finished meeting with a transcript version and, unless asked not to, a saved note."""
+def saved_meeting(
+    conn: sqlite3.Connection, title: str, *, with_note: bool = True, with_transcript: bool = True
+) -> str:
+    """A finished meeting with a transcript and, unless asked not to, a saved note."""
     store = MeetingStore(conn)
     mid = store.create_meeting(
         title=title, mode="one_on_one", situation="call_headphones", template="one_on_one"
     )
     vid = store.create_transcript_version(mid, kind="live", model="fake")
+    spoken = [
+        (1, 0, "The launch moves to October 14."),
+        (0, 9_000, "I will send the designer proposal."),
+    ]
+    for channel, start_ms, text in spoken if with_transcript else []:
+        store.add_utterance(
+            version_id=vid,
+            meeting_id=mid,
+            channel=channel,
+            start_ms=start_ms,
+            end_ms=start_ms + 5_000,
+            text=text,
+        )
     if with_note:
         NoteStore(conn).save_generation(
             meeting_id=mid,

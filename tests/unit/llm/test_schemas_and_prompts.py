@@ -30,7 +30,7 @@ def test_schema_is_plain_json_schema_for_ollama() -> None:
     assert set(schema["required"]) == {"summary", "sections"}
 
 
-@pytest.mark.parametrize("prompt_id", ["a8_title", "a9_repair"])
+@pytest.mark.parametrize("prompt_id", ["a9_repair"])
 def test_prompt_files_have_a_version_and_both_parts(prompt_id: str) -> None:
     prompt = load_prompt(prompt_id)
     assert re.fullmatch(r"a\d+-v\d+", prompt.version)
@@ -66,3 +66,11 @@ def test_a0_context_has_a_version_and_one_prompt_section() -> None:
     part = load_part("a0_context")
     assert re.fullmatch(r"a\d+-v\d+", part.version)
     assert part.text.index("{transcript}") < part.text.index("{title}")
+
+
+def test_a8_is_a_task_part_for_the_shared_context() -> None:
+    from evra.llm.prompt_files import load_part
+
+    part = load_part("a8_title")
+    assert part.version == "a8-v2"
+    assert "{note}" in part.text and part.text.startswith("Write a title for this meeting")

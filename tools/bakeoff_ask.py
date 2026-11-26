@@ -7,7 +7,8 @@
 Per model: facts answered correctly (the model's answer holds every keyword of the fact, "a|b"
 meaning either, and again after the transcript check), absent topics answered "not
 discussed", answers the check lets through, the first question from a cold model, the first
-question right after the same model wrote the note (A1): seconds, Ollama's prompt token count
+question after the same model wrote the note (A1) and named the meeting (A8), the window's
+order: seconds, Ollama's prompt token count
 and how many of those tokens it reused from its cache, then the follow-ups (median and worst
 seconds) and whether only parts of the call were read. Each question stands alone (no earlier
 turns). Synthetic fixtures only (BUILD.md §9.3).
@@ -30,14 +31,16 @@ from typing import Any, Literal
 from evra.config import LlmSettings
 from evra.console import safe_console
 from evra.llm.ollama import OllamaProvider
+from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, ChatResult, LlmError, LlmProvider
-from evra.llm.schemas import MeetingAnswer
+from evra.llm.schemas import MeetingAnswer, MeetingTitle
 from evra.notes.ask import ask_meeting, ask_settings
 from evra.notes.context import MeetingContext, build_context
 from evra.notes.errors import NoteError
 from evra.notes.structured import parse_reply
 from evra.notes.templates import load_template
-from evra.notes.validate import Grounder
+from evra.notes.title import clean_generated_title, title_settings
+from evra.notes.validate import CheckedNote, Grounder
 from evra.notes.writer import write_note
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
@@ -259,6 +262,26 @@ def _explain(provider: Recorder, grounder: Grounder, context: MeetingContext) ->
     return lines
 
 
+def title_after_note(
+    llm: LlmSettings, model: str, case: Case, note: CheckedNote
+) -> tuple[str | None, float]:
+    """The window's next step: the title call (A8) on the meeting's shared context, from the
+    note just written. Returns the cleaned title and the seconds it took."""
+    bullets = [b.text for b in note.summary] + [b.text for s in note.sections for b in s.bullets]
+    text = "\n".join("- " + " ".join(b.split()) for b in bullets)
+    context = build_context(meeting=case.meeting, utterances=case.utterances)
+    task = load_part("a8_title")
+    started = time.monotonic()
+    reply = OllamaProvider(title_settings(llm)).chat_json(
+        model,
+        [ChatMessage("system", context.system), ChatMessage("user", task.render(note=text))],
+        MeetingTitle.model_json_schema(),
+    )
+    seconds = time.monotonic() - started
+    raw, _ = parse_reply(MeetingTitle, reply.content)
+    return (None if raw is None else clean_generated_title(raw.title)), seconds
+
+
 def _unload(provider: OllamaProvider, model: str) -> None:
     """Unload the model and wait until Ollama no longer lists it, so the next call is cold."""
     with contextlib.suppress(LlmError):
@@ -273,8 +296,8 @@ def run_model(
     model: str, case: Case, probes: Sequence[Probe], llm: LlmSettings, *, show: bool
 ) -> tuple[list[Row], float | None]:
     """The first question loads the model (cold), the rest follow it (warm). Then the same model
-    writes the note with the app's note settings, and the first question is asked again at once,
-    inside the note's keep-alive."""
+    writes the note with the app's note settings, names the meeting from it, and the first question
+    is asked again at once, inside the note's keep-alive."""
     asking = ask_settings(llm)
     asker = Recorder(OllamaProvider(asking))
     noter = OllamaProvider(llm)
@@ -307,6 +330,12 @@ def run_model(
         )
         note_seconds = note.seconds
         print(f"{model} note: {note.note.kept} points in {note.seconds:.1f} s", flush=True)
+        # the window names the meeting between the note and the first question
+        try:
+            title, title_seconds = title_after_note(llm, model, case, note.note)
+            print(f"{model} title: {title!r} in {title_seconds:.1f} s", flush=True)
+        except (LlmError, NoteError) as exc:
+            print(f"{model} title: {type(exc).__name__}", flush=True)
     except (LlmError, NoteError) as exc:
         print(f"{model} note: {type(exc).__name__}", flush=True)
     if note_seconds is not None:
@@ -354,7 +383,7 @@ def format_summary(s: Summary, note_seconds: float | None) -> list[str]:
     else:
         share = after.cached_tokens / after.tokens_in if after.tokens_in else 0.0
         lines.append(
-            f"- first question right after the note (written in {_seconds(note_seconds)}):"
+            f"- first question after the note and title (note written in {_seconds(note_seconds)}):"
             f" {after.seconds:.1f} s; prompt {after.tokens_in} tokens, {after.cached_tokens}"
             f" reused ({share:.0%})"
         )

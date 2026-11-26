@@ -68,6 +68,7 @@ in `.data/` inside the repo. `evra run --data-dir PATH` puts it elsewhere.
 | `uv run evra transcribe FILE.wav` | Transcribe a WAV file |
 | `uv run evra record 60` | Record a 1:1 for 60 s with a live transcript in the terminal |
 | `uv run evra note [--model NAME]` | Write the note for the latest recording |
+| `uv run python -m evra ask "QUESTION" [--meeting-id ID]` | Ask the latest meeting (or `--meeting-id`) a question; needs Ollama running |
 
 ## How it works
 

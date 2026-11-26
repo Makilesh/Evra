@@ -14,9 +14,10 @@ import structlog
 from pydantic import ValidationError
 
 from evra.config import LlmSettings
-from evra.llm.prompt_files import load_prompt
+from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, LlmProvider
 from evra.llm.schemas import MeetingTitle
+from evra.notes.context import build_context
 from evra.store.meetings import MeetingStore
 from evra.store.notes import NoteStore, StoredNote
 
@@ -93,11 +94,17 @@ def name_meeting(
     text = note_text(note) if note is not None else ""
     if not text:
         return None
-    prompt = load_prompt("a8_title")
-    system, user = prompt.render(note=text)
+    version_id = store.current_transcript_version(meeting_id)
+    utterances = store.utterances(version_id) if version_id else []
+    if not utterances:
+        return None
+    # The same system message the note was written with, so Ollama keeps the meeting's
+    # processed prompt for the first question (BUILD.md 7.4).
+    context = build_context(meeting=store.get_meeting(meeting_id), utterances=utterances)
+    task = load_part("a8_title")
     reply = provider.chat_json(
         model,
-        [ChatMessage("system", system), ChatMessage("user", user)],
+        [ChatMessage("system", context.system), ChatMessage("user", task.render(note=text))],
         MeetingTitle.model_json_schema(),
     )
     if reply.truncated:
@@ -115,5 +122,10 @@ def name_meeting(
     if not store.rename_meeting_if(meeting_id, title, expected=current):
         log.info("meeting_not_named", reason="renamed_meanwhile")
         return None
-    log.info("meeting_named", model=model, words=len(title.split()), prompt=prompt.version)
+    log.info(
+        "meeting_named",
+        model=model,
+        words=len(title.split()),
+        prompt=f"{context.version}+{task.version}",
+    )
     return title
