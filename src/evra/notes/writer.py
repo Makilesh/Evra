@@ -3,51 +3,39 @@ grounding. Nothing here logs or raises with prompt, reply or transcript text."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from pydantic import ValidationError
 
 from evra.config import LlmSettings
-from evra.llm.prompt_files import load_prompt
 from evra.llm.provider import ChatMessage, ChatResult, LlmProvider
 from evra.llm.schemas import NoteDraft
+from evra.notes.errors import (
+    NoteCutOff,
+    NoteError,
+    NoteInvalid,
+    NoteTooLong,
+    NoTranscript,
+)
 from evra.notes.prompt_input import build_note_prompt
+from evra.notes.structured import chat_structured
 from evra.notes.templates import Template
 from evra.notes.validate import CheckedNote, check_note
 from evra.store.meetings import Utterance
 
+__all__ = [
+    "NoTranscript",
+    "NoteCutOff",
+    "NoteError",
+    "NoteInvalid",
+    "NoteResult",
+    "NoteTooLong",
+    "write_note",
+]
+
 log = structlog.get_logger(__name__)
-
-
-class NoteError(Exception):
-    """The note could not be written."""
-
-
-class NoTranscript(NoteError):
-    """There is nothing to write a note from."""
-
-
-class NoteTooLong(NoteError):
-    def __init__(self, estimated: int, limit: int) -> None:
-        super().__init__(f"about {estimated} prompt tokens, limit {limit}")
-        self.estimated = estimated
-        self.limit = limit
-
-
-class NoteCutOff(NoteError):
-    def __init__(self, limit: int) -> None:
-        super().__init__(f"the reply hit the {limit}-token output limit")
-        self.limit = limit
-
-
-class NoteInvalid(NoteError):
-    def __init__(self, model: str) -> None:
-        super().__init__(f"{model} returned invalid JSON twice")
-        self.model = model
 
 
 @dataclass(frozen=True)
@@ -60,25 +48,6 @@ class NoteResult:
     tokens_out: int
     seconds: float
     repaired: bool
-
-
-def strip_fences(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("\n", 1)[1] if "\n" in stripped else ""
-        stripped = stripped.rstrip().removesuffix("```")
-    return stripped.strip()
-
-
-def _parse(content: str) -> tuple[NoteDraft | None, str]:
-    try:
-        return NoteDraft.model_validate_json(strip_fences(content)), ""
-    except ValidationError as exc:
-        problems = [
-            f"{'.'.join(str(p) for p in e['loc']) or 'document'}: {e['msg']}"
-            for e in exc.errors(include_input=False, include_url=False)
-        ]
-        return None, "; ".join(problems)[:2000]
 
 
 def write_note(
@@ -103,53 +72,43 @@ def write_note(
         raise NoteTooLong(prompt.estimated_tokens, limit)
     messages = [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)]
 
-    def call(chat: list[ChatMessage]) -> ChatResult:
-        result = provider.chat_json(model, chat, schema)
-        if result.truncated:  # a cut-off reply would be "repaired" into a shortened note
-            raise NoteCutOff(settings.max_output_tokens)
-        return result
+    def too_long(first: ChatResult) -> None:
+        if first.tokens_in >= room:  # Ollama cut the prompt to fit its context window
+            raise NoteTooLong(first.tokens_in, room)
 
-    calls: list[ChatResult] = [call(messages)]
-    if calls[0].tokens_in >= room:  # Ollama cut the prompt to fit its context window
-        raise NoteTooLong(calls[0].tokens_in, room)
-    draft, error = _parse(calls[0].content)
+    reply = chat_structured(
+        provider,
+        model,
+        messages,
+        NoteDraft,
+        max_output_tokens=settings.max_output_tokens,
+        invalid_event="note_json_invalid",
+        after_first=too_long,
+    )
     version = prompt.prompt_version
-    if draft is None:
-        repair = load_prompt("a9_repair")
-        system, user = repair.render(
-            schema=json.dumps(schema, separators=(",", ":")),
-            error=error,
-            bad_output=calls[0].content,
-        )
-        repair_messages = [ChatMessage("system", system), ChatMessage("user", user)]
-        calls.append(call(repair_messages))
-        version = f"{version}+{repair.version}"
-        draft, error = _parse(calls[1].content)
-        if draft is None:
-            log.warning("note_json_invalid", model=model, error=error)
-            raise NoteInvalid(model)
+    if reply.repair_version:
+        version = f"{version}+{reply.repair_version}"
     note = check_note(
-        draft,
+        reply.value,
         aliases=prompt.aliases,
         utterance_text={u.id: u.text for u in utterances},
         template=template,
     )
-    repaired = len(calls) > 1
     log.info(
         "note_written",
         model=model,
         kept=note.kept,
         dropped=note.dropped,
         reasons=dict(note.drop_reasons),
-        repaired=repaired,
+        repaired=reply.repaired,
     )
     return NoteResult(
         note=note,
         model=model,
         prompt_version=version,
         template=template.id,
-        tokens_in=sum(c.tokens_in for c in calls),
-        tokens_out=sum(c.tokens_out for c in calls),
-        seconds=sum(c.seconds for c in calls),
-        repaired=repaired,
+        tokens_in=reply.tokens_in,
+        tokens_out=reply.tokens_out,
+        seconds=reply.seconds,
+        repaired=reply.repaired,
     )

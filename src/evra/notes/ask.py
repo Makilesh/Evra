@@ -11,16 +11,16 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import structlog
-from pydantic import ValidationError
 
 from evra.config import LlmSettings
-from evra.llm.prompt_files import load_part, load_prompt
-from evra.llm.provider import ChatMessage, ChatResult, LlmProvider
+from evra.llm.prompt_files import load_part
+from evra.llm.provider import ChatMessage, LlmProvider
 from evra.llm.schemas import MeetingAnswer
 from evra.notes.bm25 import Bm25, tokenize
 from evra.notes.context import NONE, MeetingContext, as_data, build_context, estimate_tokens
+from evra.notes.errors import NoteTooLong, NoTranscript
+from evra.notes.structured import chat_structured
 from evra.notes.validate import CheckedBullet, Grounder
-from evra.notes.writer import NoteCutOff, NoteInvalid, NoTranscript, strip_fences
 from evra.store.meetings import Utterance
 
 log = structlog.get_logger(__name__)
@@ -29,6 +29,7 @@ MAX_QUESTION_CHARS = 500
 HISTORY_TURNS = 3
 WINDOW_LINES, WINDOW_STRIDE = 6, 3
 EXCERPT_TOKENS = 8000
+LINE_OVERHEAD_TOKENS = 10  # the printed "[u:N] [mm:ss] Speaker: " before each line
 NOT_DISCUSSED = "Not discussed in this meeting."
 AnswerState = Literal["answered", "not_found", "unchecked"]
 
@@ -48,9 +49,9 @@ class AskResult:
     prompt_version: str
     tokens_in: int
     tokens_out: int
-    cached_tokens: int
     seconds: float
     dropped: int
+    cached_tokens: int = 0
 
 
 def ask_settings(llm: LlmSettings) -> LlmSettings:
@@ -75,7 +76,8 @@ def whole_meeting_fits(context: MeetingContext, user_tokens: int, settings: LlmS
 def excerpt_ids(
     utterances: Sequence[Utterance], question: str, budget_tokens: int = EXCERPT_TOKENS
 ) -> set[str]:
-    """The lines of the windows that best match the question, best window first, within budget."""
+    """The lines of the windows that best match the question, best window first, while their
+    printed size stays within the budget."""
     ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
     starts = range(0, len(ordered), WINDOW_STRIDE)
     windows = [ordered[i : i + WINDOW_LINES] for i in starts]
@@ -87,7 +89,7 @@ def excerpt_ids(
     used = 0
     for i in ranked:
         fresh = [u for u in windows[i] if u.id not in chosen]
-        cost = sum(estimate_tokens(u.text) for u in fresh)
+        cost = sum(estimate_tokens(u.text) + LINE_OVERHEAD_TOKENS for u in fresh)
         if used + cost > budget_tokens:
             continue
         chosen.update(u.id for u in fresh)
@@ -116,17 +118,6 @@ def build_ask_messages(
     return messages, f"{context.version}+{task.version}"
 
 
-def _parse(content: str) -> tuple[MeetingAnswer | None, str]:
-    try:
-        return MeetingAnswer.model_validate_json(strip_fences(content)), ""
-    except ValidationError as exc:
-        problems = [
-            f"{'.'.join(str(p) for p in e['loc']) or 'document'}: {e['msg']}"
-            for e in exc.errors(include_input=False, include_url=False)
-        ]
-        return None, "; ".join(problems)[:2000]
-
-
 def ask_meeting(
     provider: LlmProvider,
     *,
@@ -145,38 +136,37 @@ def ask_meeting(
         meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes
     )
     messages, version = build_ask_messages(context, question, history)
-    if not whole_meeting_fits(context, estimate_tokens(messages[1].content), settings):
+    user_tokens = estimate_tokens(messages[1].content)
+    if not whole_meeting_fits(context, user_tokens, settings):
+        limit = min(settings.context_budget, settings.num_ctx - settings.ask_output_tokens)
+        skeleton = build_context(
+            meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes, only=set()
+        ).estimated_tokens
+        # a follow-up ("When is it due?") is found through the question before it
+        query = f"{question} {history[-1].question}" if history else question
         context = build_context(
             meeting=meeting,
             utterances=utterances,
             gaps=gaps,
             user_notes=user_notes,
-            only=excerpt_ids(utterances, question),
+            only=excerpt_ids(
+                utterances, query, min(EXCERPT_TOKENS, limit - user_tokens - skeleton)
+            ),
         )
+        if not whole_meeting_fits(context, user_tokens, settings):
+            raise NoteTooLong(context.estimated_tokens + user_tokens, limit)
         messages, version = build_ask_messages(context, question, history)
-    schema = MeetingAnswer.model_json_schema()
-
-    def call(chat: list[ChatMessage]) -> ChatResult:
-        result = provider.chat_json(model, chat, schema)
-        if result.truncated:
-            raise NoteCutOff(settings.ask_output_tokens)
-        return result
-
-    calls = [call(messages)]
-    answer, error = _parse(calls[0].content)
-    if answer is None:
-        repair = load_prompt("a9_repair")
-        system, user = repair.render(
-            schema=json.dumps(schema, separators=(",", ":")),
-            error=error,
-            bad_output=calls[0].content,
-        )
-        calls.append(call([ChatMessage("system", system), ChatMessage("user", user)]))
-        version = f"{version}+{repair.version}"
-        answer, error = _parse(calls[1].content)
-        if answer is None:
-            log.warning("question_json_invalid", model=model, error=error)
-            raise NoteInvalid(model)
+    reply = chat_structured(
+        provider,
+        model,
+        messages,
+        MeetingAnswer,
+        max_output_tokens=settings.ask_output_tokens,
+        invalid_event="question_json_invalid",
+    )
+    if reply.repair_version:
+        version = f"{version}+{reply.repair_version}"
+    answer = reply.value
 
     kept: list[CheckedBullet] = []
     dropped = 0
@@ -194,15 +184,14 @@ def ask_meeting(
             else:
                 kept.append(checked)
         state = "answered" if kept else "unchecked"
-    seconds = sum(c.seconds for c in calls)
     log.info(
         "question_answered",
         state=state,
         kept=len(kept),
         dropped=dropped,
         excerpt=context.excerpt,
-        seconds=round(seconds, 1),
-        cached_tokens=sum(c.cached_tokens for c in calls),
+        seconds=round(reply.seconds, 1),
+        cached_tokens=reply.cached_tokens,
     )
     return AskResult(
         state=state,
@@ -210,9 +199,9 @@ def ask_meeting(
         excerpt=context.excerpt,
         model=model,
         prompt_version=version,
-        tokens_in=sum(c.tokens_in for c in calls),
-        tokens_out=sum(c.tokens_out for c in calls),
-        cached_tokens=sum(c.cached_tokens for c in calls),
-        seconds=seconds,
+        tokens_in=reply.tokens_in,
+        tokens_out=reply.tokens_out,
+        seconds=reply.seconds,
         dropped=dropped,
+        cached_tokens=reply.cached_tokens,
     )

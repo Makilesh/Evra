@@ -108,3 +108,12 @@ def test_deleting_the_meeting_deletes_its_questions(env: Env) -> None:
     store.add(mid, "a")
     conn.execute("DELETE FROM meeting WHERE id = ?", (mid,))
     assert conn.execute("SELECT COUNT(*) FROM question").fetchone()[0] == 0
+
+
+def test_history_keeps_the_newest_three_of_four(env: Env) -> None:
+    _, store, mid, vid = env
+    for i in range(4):
+        q = store.add(mid, f"q{i}")
+        point = (CheckedBullet(f"a{i}", ("u1",)),)
+        store.answer(q.id, _result(points=point), transcript_version_id=vid)
+    assert [e.question for e in store.history(mid)] == ["q1", "q2", "q3"]
