@@ -53,6 +53,7 @@ class ChatResult:
     tokens_out: int
     seconds: float
     truncated: bool  # the reply hit the output-token limit
+    cached_tokens: int = 0  # prompt tokens Ollama reused from its cache
 
 
 class LlmProvider(Protocol):

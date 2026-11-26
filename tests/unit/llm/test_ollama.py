@@ -86,6 +86,18 @@ def test_reply_counts_time_and_truncation() -> None:
     assert result.truncated
 
 
+def test_cached_tokens_come_from_the_cache_count() -> None:
+    answer = {**reply(), "prompt_eval_cached_count": 100}
+    result = _provider(FakeHttp({"/api/chat": answer})).chat_json(
+        "m", [ChatMessage("user", "hi")], SCHEMA
+    )
+    assert (result.tokens_in, result.cached_tokens) == (120, 100)
+    plain = _provider(FakeHttp({"/api/chat": reply()})).chat_json(
+        "m", [ChatMessage("user", "hi")], SCHEMA
+    )
+    assert plain.cached_tokens == 0
+
+
 @pytest.mark.parametrize(
     ("error", "expected"),
     [

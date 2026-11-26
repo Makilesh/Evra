@@ -38,3 +38,12 @@ class MeetingTitle(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     title: str = Field(max_length=120)
+
+
+class MeetingAnswer(BaseModel):
+    """A12. Every point is checked against the transcript by `evra.notes.ask`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    found: bool
+    points: list[NoteBullet] = Field(default_factory=list, max_length=4)

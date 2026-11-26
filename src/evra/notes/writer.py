@@ -62,7 +62,7 @@ class NoteResult:
     repaired: bool
 
 
-def _strip_fences(text: str) -> str:
+def strip_fences(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("```"):
         stripped = stripped.split("\n", 1)[1] if "\n" in stripped else ""
@@ -72,7 +72,7 @@ def _strip_fences(text: str) -> str:
 
 def _parse(content: str) -> tuple[NoteDraft | None, str]:
     try:
-        return NoteDraft.model_validate_json(_strip_fences(content)), ""
+        return NoteDraft.model_validate_json(strip_fences(content)), ""
     except ValidationError as exc:
         problems = [
             f"{'.'.join(str(p) for p in e['loc']) or 'document'}: {e['msg']}"

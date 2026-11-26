@@ -15,7 +15,7 @@ def test_build_app_creates_dirs_logs_and_migrated_db(tmp_path: Path) -> None:
     app = build_app(paths, debug=False)
     assert paths.db_path.exists()
     conn = connect(paths.db_path)
-    assert current_version(conn) == 1
+    assert current_version(conn) == 2
     conn.close()
     assert (paths.log_dir / "evra.log").exists()
     assert app.api.app_info()["name"] == "Evra"

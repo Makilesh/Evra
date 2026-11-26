@@ -88,3 +88,8 @@ def test_only_changed_values_are_saved_so_new_defaults_still_apply(tmp_path: Pat
     assert load_settings(path) == Settings(mic_name="Headset (Buds)")
     save_settings(path, Settings(llm=LlmSettings(model="qwen3.5:9b")))
     assert tomllib.loads(path.read_text(encoding="utf-8")) == {"llm": {"model": "qwen3.5:9b"}}
+
+
+def test_ask_settings_defaults() -> None:
+    s = LlmSettings()
+    assert (s.ask_keep_alive, s.ask_output_tokens) == ("5m", 1024)

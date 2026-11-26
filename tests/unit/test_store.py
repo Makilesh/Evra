@@ -23,6 +23,7 @@ EXPECTED_TABLES = {
     "open_question",
     "topic",
     "job",
+    "question",
 }
 
 
@@ -33,8 +34,8 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
 
 def test_fresh_database_gets_phase1_schema(tmp_path: Path) -> None:
     conn = connect(tmp_path / "evra.db")
-    assert migrate(conn) == 1
-    assert current_version(conn) == 1
+    assert migrate(conn) == 2
+    assert current_version(conn) == 2
     assert _tables(conn) == EXPECTED_TABLES
     indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert {"utt_meeting", "job_ready"} <= indexes
@@ -43,7 +44,7 @@ def test_fresh_database_gets_phase1_schema(tmp_path: Path) -> None:
 def test_migrate_is_idempotent(tmp_path: Path) -> None:
     conn = connect(tmp_path / "evra.db")
     migrate(conn)
-    assert migrate(conn) == 1
+    assert migrate(conn) == 2
 
 
 def test_connection_pragmas(tmp_path: Path) -> None:

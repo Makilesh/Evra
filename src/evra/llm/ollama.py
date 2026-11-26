@@ -131,6 +131,7 @@ class OllamaProvider:
             tokens_out=int(response.get("eval_count") or 0),
             seconds=self._clock() - started,
             truncated=response.get("done_reason") == "length",
+            cached_tokens=int(response.get("prompt_eval_cached_count") or 0),
         )
 
     def installed_models(self) -> list[str]:

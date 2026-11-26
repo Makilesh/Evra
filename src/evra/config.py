@@ -34,6 +34,8 @@ class LlmSettings(BaseModel):
     keep_alive: str = "30s"  # short: the GPU is shared (BUILD.md §8.3)
     timeout_s: float = Field(default=600.0, gt=0)
     think: bool = False
+    ask_keep_alive: str = "5m"  # a conversation about a meeting keeps the model warm
+    ask_output_tokens: int = Field(default=1024, ge=256)
 
 
 class Settings(BaseModel):
