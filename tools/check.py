@@ -1,6 +1,9 @@
 """Run every check (BUILD.md §9.2). Must pass before every commit (D22).
 
 Usage: uv run python tools/check.py [--skip NAME ...]
+
+Python tools run as `uv run python -m <module>`: uv's launcher .exe files can be
+blocked by Windows Smart App Control, `python -m` cannot.
 """
 
 from __future__ import annotations
@@ -31,10 +34,10 @@ def default_steps() -> list[Step]:
     uv = shutil.which("uv") or "uv"
     npm = shutil.which("npm") or "npm"
     steps = [
-        Step("ruff lint", [uv, "run", "ruff", "check", "."]),
-        Step("ruff format", [uv, "run", "ruff", "format", "--check", "."]),
-        Step("mypy", [uv, "run", "mypy"]),
-        Step("pytest", [uv, "run", "pytest", "-q"]),
+        Step("ruff lint", [uv, "run", "python", "-m", "ruff", "check", "."]),
+        Step("ruff format", [uv, "run", "python", "-m", "ruff", "format", "--check", "."]),
+        Step("mypy", [uv, "run", "python", "-m", "mypy"]),
+        Step("pytest", [uv, "run", "python", "-m", "pytest", "-q"]),
         Step("frontend lint", [npm, "--prefix", "frontend", "run", "lint"]),
         Step("tsc", [npm, "--prefix", "frontend", "run", "typecheck"]),
         Step("vitest", [npm, "--prefix", "frontend", "run", "test"]),

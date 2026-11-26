@@ -29,6 +29,17 @@ def test_default_steps_cover_every_check() -> None:
         assert expected in names
 
 
+def test_python_tools_run_as_modules() -> None:
+    steps = {s.name: s.argv for s in default_steps()}
+    for name, module in [
+        ("ruff lint", "ruff"),
+        ("ruff format", "ruff"),
+        ("mypy", "mypy"),
+        ("pytest", "pytest"),
+    ]:
+        assert steps[name][1:5] == ["run", "python", "-m", module]
+
+
 def test_run_steps_reports_each_result() -> None:
     run, _ = _runner(fail={"bad"})
     results = run_steps([Step("a", ["ok"]), Step("b", ["bad"])], runner=run)
