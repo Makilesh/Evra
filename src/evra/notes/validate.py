@@ -236,11 +236,16 @@ def _claim(
     return _Claim(text, tuple(cited), source), ""
 
 
+def shared_words(text: str, source: str) -> int:
+    """How many of the text's content words the source says: the word check's measure."""
+    said = {_key(w) for w in _WORD.findall(source)}
+    return len(_content(_WORD.findall(text)) & said)
+
+
 def _shares_words(claim: _Claim) -> bool:
     """Stage 2, the words: at least MIN_OVERLAP of the claim's content words are cited."""
-    words = _content(_WORD.findall(claim.text))
-    said = {_key(w) for w in _WORD.findall(claim.source)}
-    return bool(words) and len(words & said) / len(words) >= MIN_OVERLAP
+    words = len(_content(_WORD.findall(claim.text)))
+    return words > 0 and shared_words(claim.text, claim.source) / words >= MIN_OVERLAP
 
 
 def _details(

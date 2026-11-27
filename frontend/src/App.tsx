@@ -4,6 +4,7 @@ import { MeetingList } from "@/components/MeetingList";
 import { MeetingView } from "@/components/MeetingView";
 import { Rail } from "@/components/Rail";
 import { SettingsView } from "@/components/SettingsView";
+import { padLines } from "@/notepad";
 import { strings } from "@/strings";
 import { useEvra } from "@/useEvra";
 
@@ -19,6 +20,7 @@ export default function App() {
     prepareAsk,
     rename,
     setItemStatus,
+    editNotes,
     dismissStartError,
     refreshMics,
     setTheme,
@@ -112,11 +114,14 @@ export default function App() {
             noteStatus={state.noteStatus[detail.meeting.id]}
             hints={state.hints[detail.meeting.id]}
             canWrite={canWrite}
+            notes={padLines(state.notes[detail.meeting.id], detail.notes)}
+            notesFailed={state.notesSaveFailed[detail.meeting.id] === true}
             onWrite={() => void writeNote(detail.meeting.id)}
             onRename={(title) => rename(detail.meeting.id, title)}
             onAsk={(text) => ask(detail.meeting.id, text)}
             onPrepareAsk={() => prepareAsk(detail.meeting.id)}
             onItemStatus={(itemId, status) => void setItemStatus(itemId, status)}
+            onNotes={(lines) => editNotes(detail.meeting.id, lines)}
           />
         ) : state.ready && state.meetings.length === 0 ? (
           <Welcome />

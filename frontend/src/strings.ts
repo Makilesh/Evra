@@ -2,6 +2,7 @@
 import type { AskFailureReason, AskRefusal, NoteFailureReason, Theme } from "@/bridge";
 
 const STAGES: Record<string, string> = {
+  linking: "Linking your notes…",
   writing: "Writing note…",
   items: "Listing action items…",
   combining: "Putting the note together…",
@@ -61,6 +62,11 @@ export const strings = {
   dismiss: "Dismiss",
   jumpTo: (clock: string) => `Jump to ${clock} in the transcript`,
   markDone: (text: string) => `Done: ${text}`,
+  fromYourNotes: "From your notes",
+  notesTab: "My notes",
+  notesPlaceholder: "Type a note. Each line is stamped with the time you wrote it.",
+  noteLine: (n: number) => `Note line ${n}`,
+  notesSaveFailed: "Couldn't save your notes. They stay here; Evra tries again as you type.",
   /** What the note's progress band says; "part:2:6" is the second of a long call's six parts. */
   stages: (stage: string): string | undefined => {
     const part = /^part:(\d+):(\d+)$/.exec(stage);

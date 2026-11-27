@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Note, Utterance } from "@/bridge";
-import { noteQuotes, noteToMarkdown, pointCount, splitOwner } from "@/note";
+import { noteQuotes, noteToMarkdown, pointCount } from "@/note";
 import { DETAIL } from "@/test/fakeApi";
 
 const BY_ID = new Map<string, Utterance>(DETAIL.utterances.map((u) => [u.id, u]));
@@ -109,16 +109,5 @@ describe("noteToMarkdown with items", () => {
         "",
       ].join("\n"),
     );
-  });
-});
-
-describe("splitOwner", () => {
-  it("separates a one-word owner from the rest of the point", () => {
-    expect(splitOwner("You: send the proposal by Thursday.")).toEqual({
-      owner: "You",
-      rest: "send the proposal by Thursday.",
-    });
-    expect(splitOwner("Launch moves to October 14.")).toEqual({ owner: null, rest: "Launch moves to October 14." });
-    expect(splitOwner("Note at 10:30 tomorrow.")).toEqual({ owner: null, rest: "Note at 10:30 tomorrow." });
   });
 });

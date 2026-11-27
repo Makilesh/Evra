@@ -1,13 +1,16 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
-import type { AskRefusal, ItemStatus, MeetingDetail } from "@/bridge";
+import type { AskRefusal, ItemStatus, MeetingDetail, NoteLine } from "@/bridge";
 import { copyText } from "@/clipboard";
 import { AskView } from "@/components/AskView";
+import { Banner } from "@/components/Banner";
 import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
+import { NotepadView } from "@/components/NotepadView";
 import { NoteView } from "@/components/NoteView";
 import { Stamp } from "@/components/Stamp";
 import { TranscriptView } from "@/components/TranscriptView";
 import { meetingLine } from "@/format";
 import { noteToMarkdown, pointCount } from "@/note";
+import { lineAt } from "@/notepad";
 import { strings } from "@/strings";
 import type { NoteStatus } from "@/useEvra";
 
@@ -17,16 +20,21 @@ interface MeetingViewProps {
   noteStatus: NoteStatus | undefined;
   hints: string[] | undefined;
   canWrite: boolean;
+  /** The owner's typed lines, as the window has them. */
+  notes: NoteLine[];
+  /** The last save of them failed; they stay in the window until one works. */
+  notesFailed: boolean;
   onWrite: () => void;
   onRename: (title: string) => Promise<boolean>;
   onAsk: (text: string) => Promise<AskRefusal | null>;
   onPrepareAsk: () => void;
   onItemStatus: (itemId: string, status: ItemStatus) => void;
+  onNotes: (lines: NoteLine[]) => void;
 }
 
-type Tab = "note" | "transcript" | "ask";
+type Tab = "note" | "transcript" | "ask" | "notes";
 
-const TABS: Tab[] = ["note", "transcript", "ask"];
+const TABS: Tab[] = ["note", "transcript", "ask", "notes"];
 
 export function MeetingView({
   detail,
@@ -34,13 +42,17 @@ export function MeetingView({
   noteStatus,
   hints,
   canWrite,
+  notes,
+  notesFailed,
   onWrite,
   onRename,
   onAsk,
   onPrepareAsk,
   onItemStatus,
+  onNotes,
 }: MeetingViewProps) {
-  const [tab, setTab] = useState<Tab>(isLive ? "transcript" : "note");
+  // While live, the owner takes notes; a finished meeting opens on what was written from them.
+  const [tab, setTab] = useState<Tab>(isLive ? "notes" : "note");
   const [highlight, setHighlight] = useState<string | null>(null);
   const stage = noteStatus?.stage;
   const [seenStage, setSeenStage] = useState(stage);
@@ -70,6 +82,12 @@ export function MeetingView({
     setTab("transcript");
   }
 
+  // A typed time opens the transcript on the line being said then.
+  function jump(ms: number) {
+    setHighlight(lineAt(utterances, ms)?.id ?? null);
+    setTab("transcript");
+  }
+
   return (
     <div className="enter flex h-full flex-col">
       <div className="measure-pad shrink-0 px-[var(--gutter)] pt-[30px]">
@@ -83,6 +101,12 @@ export function MeetingView({
                   <li key={hint}>{hint}</li>
                 ))}
               </ul>
+            )}
+            {/* Above the tabs, so it shows whichever is open: Stop moves to the note's progress. */}
+            {notesFailed && (
+              <div className="mt-3 max-w-[40rem]">
+                <Banner message={strings.notesSaveFailed} />
+              </div>
             )}
           </div>
           {settled && <Stamp model={note.model} points={pointCount(note)} />}
@@ -99,6 +123,9 @@ export function MeetingView({
           </TabButton>
           <TabButton selected={tab === "ask"} onSelect={() => setTab("ask")}>
             {strings.askTab}
+          </TabButton>
+          <TabButton selected={tab === "notes"} onSelect={() => setTab("notes")}>
+            {strings.notesTab}
           </TabButton>
           <span className="flex-1" />
           {tab === "note" && settled && <CopyButton text={() => noteToMarkdown(meeting.title, line, note)} />}
@@ -117,7 +144,7 @@ export function MeetingView({
           />
         ) : tab === "transcript" ? (
           <TranscriptView utterances={utterances} follow={isLive} highlightId={highlight} />
-        ) : (
+        ) : tab === "ask" ? (
           <AskView
             questions={detail.questions}
             utterances={utterances}
@@ -125,6 +152,16 @@ export function MeetingView({
             onAsk={onAsk}
             onPrepare={onPrepareAsk}
             onCite={cite}
+          />
+        ) : (
+          <NotepadView
+            lines={notes}
+            meeting={meeting}
+            utterances={utterances}
+            isLive={isLive}
+            noted={note !== null}
+            onChange={onNotes}
+            onJump={jump}
           />
         )}
       </div>

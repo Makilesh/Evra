@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import App from "@/App";
 import { emit, setApiForTests, type MeetingSummary } from "@/bridge";
 import { DETAIL, MEETING, makeFakeApi } from "@/test/fakeApi";
@@ -25,13 +25,15 @@ it("opens on the newest meeting's note and jumps from a citation to its transcri
   expect(screen.getByText("Marketing wants October 14.").closest("li")).toHaveAttribute("data-highlighted", "true");
 });
 
-it("records, shows the live transcript, then the note once it is written", async () => {
+it("records, takes notes beside the live transcript, then shows the note once it is written", async () => {
   let meetings = [MEETING];
   let noted = false;
   const api = makeFakeApi({
     list_meetings: async () => meetings,
     get_meeting: async (id) =>
-      id === "m2" ? { meeting: LIVE, utterances: [], note: noted ? DETAIL.note : null, questions: [] } : DETAIL,
+      id === "m2"
+        ? { meeting: LIVE, utterances: [], note: noted ? DETAIL.note : null, questions: [], notes: [] }
+        : DETAIL,
   });
   setApiForTests(api);
   render(<App />);
@@ -41,14 +43,20 @@ it("records, shows the live transcript, then the note once it is written", async
   expect(api.start_recording).toHaveBeenCalledWith("");
   meetings = [LIVE, MEETING];
   act(() => emit("recording.state", { state: "recording", meeting_id: "m2", started_at: Date.now() }));
-  expect(await screen.findByRole("tab", { name: "Transcript", selected: true })).toBeInTheDocument();
+  expect(await screen.findByRole("tab", { name: "My notes", selected: true })).toBeInTheDocument();
   act(() =>
     emit("transcript.utterance", { meeting_id: "m2", id: "x1", channel: 0, speaker: "You", start_ms: 1_000, end_ms: 2_000, text: "Hello there." }),
   );
-  expect(screen.getByText("Hello there.")).toBeInTheDocument();
+  expect(screen.getByText("Hello there.")).toBeInTheDocument(); // under the pad
+  await userEvent.type(screen.getByRole("textbox", { name: "Note line 1" }), "Said hello");
 
   await userEvent.click(screen.getByRole("button", { name: "Stop" }));
-  expect(api.stop_recording).toHaveBeenCalled();
+  await waitFor(() => expect(api.stop_recording).toHaveBeenCalled());
+  expect(api.save_notes).toHaveBeenCalledTimes(1); // at once, not 400 ms later
+  expect(api.save_notes).toHaveBeenCalledWith("m2", [expect.objectContaining({ text: "Said hello", pasted: false })]);
+  const [saved] = vi.mocked(api.save_notes).mock.invocationCallOrder;
+  const [stopped] = vi.mocked(api.stop_recording).mock.invocationCallOrder;
+  expect(saved).toBeLessThan(stopped);
   act(() => {
     emit("recording.state", { state: "processing", meeting_id: "m2" });
     emit("note.stage", { meeting_id: "m2", stage: "writing" });

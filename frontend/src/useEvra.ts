@@ -14,6 +14,7 @@ import {
   type NoteFailed,
   type NoteFailureReason,
   type NoteItem,
+  type NoteLine,
   type NoteModels,
   type Question,
   type QuestionUpdated,
@@ -23,6 +24,7 @@ import {
   type Theme,
   type Utterance,
 } from "@/bridge";
+import { NOTES_SAVE_MS } from "@/notepad";
 import { strings } from "@/strings";
 import { applyTheme } from "@/theme";
 
@@ -53,6 +55,11 @@ export interface EvraState {
   /** null while Ollama is being asked. */
   noteModels: NoteModels | null;
   settingsError: string;
+  /** Each meeting's notepad once this window has changed it. These lines win over the meeting's
+   *  own `notes`, which Python read and which may be behind the typing. */
+  notes: Record<string, NoteLine[]>;
+  /** The meetings whose notes the last save could not store. */
+  notesSaveFailed: Record<string, true>;
 }
 
 const QUIET: Levels = { you: 0, them: 0 };
@@ -73,6 +80,8 @@ const INITIAL: EvraState = {
   settings: null,
   noteModels: null,
   settingsError: "",
+  notes: {},
+  notesSaveFailed: {},
 };
 
 function message(error: unknown): string {
@@ -114,22 +123,30 @@ function noteItem(detail: MeetingDetail | null, id: string): NoteItem | undefine
   return undefined;
 }
 
-/** The meeting with one record's status changed, while it is still `from`. */
-function withItemStatus(
-  detail: MeetingDetail | null,
-  id: string,
-  from: ItemStatus,
-  to: ItemStatus,
-): MeetingDetail | null {
+/** The meeting with one record's status changed. */
+function withItemStatus(detail: MeetingDetail | null, id: string, status: ItemStatus): MeetingDetail | null {
   const note = detail?.note;
   if (!detail || !note) return detail;
   const sections = note.sections.map((section) => ({
     ...section,
     blocks: section.blocks.map((block) =>
-      block.item?.id === id && block.item.status === from ? { ...block, item: { ...block.item, status: to } } : block,
+      block.item?.id === id ? { ...block, item: { ...block.item, status } } : block,
     ),
   }));
   return { ...detail, note: { ...note, sections } };
+}
+
+/** One record's ticks: saved one after another, with the status Python last confirmed. */
+interface Ticks {
+  saves: Promise<void>;
+  confirmed: ItemStatus;
+  waiting: number;
+}
+
+/** A meeting's whole pad, waiting to be saved. */
+interface PadChange {
+  meetingId: string;
+  lines: NoteLine[];
 }
 
 type Heard = Map<string, Map<string, Question>>;
@@ -156,11 +173,51 @@ export function useEvra() {
   // reload of the meeting that read it a moment earlier must not put an answer back to
   // "asking", and an answer that lands while its meeting is still loading must not be lost.
   const heard = useRef<Heard>(new Map());
-  // The open meeting as last shown, so a tick Python couldn't save goes back to what it was.
+  // The open meeting as last shown, so a tick finds its record.
   const shown = useRef<MeetingDetail | null>(null);
   useEffect(() => {
     shown.current = state.detail;
   }, [state.detail]);
+  const ticks = useRef(new Map<string, Ticks>());
+  // The pad's last change, until it is saved; saves go to Python one at a time, in order, so an
+  // older pad never lands after a newer one.
+  const unsaved = useRef<PadChange | null>(null);
+  const saveTimer = useRef<number | undefined>(undefined);
+  const saving = useRef<Promise<void>>(Promise.resolve());
+
+  const saveNotes = useCallback(async ({ meetingId, lines }: PadChange) => {
+    let ok = false;
+    try {
+      const pad = lines.map(({ id, text, captured_at, pasted }) => ({ id, text, captured_at, pasted }));
+      ok = (await (await getApi()).save_notes(meetingId, pad)).ok;
+    } catch {
+      // reported below; the lines stay in the window and go with the next save
+    }
+    const rest = (s: EvraState) => without(s.notesSaveFailed, meetingId);
+    setState((s) => ({ ...s, notesSaveFailed: ok ? rest(s) : { ...rest(s), [meetingId]: true } }));
+  }, []);
+
+  // Save the pad's last change now. It resolves once Python has answered every save so far, and
+  // never rejects: a failure shows in `notesSaveFailed`.
+  const flushNotes = useCallback(async (): Promise<void> => {
+    window.clearTimeout(saveTimer.current);
+    const change = unsaved.current;
+    unsaved.current = null;
+    if (change) saving.current = saving.current.then(() => saveNotes(change));
+    await saving.current;
+  }, [saveNotes]);
+
+  // The owner changed a meeting's pad: show it at once, save it 400 ms after the last change.
+  const editNotes = useCallback(
+    (meetingId: string, lines: NoteLine[]) => {
+      if (unsaved.current && unsaved.current.meetingId !== meetingId) void flushNotes();
+      unsaved.current = { meetingId, lines };
+      setState((s) => ({ ...s, notes: { ...s.notes, [meetingId]: lines } }));
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(() => void flushNotes(), NOTES_SAVE_MS);
+    },
+    [flushNotes],
+  );
 
   const refreshMeetings = useCallback(async () => {
     try {
@@ -184,11 +241,13 @@ export function useEvra() {
 
   const select = useCallback(
     (id: string) => {
+      // the lines typed in the meeting being left are saved under it now (RB42)
+      if (selected.current !== id) void flushNotes();
       selected.current = id;
       setState((s) => ({ ...s, selectedId: id, detail: s.detail?.meeting.id === id ? s.detail : null }));
       void loadDetail(id);
     },
-    [loadDetail],
+    [loadDetail, flushNotes],
   );
 
   useEffect(() => {
@@ -273,6 +332,7 @@ export function useEvra() {
     return () => {
       alive = false;
       offs.forEach((off) => off());
+      window.clearTimeout(saveTimer.current);
     };
   }, [select, refreshMeetings, loadDetail]);
 
@@ -289,14 +349,22 @@ export function useEvra() {
     }
   }, []);
 
+  // The note job reads the pad as soon as the recording stops, so the last typed line is saved
+  // first (RB42). A save that fails still stops: the owner's Stop always works.
   const stopRecording = useCallback(async () => {
+    await flushNotes();
     await (await getApi()).stop_recording();
-  }, []);
+  }, [flushNotes]);
 
-  const writeNote = useCallback(async (id: string) => {
-    setState((s) => ({ ...s, noteStatus: without(s.noteStatus, id) }));
-    await (await getApi()).write_note(id);
-  }, []);
+  // Writing the note again reads the pad too, so it is saved first, as at Stop.
+  const writeNote = useCallback(
+    async (id: string) => {
+      setState((s) => ({ ...s, noteStatus: without(s.noteStatus, id) }));
+      await flushNotes();
+      await (await getApi()).write_note(id);
+    },
+    [flushNotes],
+  );
 
   // One question at a time (Python refuses another while one is answered). The reply only says
   // the question was taken; its answer arrives as `question.updated`.
@@ -335,18 +403,28 @@ export function useEvra() {
     [refreshMeetings, loadDetail],
   );
 
-  // A tick (or untick) shows at once; if Python couldn't save it, the box goes back.
+  // A tick (or untick) shows at once. One record's ticks are saved one after another, and once
+  // the last is answered the box shows what Python last confirmed (RB41), so quick ticks leave
+  // the window and the database agreeing. True when this tick was saved.
   const setItemStatus = useCallback(async (id: string, status: ItemStatus): Promise<boolean> => {
-    const before = noteItem(shown.current, id)?.status;
-    if (before === undefined) return false;
-    setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, before, status) }));
+    const current = noteItem(shown.current, id)?.status;
+    if (current === undefined) return false;
+    const tick = ticks.current.get(id) ?? { saves: Promise.resolve(), confirmed: current, waiting: 0 };
+    ticks.current.set(id, tick);
+    tick.waiting += 1;
+    setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, status) }));
     let ok = false;
-    try {
-      ok = (await (await getApi()).set_item_status(id, status)).ok;
-    } catch {
-      // put back below
-    }
-    if (!ok) setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, status, before) }));
+    tick.saves = tick.saves.then(async () => {
+      try {
+        ok = (await (await getApi()).set_item_status(id, status)).ok;
+      } catch {
+        // not saved: the box goes back below
+      }
+      if (ok) tick.confirmed = status;
+    });
+    await tick.saves;
+    tick.waiting -= 1;
+    if (tick.waiting === 0) setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, tick.confirmed) }));
     return ok;
   }, []);
 
@@ -415,6 +493,8 @@ export function useEvra() {
     prepareAsk,
     rename,
     setItemStatus,
+    editNotes,
+    flushNotes,
     dismissStartError,
     refreshMics,
     setTheme,

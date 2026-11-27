@@ -76,6 +76,7 @@ describe("note stages", () => {
     expect(strings.stages("part:2:6")).toBe("Reading part 2 of 6…");
     expect(strings.stages("part:1:1")).toBe("Reading part 1 of 1…");
     expect(strings.stages("combining")).toBe("Putting the note together…");
+    expect(strings.stages("linking")).toBe("Linking your notes…");
     expect(strings.stages("writing")).toBe("Writing note…");
     expect(strings.stages("items")).toBe("Listing action items…");
     expect(strings.stages("part:x:2")).toBeUndefined();

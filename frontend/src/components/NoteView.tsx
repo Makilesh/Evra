@@ -130,7 +130,6 @@ function Sheet({ note, byId, onCite, onItemStatus }: SheetProps) {
                   key={index}
                   block={block}
                   quotes={noteQuotes(block, byId)}
-                  owners={section.id.includes("action")}
                   onCite={onCite}
                   onItemStatus={onItemStatus}
                 />

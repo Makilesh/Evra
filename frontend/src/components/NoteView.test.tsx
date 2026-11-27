@@ -83,9 +83,41 @@ it("puts each point beside the lines it came from", () => {
   expect(within(row).getByText("Marketing wants October 14.").tagName).toBe("Q");
 });
 
-it("sets an action item's owner in bold", () => {
-  sheet();
+it("sets an action item's owner in bold, as its record names it", () => {
+  const note = withItems("open");
+  note.sections[1].blocks.push({
+    text: "Finance: send the budget", // nobody owns it: the word before the colon is no owner
+    citations: [],
+    item: { id: "i2", kind: "action_item", status: "open", owner: null, due: null },
+  });
+  sheet({ note });
   expect(screen.getByText("You:").tagName).toBe("B");
+  expect(screen.getByText("Finance: send the budget")).toBeInTheDocument();
+  expect(screen.queryByText("Finance:")).toBeNull();
+});
+
+it("quotes the owner's own line beside a point from their notes", () => {
+  const note: Note = {
+    model: "m",
+    sections: [
+      {
+        id: "summary",
+        title: "Summary",
+        blocks: [
+          {
+            text: "The designer budget was approved.",
+            citations: [{ utterance_id: "u1", start_ms: 65_000 }],
+            user_quote: { id: "a", text: "designer budget ok" },
+          },
+        ],
+      },
+    ],
+  };
+  sheet({ note });
+  const row = screen.getByText("The designer budget was approved.").closest("li")!;
+  const quotes = within(row).getAllByText(/./, { selector: "q" });
+  expect(quotes.map((q) => q.textContent)).toEqual(["Marketing wants October 14.", "designer budget ok"]);
+  expect(quotes[1].closest("p")).toHaveTextContent(/^From your notes/);
 });
 
 it("shows a point whose cited line is gone", () => {

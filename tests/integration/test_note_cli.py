@@ -12,6 +12,8 @@ from evra.llm.provider import ChatMessage, ChatResult, LlmModelMissing
 from evra.notes.cli import note_command
 from evra.paths import AppPaths
 from evra.store.db import connect
+from evra.store.meetings import MeetingStore
+from evra.store.notepad import LineIn, NotepadStore
 from evra.store.notes import NoteStore, StoredNote
 from tests.integration.helpers import DownProvider, recorded
 from tests.unit.notes.fakes import FakeProvider
@@ -85,6 +87,31 @@ def test_writes_prints_and_stores_the_note(
     assert "2 points kept, 0 dropped" in out
     stored = _current(paths, mid)
     assert stored is not None and len(stored.blocks) == 1
+
+
+def test_a_point_from_your_notes_prints_the_line_it_quotes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """RB40: the console shows the typed line a [user] point rests on, as the window does."""
+    paths, mid = recorded(tmp_path)
+    conn = connect(paths.db_path)
+    try:
+        started = int(MeetingStore(conn).get_meeting(mid)["started_at"])
+        typed = LineIn("n1", "Search migration\ndone, Tuesday", started + 14_000, False)
+        NotepadStore(conn).replace(mid, [typed])
+    finally:
+        conn.close()
+    from_notes = json.dumps(
+        {
+            "summary": [{"text": "The search migration is done.", "citations": ["user"]}],
+            "sections": [],
+        }
+    )
+    provider = FakeProvider([from_notes, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    assert note_command(_args(), paths, provider=provider) == 0
+    out = capsys.readouterr().out
+    quote = '- The search migration is done.\n  From your notes: "Search migration done, Tuesday"\n'
+    assert quote in out
 
 
 def test_meeting_id_argument_and_template_override(

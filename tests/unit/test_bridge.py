@@ -278,7 +278,9 @@ def test_notes_are_saved_and_come_back_with_the_meeting(tmp_path: Path) -> None:
     api, db = _api(tmp_path)
     mid = _meeting(db)
     untimed = NOTE_LINE | {"id": "l2", "text": "Ask about Dana", "captured_at": None}
-    assert api.save_notes(mid, [NOTE_LINE, untimed]) == {"ok": True}
+    with structlog.testing.capture_logs() as logs:
+        assert api.save_notes(mid, [NOTE_LINE, untimed]) == {"ok": True}
+    assert "budget" not in json.dumps(logs).lower()  # never the lines themselves (RB43)
     detail = api.get_meeting(mid)
     assert detail is not None
     assert [(n["id"], n["text"], n["pasted"]) for n in detail["notes"]] == [

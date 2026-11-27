@@ -32,6 +32,7 @@ from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.store.notepad import NotepadStore
 from evra.store.notes import NoteStore
 from evra.transcribe.cli import format_ms
 
@@ -50,13 +51,17 @@ def cite_marks(citations: tuple[str, ...], starts: Mapping[str, int]) -> str:
 
 def render_note(view: Mapping[str, Any]) -> list[str]:
     """The note as the window shows it (`note_view`): each section's points, its action items,
-    decisions and open questions among them, with the times of the lines they cite."""
+    decisions and open questions among them, with the times of the lines they cite, and under a
+    point from the owner's notes the typed line it quotes, on one line."""
     lines: list[str] = []
     for section in view["sections"]:
         lines += ["", f"## {section['title']}"]
         for block in section["blocks"]:
             marks = " ".join(f"[{format_ms(int(c['start_ms']))}]" for c in block["citations"])
             lines.append(f"- {block['text']} {marks}".rstrip())
+            if "user_quote" in block:
+                typed = " ".join(str(block["user_quote"]["text"]).split())
+                lines.append(f'  From your notes: "{typed}"')
     return lines[1:]
 
 
@@ -170,8 +175,9 @@ def _run(
     stored = NoteStore(conn).current_note(meeting_id)
     assert stored is not None
     items = ItemStore(conn).for_generation(saved.generation_id)
+    typed = NotepadStore(conn).lines(meeting_id)
     print(f"# {meeting['title']}")
-    for line in render_note(note_view(stored, utterances, items)):
+    for line in render_note(note_view(stored, utterances, items, lines=typed)):
         print(line)
     if result.items_only:
         print(

@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import type { Question } from "@/bridge";
+import type { NoteLine, Question } from "@/bridge";
 import { MeetingView } from "@/components/MeetingView";
-import { DETAIL } from "@/test/fakeApi";
+import { DETAIL, MEETING } from "@/test/fakeApi";
 
 function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
   const props = {
@@ -12,11 +12,14 @@ function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
     noteStatus: undefined,
     hints: undefined,
     canWrite: true,
+    notes: [] as NoteLine[],
+    notesFailed: false,
     onWrite: vi.fn(),
     onRename: vi.fn(async () => true),
     onAsk: vi.fn(async () => null),
     onPrepareAsk: vi.fn(),
     onItemStatus: vi.fn(),
+    onNotes: vi.fn(),
     ...extra,
   };
   return { props, ...render(<MeetingView {...props} />) };
@@ -31,17 +34,39 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, "clipboard");
 });
 
-it("opens a finished meeting on its note and a live one on its transcript", () => {
+it("opens a finished meeting on its note", () => {
   view();
   expect(screen.getByRole("tab", { name: "Note" })).toHaveAttribute("aria-selected", "true");
   screen.getByText("Launch moves to October 14.");
 });
 
-it("opens a live meeting on the transcript, then the note once it is being written", () => {
+it("opens My notes while live", () => {
   const { rerender, props } = view({ isLive: true });
-  expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
-  rerender(<MeetingView {...props} isLive={false} noteStatus={{ stage: "writing" }} />);
+  expect(screen.getByRole("tab", { name: "My notes" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("textbox", { name: "Note line 1" })).toHaveFocus();
+  // after Stop, the note's progress: linking the typed lines comes first
+  rerender(<MeetingView {...props} isLive={false} noteStatus={{ stage: "linking" }} />);
   expect(screen.getByRole("tab", { name: "Note" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("status")).toHaveTextContent("Linking your notes…");
+});
+
+it("hands each change of the pad on, and the typed time opens the transcript there", async () => {
+  const typed: NoteLine = { id: "a", text: "Proposal by Thursday", captured_at: MEETING.started_at + 112_000, pasted: false };
+  const { props } = view({ notes: [typed] });
+  await userEvent.click(screen.getByRole("tab", { name: "My notes" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "Note line 1" }), "!");
+  expect(props.onNotes).toHaveBeenLastCalledWith([{ ...typed, text: "Proposal by Thursday!" }]);
+  await userEvent.click(screen.getByRole("button", { name: "Jump to 01:52 in the transcript" }));
+  expect(screen.getByRole("tab", { name: "Transcript" })).toHaveAttribute("aria-selected", "true");
+  // the line being said when it was typed (01:50)
+  expect(screen.getByText("I'll send the proposal by Thursday.").closest("li")).toHaveAttribute("data-highlighted", "true");
+});
+
+it("says when the notes couldn't be saved, whichever tab is open", () => {
+  view({ notesFailed: true });
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Couldn't save your notes. They stay here; Evra tries again as you type.",
+  );
 });
 
 it("keeps the tab the owner chose while the note moves on to its next stage", async () => {
@@ -124,14 +149,16 @@ it("says when the note could not be copied", async () => {
   expect(await screen.findByRole("button", { name: "Couldn't copy" })).toBeInTheDocument();
 });
 
-it("arrow keys cycle note, transcript and ask", async () => {
+it("arrow keys cycle note, transcript, ask and my notes", async () => {
   view();
   const note = screen.getByRole("tab", { name: "Note" });
   const transcript = screen.getByRole("tab", { name: "Transcript" });
   const ask = screen.getByRole("tab", { name: "Ask" });
+  const notes = screen.getByRole("tab", { name: "My notes" });
   expect(note).toHaveAttribute("tabindex", "0");
   expect(transcript).toHaveAttribute("tabindex", "-1");
   expect(ask).toHaveAttribute("tabindex", "-1");
+  expect(notes).toHaveAttribute("tabindex", "-1");
   note.focus();
   await userEvent.keyboard("{ArrowRight}");
   expect(transcript).toHaveAttribute("aria-selected", "true");
@@ -142,13 +169,17 @@ it("arrow keys cycle note, transcript and ask", async () => {
   expect(ask).toHaveFocus();
   expect(screen.getByRole("textbox", { name: "Ask about this meeting" })).toBeInTheDocument();
   await userEvent.keyboard("{ArrowRight}");
+  expect(notes).toHaveAttribute("aria-selected", "true");
+  expect(notes).toHaveFocus(); // the empty pad leaves the focus on the tab strip
+  expect(screen.getByRole("textbox", { name: "Note line 1" })).toBeInTheDocument();
+  await userEvent.keyboard("{ArrowRight}");
   expect(note).toHaveAttribute("aria-selected", "true");
   expect(note).toHaveFocus();
   await userEvent.keyboard("{ArrowLeft}");
-  expect(ask).toHaveAttribute("aria-selected", "true");
-  expect(ask).toHaveFocus();
+  expect(notes).toHaveAttribute("aria-selected", "true");
+  expect(notes).toHaveFocus();
   await userEvent.keyboard("{ArrowLeft}");
-  expect(transcript).toHaveAttribute("aria-selected", "true");
+  expect(ask).toHaveAttribute("aria-selected", "true");
 });
 
 it("asks on the Ask tab, keeps Copy for the note, and jumps from an answer to its line", async () => {

@@ -165,6 +165,15 @@ components:
   done-box-ticked:
     backgroundColor: "{colors.rule}"
     textColor: "{colors.pad}"
+  notes-quote-label:
+    textColor: "{colors.you}"
+    typography: "{typography.caps-speaker}"
+  notepad-line:
+    textColor: "{colors.ink}"
+    typography: "{typography.body}"
+  notepad-row-typing:
+    backgroundColor: "{colors.band}"
+    rounded: "{rounded.control}"
   note-writing-row:
     backgroundColor: "{colors.band}"
     rounded: "{rounded.control}"
@@ -249,12 +258,12 @@ A paper-and-board palette: two greens of pad, a tan board, a deep green rule, na
 - **Warm White** (on-rec): text, level meters and the Stop button on the red block.
 
 ### Tertiary
-- **Navy Speaker Ink** (you): the owner's speaker name in quotes and the transcript.
+- **Navy Speaker Ink** (you): the owner's speaker name in quotes and the transcript, and "From your notes" before a quote of the owner's own line.
 - **Umber Speaker Ink** (them): the other side's speaker name.
 
 ### Neutral
 - **Steno Pad** (pad): the main surface, the selected meeting in the rail, the background of time tabs and transcript times so they sit on the rule.
-- **Pad Band** (band): row fill for hover and focus on note points, the highlighted transcript line, the writing row, the Copy button, the title being edited; on the Ask tab the input, the one-click questions and the reading, not-discussed and unchecked rows.
+- **Pad Band** (band): row fill for hover and focus on note points, the highlighted transcript line, the writing row, the Copy button, the title being edited, the line being typed in My notes; on the Ask tab the input, the one-click questions and the reading, not-discussed and unchecked rows.
 - **Deep Band** (band-deep): stronger fill for the failed-note row and a failed question, notices (banners), text selection, Copy and one-click hover, and the first frame of a landing line.
 - **Chipboard** (chip): the rail.
 - **Chipboard Edge** (chip-edge): the 1px line where the rail meets the pad and above the microphone.
@@ -280,7 +289,7 @@ A paper-and-board palette: two greens of pad, a tan board, a deep green rule, na
 - **Wordmark** (800, 30px, 1): the app name at the top of the rail.
 - **Timer** (700, 28px, 32px, tabular): the elapsed time on the red record block.
 - **Caps head** (700, 15px/18px, 0.05em, uppercase): note section heads (rule green), the stamp's first line, the writing and failed row titles.
-- **Caps speaker** (700, 14px, 0.05em, uppercase): speaker names in quotes and at each transcript turn, the "where it came from" column head, day heads in the rail.
+- **Caps speaker** (700, 14px, 0.05em, uppercase): speaker names in quotes and at each transcript turn, "From your notes" before the owner's own line, the "where it came from" column head, "Listening…", day heads in the rail.
 - **Caps label** (700, 13px/16px, 0.05em, uppercase): small rail labels (Microphone, Recording).
 - **Time tab** (700, 14px/18px, 0.03em, tabular): the clickable times on the note's centre rule.
 - **Body** (400, 15px/23px): note points, quotes, transcript lines, notices; body-strong (600) for tabs, buttons and meeting names.
@@ -329,15 +338,15 @@ Gently rounded, never pill-shaped except for dots and meters. Small marks (time 
 ### Inputs / Fields
 - **Style:** wells in the rail: chipboard-well fill, no border, 10px radius, 40px tall, ink text, chipboard-ink placeholder and icons. Search shows a Ctrl K keyboard hint (1px outline, 4px radius) that hides below 860px.
 - **Title edit:** the title becomes an input in the same display type on a band fill.
-- **Focus:** a 2px rule-green outline offset 2px, everywhere.
+- **Focus:** a 2px rule-green outline offset 2px, everywhere but the lines of My notes, where the row being typed in fills band instead (see My notes).
 
 ### Navigation
 - **Meetings in the rail:** grouped under caps day heads; each item is the title (semibold) over a 13px meta line (time and duration). Hover fills chipboard-well; the selected item takes the pad colour and merges into the pad. A live meeting shows a red pip and "Recording"; a meeting whose note is being written shows a rule-green pip.
-- **Tabs:** Note, Transcript (with a line count) and Ask on a 2px ink rule; unselected muted (ink on hover), selected ink with a 5px ink bar that draws out from its middle over 220ms. Arrow keys cycle the tabs; only the selected tab is in the Tab order. Copy as Markdown belongs to the Note tab only.
+- **Tabs:** Note, Transcript (with a line count), Ask and My notes on a 2px ink rule; unselected muted (ink on hover), selected ink with a 5px ink bar that draws out from its middle over 220ms. Arrow keys cycle the tabs; only the selected tab is in the Tab order. A meeting being recorded opens on My notes, any other on its Note; when a note starts being written the Note tab comes forward. Copy as Markdown belongs to the Note tab only.
 - **Settings in the rail:** at the foot, below the microphone, as Windows apps place it: the sliders icon, the word and a Ctrl , hint, in chipboard ink. Hover fills chipboard-well; while Settings is open it keeps that fill with ink text.
 
 ### The Note Sheet (signature)
-Each note point sits on a row with its time tabs on the centre rule and its quotes on the far side, each quote led by a coloured caps speaker name, clamped to four lines. Hovering or focusing a row fills it band green, brings the quotes from muted to ink, and keeps the time tabs on the band. A time tab is a small rule-green outlined tab on the pad; hover and keyboard focus both fill it rule green with pad text (no second ring). Pressing one opens the transcript at that line, filled the same band.
+Each note point sits on a row with its time tabs on the centre rule and its quotes on the far side, each quote led by a coloured caps speaker name, clamped to four lines. A point taken from the owner's notes also quotes the typed line it rests on, after the transcript lines, led by "From your notes" in navy caps. Hovering or focusing a row fills it band green, brings the quotes from muted to ink, and keeps the time tabs on the band. A time tab is a small rule-green outlined tab on the pad; hover and keyboard focus both fill it rule green with pad text (no second ring). Pressing one opens the transcript at that line, filled the same band.
 
 An action item's point starts with a Done box on its first line, drawn like a time tab: 16px, a 1.5px rule-green line at 60%, 4px radius (full rule green on hover). Ticked, it fills rule green with a pad-coloured tick, and the point is struck through in muted ink. Keyboard focus draws the 2px rule-green ring around the box. Decisions and open questions have no box.
 
@@ -349,6 +358,9 @@ Lines sit on the same rule with their time on it in 13px meta type; the speaker 
 
 ### Ask
 The meeting's questions as a thread on the note sheet, with a form fixed under it. Each question heads its rows in body-strong (15px, 600) with a square detent on the rule; its answer is note rows (point | time tabs on the rule | quotes), and when only the parts of a long call that match the question were read, a 13px muted line under the points says so. While the answer is being written, a band row shows a caps title in deep rule green over the progress rule; "Not discussed in this meeting." and an answer that couldn't be checked are band rows; a failure is a band-deep row with its reason and, where asking again can help (not for a question too long for the model's settings or a meeting with no transcript), an Ask again primary button. The thread fades out over its last 28px above the form. The form: one-click questions as band-filled buttons (like Copy as Markdown), then the input, a band well (10px radius, 40px tall) with an Ask primary button; Enter asks. Everything that asks is disabled (band at half strength, muted text) while an answer is pending or the meeting is recording, when the empty thread says so instead of its intro; a refusal is a 13px muted line under the input. The newest question scrolls into view when asked and again when its answer lands, stopping clear of the fade, and the input takes focus back. On short windows the form tightens and, once there are questions, the one-click questions step aside.
+
+### My notes
+The owner's notepad, on the note's sheet: one row per typed line. The line is an auto-growing field in the point cell, in body type with no box, so it reads as writing on the pad. The time it was first typed sits on the rule as a time tab once it has one, and pressing it opens the transcript on the line being said then; a line typed before or after the call has no tab. Once the note is written, the quotes cell shows the transcript lines the line was linked to, as on the note sheet. The row being typed in fills band from edge to edge, its quotes come up to ink and its time tab stays on the band; the field draws no ring of its own (as a time tab draws none) and the caret is rule green. Hover fills nothing, so the pointer resting on a line never reads as the line being typed in. An empty pad is one line with the placeholder in muted ink, focused when a recording opens it. Enter starts the next line, Backspace on an empty line goes back to the end of the one before, and Up and Down step between lines from a line's first or last row; a click below the lines carries on from the last one. While recording, the pad fades out over its last 28px above a strip on the same rule: the last two transcript lines on the far side (caps speaker, words in muted ink, two lines each and one on short windows) with their times on the rule in 13px meta type, then "Listening…" beside the pulsing dot where the rule fades out. A save that fails shows a banner above the tabs, so it is seen whichever tab is open; the lines stay on the pad.
 
 ### Stamp (signature)
 Provenance as one mark: a 2px rule-green bordered box, 7px radius, rotated -1.2deg, in rule green, with a caps first line ("written on this PC"), the model, and the number of points checked against the transcript. Shown only once a note is settled.

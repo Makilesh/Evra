@@ -44,11 +44,3 @@ export function noteToMarkdown(title: string, line: string, note: Note): string 
   }
   return `${out.join("\n")}\n`;
 }
-
-const OWNER = /^([^\s:]{1,24}):\s+([\s\S]*)$/;
-
-/** Action items start with their owner ("You: send …"), which the sheet sets in bold. */
-export function splitOwner(text: string): { owner: string | null; rest: string } {
-  const match = OWNER.exec(text);
-  return match ? { owner: match[1], rest: match[2] } : { owner: null, rest: text };
-}

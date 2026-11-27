@@ -9,6 +9,7 @@ from typing import Any
 
 from evra.notes.extract import ITEM_SECTIONS
 from evra.notes.templates import load_template
+from evra.notes.validate import shared_words
 from evra.store.items import ItemStore, StoredItem
 from evra.store.meetings import MeetingStore, Utterance
 from evra.store.notepad import NoteLine, NotepadStore
@@ -52,12 +53,36 @@ def item_text(kind: str, owner: str | None, text: str, due: str | None) -> str:
     return shown
 
 
+def user_quote(
+    text: str, citations: Sequence[str], lines: Sequence[NoteLine]
+) -> dict[str, str] | None:
+    """The owner's typed line a point that cites their notes rests on (RB40): one linked to a
+    line the point cites, else any line, the one sharing the most of its words (the word
+    check's measure) and the earlier on a tie. None when the point cites no notes, or when no
+    line is linked to it or shares a word with it (a point kept by its meaning alone)."""
+    if "user" not in citations:
+        return None
+    cited = set(citations)
+    linked = [line for line in lines if any(uid in cited for uid, _ in line.aligned)]
+    scored = [(shared_words(text, line.text), line) for line in linked or lines]
+    most = max((score for score, _ in scored), default=0)
+    if not linked and most == 0:
+        return None
+    best = next(line for score, line in scored if score == most)  # the earliest of the best
+    return {"id": best.id, "text": best.text}
+
+
 def note_view(
-    note: StoredNote, utterances: Sequence[Utterance], items: Sequence[StoredItem] = ()
+    note: StoredNote,
+    utterances: Sequence[Utterance],
+    items: Sequence[StoredItem] = (),
+    *,
+    lines: Sequence[NoteLine] = (),
 ) -> dict[str, Any]:
     """The summary, then the template's sections in order: the note's own points, and in the
     sections the records fill, the generation's items (a dismissed one is left out). An older
-    note kept its lists as points, so those still show."""
+    note kept its lists as points, so those still show. A point that cites the owner's notes
+    carries the typed line it quotes (`lines`, in the pad's order)."""
     try:
         known = load_template(note.template).sections
     except KeyError:
@@ -65,21 +90,28 @@ def note_view(
     titles = {SUMMARY: "Summary", **{s.id: s.title for s in known}}
     starts = {u.id: u.start_ms for u in utterances}
 
-    def cited(citations: Sequence[str]) -> list[dict[str, Any]]:
-        return [{"utterance_id": c, "start_ms": starts[c]} for c in citations if c in starts]
+    def point(text: str, citations: Sequence[str]) -> dict[str, Any]:
+        view: dict[str, Any] = {
+            "text": text,
+            "citations": [
+                {"utterance_id": c, "start_ms": starts[c]} for c in citations if c in starts
+            ],
+        }
+        quote = user_quote(text, citations, lines)
+        if quote is not None:
+            view["user_quote"] = quote
+        return view
 
     blocks: dict[str, list[dict[str, Any]]] = {}
     for block in note.blocks:
-        blocks.setdefault(block.section, []).append(
-            {"text": block.text, "citations": cited(block.citations)}
-        )
+        blocks.setdefault(block.section, []).append(point(block.text, block.citations))
     for item in items:
         if item.status == "dismissed":
             continue
+        shown = item_text(item.kind, item.owner, item.text, item.due)
         blocks.setdefault(ITEM_SECTIONS[item.kind], []).append(
-            {
-                "text": item_text(item.kind, item.owner, item.text, item.due),
-                "citations": cited(item.citations),
+            point(shown, item.citations)
+            | {
                 "item": {
                     "id": item.id,
                     "kind": item.kind,
@@ -156,17 +188,15 @@ def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] 
     starts = {u.id: u.start_ms for u in utterances}
     items = ItemStore(conn).for_generation(note.generation_id) if note is not None else []
     started_at = int(meeting["started_at"])
+    lines = NotepadStore(conn).lines(meeting_id)
     return {
         "meeting": meeting_summary({**meeting, "has_note": note is not None}),
         "utterances": [utterance_view(u) for u in utterances],
-        "note": note_view(note, utterances, items) if note is not None else None,
+        "note": None if note is None else note_view(note, utterances, items, lines=lines),
         "questions": [
             question_view(q, starts) for q in QuestionStore(conn).for_meeting(meeting_id)
         ],
-        "notes": [
-            note_line_view(line, started_at, starts)
-            for line in NotepadStore(conn).lines(meeting_id)
-        ],
+        "notes": [note_line_view(line, started_at, starts) for line in lines],
     }
 
 

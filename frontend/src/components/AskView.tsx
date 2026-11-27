@@ -212,7 +212,7 @@ function Answer({ question, byId, busy, repeated, onAskAgain, onCite }: Omit<Que
         <>
           <ul>
             {question.points.map((point, index) => (
-              <PointRow key={index} block={point} quotes={noteQuotes(point, byId)} owners={false} onCite={onCite} />
+              <PointRow key={index} block={point} quotes={noteQuotes(point, byId)} onCite={onCite} />
             ))}
           </ul>
           {question.excerpt && <ExcerptRow text={strings.askExcerpt} />}

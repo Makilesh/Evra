@@ -2,22 +2,27 @@ import type { ItemStatus, NoteBlock, Utterance } from "@/bridge";
 import { CheckIcon } from "@/components/icons";
 import { formatClock } from "@/format";
 import { cn } from "@/lib/utils";
-import { splitOwner } from "@/note";
 import { strings } from "@/strings";
 
 interface PointRowProps {
   block: NoteBlock;
   quotes: Utterance[];
-  owners: boolean;
   onCite: (id: string) => void;
   /** Given, an action item gets a Done box in its point cell. */
   onItemStatus?: (id: string, status: ItemStatus) => void;
 }
 
-// One point on the sheet: the point | its time tabs on the rule | the lines it came from.
-// Note points and answers to questions share it.
-export function PointRow({ block, quotes, owners, onCite, onItemStatus }: PointRowProps) {
-  const { owner, rest } = owners ? splitOwner(block.text) : { owner: null, rest: block.text };
+/** An action item names its owner first ("You: send …"), as its record says (RB41). */
+function ownerOf(block: NoteBlock): { owner: string | null; rest: string } {
+  const owner = block.item?.kind === "action_item" ? block.item.owner : null;
+  if (owner && block.text.startsWith(`${owner}: `)) return { owner, rest: block.text.slice(owner.length + 2) };
+  return { owner: null, rest: block.text };
+}
+
+// One point on the sheet: the point | its time tabs on the rule | the lines it came from, and
+// the owner's own line when it came from their notes. Note points and answers share it.
+export function PointRow({ block, quotes, onCite, onItemStatus }: PointRowProps) {
+  const { owner, rest } = ownerOf(block);
   const item = block.item?.kind === "action_item" ? block.item : undefined;
   const tick = item && onItemStatus ? (done: boolean) => onItemStatus(item.id, done ? "done" : "open") : undefined;
   const done = item?.status === "done";
@@ -74,14 +79,25 @@ export function PointRow({ block, quotes, owners, onCite, onItemStatus }: PointR
       </span>
       <div className="sheet-quotes">
         {quotes.map((line) => (
-          <p key={line.id} className="quote">
-            <span className={cn("caps mr-1.5 text-[14px]", line.channel === 0 ? "text-you" : "text-them")}>
-              {line.speaker}
-            </span>
-            <q>{line.text}</q>
-          </p>
+          <Quote key={line.id} line={line} />
         ))}
+        {block.user_quote && (
+          <p className="quote">
+            <span className="caps mr-1.5 text-[14px] text-you">{strings.fromYourNotes}</span>
+            <q>{block.user_quote.text}</q>
+          </p>
+        )}
       </div>
     </li>
+  );
+}
+
+/** A transcript line on the sheet's far side: who said it, in their ink, then the words. */
+export function Quote({ line }: { line: Utterance }) {
+  return (
+    <p className="quote">
+      <span className={cn("caps mr-1.5 text-[14px]", line.channel === 0 ? "text-you" : "text-them")}>{line.speaker}</span>
+      <q>{line.text}</q>
+    </p>
   );
 }

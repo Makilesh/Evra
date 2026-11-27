@@ -66,6 +66,8 @@ export interface NoteBlock {
   citations: Citation[];
   /** Only on a point that comes from a record (action items, decisions, open questions). */
   item?: NoteItem;
+  /** Only on a point from the owner's notes: the typed line it rests on (RB40). */
+  user_quote?: { id: string; text: string };
 }
 
 export interface NoteSection {
@@ -79,12 +81,29 @@ export interface Note {
   sections: NoteSection[];
 }
 
+/** A line the owner typed in My notes (BUILD.md §7.1). */
+export interface NoteLine {
+  /** The window's own, unique in the meeting's pad. */
+  id: string;
+  text: string;
+  /** Epoch ms: when the line first got more than spaces. It never changes. */
+  captured_at: number | null;
+  /** It got a paste of more than 500 characters: context, never linked to the transcript. */
+  pasted: boolean;
+  /** From Python: ms into the call. */
+  captured_ms?: number | null;
+  /** From Python, once a note is written: the transcript lines it is linked to, in the call's order. */
+  aligned?: { utterance_id: string; start_ms: number }[];
+}
+
 export interface MeetingDetail {
   meeting: MeetingSummary;
   utterances: Utterance[];
   note: Note | null;
   /** Oldest first. */
   questions: Question[];
+  /** The owner's typed lines, in the pad's order. */
+  notes: NoteLine[];
 }
 
 export interface MicList {
@@ -202,6 +221,11 @@ export interface EvraApi {
   prepare_ask(meetingId: string): Promise<OkReply>;
   rename_meeting(meetingId: string, title: string): Promise<OkReply>;
   set_item_status(itemId: string, status: ItemStatus): Promise<OkReply>;
+  /** The meeting's whole pad, as it is now; Python refuses all of it if any line is bad. */
+  save_notes(
+    meetingId: string,
+    lines: { id: string; text: string; captured_at: number | null; pasted: boolean }[],
+  ): Promise<OkReply>;
   recording_state(): Promise<RecordingState>;
   get_settings(): Promise<SettingsInfo>;
   set_theme(theme: Theme): Promise<OkReply>;

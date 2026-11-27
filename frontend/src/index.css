@@ -332,6 +332,20 @@
     color: var(--ink);
   }
 
+  /* My notes: the line being typed in fills band, its whole row. Hover fills nothing, so the
+     pointer resting on a line never reads as the line being typed in. */
+  .pad-row:focus-within {
+    background: var(--band);
+  }
+
+  .pad-row:focus-within .time-tab:not(:hover, :focus-visible) {
+    background: var(--band);
+  }
+
+  .pad-row:focus-within .quote {
+    color: var(--ink);
+  }
+
   .quote {
     color: var(--muted);
     display: -webkit-box;

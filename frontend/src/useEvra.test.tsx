@@ -1,10 +1,22 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { emit, setApiForTests, type AskRefusal, type MeetingDetail, type MeetingSummary, type Question } from "@/bridge";
+import {
+  emit,
+  setApiForTests,
+  type AskRefusal,
+  type ItemStatus,
+  type MeetingDetail,
+  type MeetingSummary,
+  type NoteLine,
+  type Question,
+} from "@/bridge";
 import { DETAIL, MEETING, makeFakeApi } from "@/test/fakeApi";
 import { useEvra } from "@/useEvra";
 
-afterEach(() => setApiForTests(null));
+afterEach(() => {
+  vi.useRealTimers();
+  setApiForTests(null);
+});
 
 const LIVE: MeetingSummary = {
   ...MEETING,
@@ -14,6 +26,7 @@ const LIVE: MeetingSummary = {
   has_note: false,
   duration_ms: null,
 };
+const LIVE_DETAIL: MeetingDetail = { meeting: LIVE, utterances: [], note: null, questions: [], notes: [] };
 
 it("loads the meetings and opens the newest one", async () => {
   setApiForTests(makeFakeApi());
@@ -42,7 +55,7 @@ it("picks up a recording in progress after the window reloads", async () => {
     makeFakeApi({
       recording_state: async () => ({ state: "recording", meeting_id: "m2", started_at: 5 }),
       list_meetings: async () => [LIVE, MEETING],
-      get_meeting: async (id) => (id === "m2" ? { meeting: LIVE, utterances: [], note: null, questions: [] } : DETAIL),
+      get_meeting: async (id) => (id === "m2" ? LIVE_DETAIL : DETAIL),
     }),
   );
   const { result } = renderHook(() => useEvra());
@@ -55,7 +68,7 @@ it("opens a meeting when its recording starts", async () => {
   setApiForTests(
     makeFakeApi({
       list_meetings: async () => meetings,
-      get_meeting: async (id) => (id === "m2" ? { meeting: LIVE, utterances: [], note: null, questions: [] } : DETAIL),
+      get_meeting: async (id) => (id === "m2" ? LIVE_DETAIL : DETAIL),
     }),
   );
   const { result } = renderHook(() => useEvra());
@@ -309,4 +322,154 @@ it("asks Python to read the meeting ahead, ignoring the reply and errors", async
   await waitFor(() => expect(result.current.state.ready).toBe(true));
   act(() => result.current.prepareAsk("m1"));
   await waitFor(() => expect(api.prepare_ask).toHaveBeenCalledWith("m1"));
+});
+
+it("saves quick ticks of one item in turn and ends where Python does", async () => {
+  let stored: ItemStatus = "open"; // the database
+  const answers: ((ok: boolean) => void)[] = [];
+  const set_item_status = vi.fn(
+    (_id: string, status: ItemStatus) =>
+      new Promise<{ ok: boolean }>((resolve) =>
+        answers.push((ok) => {
+          if (ok) stored = status;
+          resolve({ ok });
+        }),
+      ),
+  );
+  setApiForTests(makeFakeApi({ get_meeting: async () => WITH_ITEM, set_item_status }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(WITH_ITEM));
+
+  const ticks: Promise<boolean>[] = [];
+  act(() => {
+    ticks.push(result.current.setItemStatus("i1", "done"));
+    ticks.push(result.current.setItemStatus("i1", "open"));
+    ticks.push(result.current.setItemStatus("i1", "done"));
+  });
+  expect(itemStatus(result.current.state.detail)).toBe("done"); // every tick shows at once
+  await waitFor(() => expect(set_item_status).toHaveBeenCalledTimes(1));
+  await act(async () => answers[0](false)); // the first fails...
+  await waitFor(() => expect(set_item_status).toHaveBeenCalledTimes(2)); // ...and only then the next goes
+  expect(itemStatus(result.current.state.detail)).toBe("done"); // the last tick still shows
+  await act(async () => answers[1](true));
+  await waitFor(() => expect(set_item_status).toHaveBeenCalledTimes(3));
+  await act(async () => {
+    answers[2](false);
+    expect(await Promise.all(ticks)).toEqual([false, true, false]);
+  });
+  expect(stored).toBe("open");
+  expect(itemStatus(result.current.state.detail)).toBe("open"); // the box ends where Python is
+});
+
+const TYPED: NoteLine[] = [
+  {
+    id: "a",
+    text: "Budget approved",
+    captured_at: MEETING.started_at + 75_000,
+    pasted: false,
+    captured_ms: 75_000,
+    aligned: [{ utterance_id: "u1", start_ms: 65_000 }],
+  },
+];
+/** What reaches Python: the lines without what only the window reads. */
+const SAVED = [{ id: "a", text: "Budget approved", captured_at: MEETING.started_at + 75_000, pasted: false }];
+const ASK: NoteLine = { id: "b", text: "Ask Priya", captured_at: MEETING.started_at + 90_000, pasted: false };
+
+it("saves 400 ms after typing", async () => {
+  const api = makeFakeApi();
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  vi.useFakeTimers();
+  act(() => result.current.editNotes("m1", TYPED));
+  expect(result.current.state.notes.m1).toEqual(TYPED); // the window shows it at once
+  await act(() => vi.advanceTimersByTimeAsync(300));
+  act(() => result.current.editNotes("m1", [...TYPED, ASK])); // still typing: the wait starts again
+  await act(() => vi.advanceTimersByTimeAsync(399));
+  expect(api.save_notes).not.toHaveBeenCalled();
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(api.save_notes).toHaveBeenCalledTimes(1);
+  expect(api.save_notes).toHaveBeenCalledWith("m1", [...SAVED, ASK]); // the whole pad, once
+});
+
+it("flushes notes before stop", async () => {
+  const calls: string[] = [];
+  let answer = (_ok: boolean) => {};
+  const api = makeFakeApi({
+    save_notes: vi.fn(() => {
+      calls.push("save_notes");
+      return new Promise<{ ok: boolean }>((resolve) => {
+        answer = (ok) => resolve({ ok });
+      });
+    }),
+    stop_recording: vi.fn(async () => {
+      calls.push("stop_recording");
+      return { ok: true };
+    }),
+  });
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => result.current.editNotes("m1", TYPED)); // typed a moment ago: not saved yet
+  let stopped: Promise<void> = Promise.resolve();
+  act(() => {
+    stopped = result.current.stopRecording();
+  });
+  await waitFor(() => expect(api.save_notes).toHaveBeenCalledWith("m1", SAVED));
+  expect(calls).toEqual(["save_notes"]); // Stop waits for Python's answer
+  await act(async () => {
+    answer(true);
+    await stopped;
+  });
+  expect(calls).toEqual(["save_notes", "stop_recording"]);
+});
+
+it("saves the notes before a note is written again", async () => {
+  const api = makeFakeApi();
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => result.current.editNotes("m1", TYPED));
+  await act(() => result.current.writeNote("m1"));
+  expect(api.save_notes).toHaveBeenCalledWith("m1", SAVED);
+  const [saved] = vi.mocked(api.save_notes).mock.invocationCallOrder;
+  const [written] = vi.mocked(api.write_note).mock.invocationCallOrder;
+  expect(saved).toBeLessThan(written);
+});
+
+it("still stops when the notes can't be saved, says so, and saves them on the next change", async () => {
+  const replies = [false, true];
+  const api = makeFakeApi({ save_notes: vi.fn(async () => ({ ok: replies.shift()! })) });
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => result.current.editNotes("m1", TYPED));
+  await act(() => result.current.stopRecording());
+  expect(api.stop_recording).toHaveBeenCalled(); // the owner's Stop always works
+  expect(result.current.state.notesSaveFailed).toEqual({ m1: true });
+  expect(result.current.state.notes.m1).toEqual(TYPED); // the lines stay in the window
+  act(() => result.current.editNotes("m1", [...TYPED, ASK]));
+  await act(() => result.current.flushNotes());
+  expect(api.save_notes).toHaveBeenLastCalledWith("m1", [...SAVED, ASK]);
+  expect(result.current.state.notesSaveFailed).toEqual({});
+});
+
+it("saves a meeting's notes under it when another meeting opens", async () => {
+  const other: MeetingSummary = { ...MEETING, id: "m3", title: "Design review" };
+  const api = makeFakeApi({
+    list_meetings: async () => [MEETING, other],
+    get_meeting: async (id) => (id === "m3" ? { ...DETAIL, meeting: other } : DETAIL),
+  });
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => result.current.editNotes("m1", TYPED));
+  act(() => result.current.select("m3"));
+  await waitFor(() => expect(api.save_notes).toHaveBeenCalledWith("m1", SAVED));
+  await waitFor(() => expect(result.current.state.detail?.meeting.id).toBe("m3"));
+  act(() => result.current.editNotes("m3", [ASK]));
+  await act(() => result.current.flushNotes());
+  expect(api.save_notes).toHaveBeenLastCalledWith("m3", [ASK]);
+  expect(api.save_notes).toHaveBeenCalledTimes(2);
+  expect(result.current.state.notes.m1).toEqual(TYPED); // kept for when it opens again
 });
