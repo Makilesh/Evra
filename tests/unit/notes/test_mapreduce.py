@@ -14,11 +14,12 @@ from evra.notes.context import ELLIPSIS, EN_DASH, build_context
 from evra.notes.errors import NoteCutOff, NoteInvalid, NoteTooLong
 from evra.notes.extract import Extraction
 from evra.notes.job import generation_version
-from evra.notes.mapreduce import COMBINE_NOTE, write_long_note
+from evra.notes.mapreduce import COMBINE_NOTE, notes_by_part, write_long_note
 from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template
 from evra.notes.user_notes import NO_NOTES, NotesInput, notes_input
 from evra.notes.validate import Grounder
+from evra.notes.windows import split_windows
 from evra.notes.writer import NoteResult
 from evra.store.meetings import Utterance
 from evra.store.notepad import NoteLine, Phase
@@ -378,10 +379,11 @@ def notes_shown(call: list[ChatMessage]) -> list[str]:
 
 
 def test_each_part_sees_the_notes_about_it() -> None:
-    """RB36: a during note goes to the parts that hold its linked lines; with none, to the part
-    whose span holds its time (the first, where two overlap), else the last part. Before, after
-    and context notes go to every part, A3 sees them all, and every prompt numbers them alike.
-    Part 1 is 00:00-10:00 (k0-k59), part 2 09:00-15:00 (k54-k89)."""
+    """RB36, RB58: a during note goes to the parts that hold its linked lines; with none, to the
+    part whose span holds its time (the first, where two overlap), else the last part that ended
+    before it, or the first part when it comes before every part. Before, after and context notes
+    go to every part, A3 sees them all, and every prompt numbers them alike. Part 1 is
+    00:00-10:00 (k0-k59), part 2 09:00-15:00 (k54-k89)."""
     typed = [
         _typed("beta", 60_000, linked="k4"),  # n:1, part 1
         _typed("legacy", 810_000, linked="k79"),  # n:2, part 2
@@ -403,6 +405,31 @@ def test_each_part_sees_the_notes_about_it() -> None:
     assert second == ["n:2", "n:3", "n:4", "n:6", "n:7", "n:8", "n:9"]
     assert combine == [f"n:{k}" for k in range(1, 10)]
     assert [(b.text, b.citations) for b in result.note.summary] == [("Note beta.", ("user",))]
+    # RB58 on a call whose first line starts 20 s in and that breaks for 20 minutes, longer
+    # than a part's reach, so the part after the silence starts after it (RB51)
+    said = [utt(f"a{k}", k % 2, 20_000 + k * 10_000, 30_000 + k * 10_000, "Hi.") for k in range(71)]
+    said += [
+        utt(f"b{k}", k % 2, 1_920_000 + k * 10_000, 1_930_000 + k * 10_000, "Hi.")
+        for k in range(49)
+    ]
+    windows = split_windows(said)
+    assert [(w.start_ms, w.end_ms) for w in windows] == [
+        (20_000, 620_000),  # 00:20-10:20
+        (560_000, 730_000),  # 09:20-12:10
+        (1_920_000, 2_410_000),  # 32:00-40:10
+    ]
+    unlinked = [
+        _typed("first", 3_000),  # before anyone spoke: the first part
+        _typed("break", 1_200_000),  # 20:00, in the silence: the part that ended before it
+        _typed("held", 2_100_000),  # 35:00: the part whose span holds it
+        _typed("both", 590_000),  # 09:50, in two spans: the first
+        _typed("last", 2_700_000),  # 45:00, after every part: the last
+    ]
+    assert notes_by_part(unlinked, windows) == {
+        1: {"first", "both"},
+        2: {"break"},
+        3: {"held", "last"},
+    }
 
 
 def test_nothing_is_logged_with_content() -> None:

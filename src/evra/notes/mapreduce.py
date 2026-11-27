@@ -87,9 +87,11 @@ def notes_by_part(
     lines: Sequence[NoteLine], windows: Sequence[Window]
 ) -> dict[int, frozenset[str]]:
     """The notes each part shows, by id, for each part's number (RB36). A note typed during the
-    call goes to the parts that hold one of its linked lines; with none, to the first part whose
-    span holds its time, else to the last part. Before, after and context notes go to every
-    part, so a part's A2 treats its annotated stretches in detail and no other part's."""
+    call goes to the parts that hold one of its linked lines. With none, it goes to the first
+    part whose span holds its time; else to the last part that ended before it (a note is
+    written after what it is about); else, typed before every part, to the first (RB58).
+    Before, after and context notes go to every part, so a part's A2 treats its annotated
+    stretches in detail and no other part's."""
     held = {window.index: frozenset(window.ids) for window in windows}
     shown: dict[int, set[str]] = {window.index: set() for window in windows}
     for line in lines:
@@ -98,9 +100,10 @@ def notes_by_part(
             linked = {uid for uid, _ in line.aligned}
             targets = [w for w in windows if linked & held[w.index]]
             if not targets:
-                at = line.captured_at_ms
+                at = line.captured_at_ms  # never None for a stored during line
                 spans = [w for w in windows if at is not None and w.start_ms <= at <= w.end_ms]
-                targets = spans[:1] or list(windows[-1:])
+                ended = [w for w in windows if at is None or w.end_ms < at]
+                targets = spans[:1] or ended[-1:] or list(windows[:1])
         for window in targets:
             shown[window.index].add(line.id)
     return {index: frozenset(ids) for index, ids in shown.items()}
