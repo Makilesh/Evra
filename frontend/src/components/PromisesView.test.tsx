@@ -47,14 +47,22 @@ const MARKETING: OpenPromise = {
   start_ms: 65_000,
 };
 
+/** Four promises from one 1:1, to hold several of one list at once. */
+const FOUR: OpenPromise[] = ["Send the proposal", "Share the deck", "Book the offsite", "Review the budget"].map(
+  (text, i) => ({ ...DECK, id: `r${i}`, text, meeting_id: "m1", meeting_title: "Weekly 1:1", started_at: MEETING.started_at }),
+);
+const [R0, R1, R2, R3] = FOUR;
+
+type Lists = { you: OpenPromise[]; them: OpenPromise[] };
+
 /** Python's side: the promises still open, saved statuses, and the two meetings they come from. */
-function promisesApi(overrides: Partial<EvraApi> = {}): EvraApi {
+function promisesApi(lists: Lists = { you: [SEND, DECK], them: [MARKETING] }, overrides: Partial<EvraApi> = {}): EvraApi {
   const saved = new Map<string, ItemStatus>();
   const open = (p: OpenPromise) => (saved.get(p.id) ?? "open") === "open";
   return makeFakeApi({
     list_meetings: vi.fn(async () => [MEETING, DESIGN]),
     get_meeting: vi.fn(async (id: string) => (id === "m2" ? { ...DETAIL, meeting: DESIGN } : DETAIL)),
-    list_promises: vi.fn(async () => ({ you: [SEND, DECK].filter(open), them: [MARKETING].filter(open) })),
+    list_promises: vi.fn(async () => ({ you: lists.you.filter(open), them: lists.them.filter(open) })),
     set_item_status: vi.fn(async (id: string, status: ItemStatus) => {
       saved.set(id, status);
       return { ok: true };
@@ -63,9 +71,35 @@ function promisesApi(overrides: Partial<EvraApi> = {}): EvraApi {
   });
 }
 
-async function openPromises() {
-  await userEvent.click(await screen.findByRole("button", { name: "Promises 3 open" }));
-  await screen.findByRole("checkbox", { name: "Done: Send the proposal" });
+async function openPromises(count = 3, first = "Send the proposal") {
+  await userEvent.click(await screen.findByRole("button", { name: `Promises ${count} open` }));
+  await screen.findByRole("checkbox", { name: `Done: ${first}` });
+}
+
+/** The page with the four promises, and the clock in the test's hands. */
+async function openFour(): Promise<EvraApi> {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const api = promisesApi({ you: FOUR, them: [] });
+  setApiForTests(api);
+  render(<App />);
+  await openPromises(4);
+  return api;
+}
+
+const later = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+const tick = (text: string) => userEvent.click(screen.getByRole("checkbox", { name: `Done: ${text}` }));
+const setAside = (text: string) => userEvent.click(within(row(text)).getByRole("button", { name: "Not a promise" }));
+
+/** "You promised" as it reads: each task, marked ✓ when done and – when set aside. */
+function you(): string[] {
+  const list = screen.getByRole("region", { name: "You promised" });
+  return within(list)
+    .getAllByRole("listitem")
+    .map((li) => {
+      const text = li.querySelector("p")?.textContent ?? "";
+      if (within(li).getByRole<HTMLInputElement>("checkbox").checked) return `${text} ✓`;
+      return li.textContent?.includes("Set aside") ? `${text} –` : text;
+    });
 }
 
 /** Python says the promises changed (as after a saved tick), and the window reads them again. */
@@ -231,4 +265,139 @@ it("undo puts a set-aside promise back", async () => {
   await act(() => vi.advanceTimersByTimeAsync(6_000)); // its 5 seconds no longer run
   expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]);
   expect(within(row("Send the proposal")).getByRole("button", { name: "Not a promise" })).toBeInTheDocument();
+});
+
+// Several rows of one list held at once (fix round 1): each keeps its place among its neighbours
+// while Python's list changes around it, and the focus goes to the row now in its place.
+
+it("keeps two rows ticked top-down in their places through their refreshes and their leaving", async () => {
+  const api = await openFour();
+  await tick(R0.text);
+  await changed(api, { you: [R1, R2, R3], them: [] });
+  await later(1_000);
+  await tick(R1.text);
+  await changed(api, { you: [R2, R3], them: [] });
+  expect(you()).toEqual(["Send the proposal ✓", "Share the deck ✓", "Book the offsite", "Review the budget"]);
+  await later(4_100); // the first one's 5 seconds are up
+  expect(you()).toEqual(["Share the deck ✓", "Book the offsite", "Review the budget"]);
+  await later(1_000);
+  expect(you()).toEqual(["Book the offsite", "Review the budget"]);
+});
+
+it("keeps three rows ticked a second apart in their places until each leaves", async () => {
+  const api = await openFour();
+  await tick(R0.text);
+  await changed(api, { you: [R1, R2, R3], them: [] });
+  await later(1_000);
+  await tick(R1.text);
+  await changed(api, { you: [R2, R3], them: [] });
+  await later(1_000);
+  await tick(R2.text);
+  await changed(api, { you: [R3], them: [] });
+  expect(you()).toEqual(["Send the proposal ✓", "Share the deck ✓", "Book the offsite ✓", "Review the budget"]);
+  await later(3_100);
+  expect(you()).toEqual(["Share the deck ✓", "Book the offsite ✓", "Review the budget"]);
+  await later(1_000);
+  expect(you()).toEqual(["Book the offsite ✓", "Review the budget"]);
+  await later(1_000);
+  expect(you()).toEqual(["Review the budget"]);
+});
+
+it("keeps a ticked row and the next, set aside, in their places until each leaves", async () => {
+  const api = await openFour();
+  await tick(R0.text);
+  await changed(api, { you: [R1, R2, R3], them: [] });
+  await later(1_000);
+  await setAside(R1.text);
+  await changed(api, { you: [R2, R3], them: [] });
+  expect(you()).toEqual(["Send the proposal ✓", "Share the deck –", "Book the offsite", "Review the budget"]);
+  await later(4_100);
+  expect(you()).toEqual(["Share the deck –", "Book the offsite", "Review the budget"]);
+  await later(1_000);
+  expect(you()).toEqual(["Book the offsite", "Review the budget"]);
+});
+
+it("keeps the second held row in its place when Undo brings it back", async () => {
+  const api = await openFour();
+  await tick(R0.text);
+  await changed(api, { you: [R1, R2, R3], them: [] });
+  await later(1_000);
+  await tick(R1.text);
+  await changed(api, { you: [R2, R3], them: [] });
+  expect(you()).toEqual(["Send the proposal ✓", "Share the deck ✓", "Book the offsite", "Review the budget"]);
+  await userEvent.click(within(row(R1.text)).getByRole("button", { name: "Undo" }));
+  await changed(api, { you: [R1, R2, R3], them: [] }); // Python lists it again
+  expect(you()).toEqual(["Send the proposal ✓", "Share the deck", "Book the offsite", "Review the budget"]);
+  await later(4_100); // the first one leaves; the second stays where it was
+  expect(you()).toEqual(["Share the deck", "Book the offsite", "Review the budget"]);
+  await later(2_000);
+  expect(you()).toEqual(["Share the deck", "Book the offsite", "Review the budget"]);
+});
+
+it("hands the focus to the row now in its place after rows above it have left", async () => {
+  const api = await openFour();
+  screen.getByRole("checkbox", { name: `Done: ${R0.text}` }).focus();
+  await userEvent.keyboard(" ");
+  await changed(api, { you: [R1, R2, R3], them: [] });
+  await later(1_000);
+  const second = screen.getByRole("checkbox", { name: `Done: ${R1.text}` });
+  second.focus(); // the next row's box, as Tab reaches it
+  await userEvent.keyboard(" ");
+  await changed(api, { you: [R2, R3], them: [] });
+  await later(4_100); // the row above leaves first
+  expect(second).toHaveFocus();
+  await later(1_000); // then this one: the row after it is now in its place
+  expect(screen.getByRole("checkbox", { name: `Done: ${R2.text}` })).toHaveFocus();
+});
+
+it("hands the focus on the same way from a set-aside row's Undo", async () => {
+  const api = await openFour();
+  screen.getByRole("checkbox", { name: `Done: ${R0.text}` }).focus();
+  await userEvent.keyboard(" ");
+  await changed(api, { you: [R1, R2, R3], them: [] });
+  await later(1_000);
+  within(row(R1.text)).getByRole("button", { name: "Not a promise" }).focus();
+  await userEvent.keyboard("{Enter}");
+  await changed(api, { you: [R2, R3], them: [] });
+  const undo = within(row(R1.text)).getByRole("button", { name: "Undo" });
+  expect(undo).toHaveFocus();
+  await later(4_100);
+  expect(undo).toHaveFocus();
+  await later(1_000);
+  expect(screen.getByRole("checkbox", { name: `Done: ${R2.text}` })).toHaveFocus();
+});
+
+it("puts a promise back as Python has it when setting it aside is refused", async () => {
+  const answers: ((reply: { ok: boolean }) => void)[] = [];
+  const set_item_status = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => answers.push(resolve)));
+  setApiForTests(promisesApi(undefined, { set_item_status }));
+  render(<App />);
+  await openPromises();
+  await setAside("Send the proposal");
+  expect(set_item_status).toHaveBeenCalledWith("i1", "dismissed");
+  expect(within(row("Send the proposal")).getByRole("button", { name: "Undo" })).toHaveFocus(); // at once
+  expect(screen.getByRole("button", { name: "Promises 2 open" })).toBeInTheDocument();
+  await act(async () => answers[0]({ ok: false })); // Python refuses
+  await waitFor(() =>
+    expect(within(row("Send the proposal")).getByRole("button", { name: "Not a promise" })).toBeInTheDocument(),
+  );
+  expect(screen.getByRole("checkbox", { name: "Done: Send the proposal" })).toHaveFocus();
+  expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]);
+  expect(screen.getByRole("button", { name: "Promises 3 open" })).toBeInTheDocument();
+});
+
+it("ticks a promise set aside, and it ends done in its place", async () => {
+  const api = promisesApi();
+  setApiForTests(api);
+  render(<App />);
+  await openPromises();
+  await setAside("Send the proposal");
+  await tick("Send the proposal"); // its Done box still works
+  expect(api.set_item_status).toHaveBeenLastCalledWith("i1", "done");
+  await changed(api, { you: [DECK], them: [MARKETING] });
+  const send = row("Send the proposal");
+  expect(within(send).getByRole("checkbox")).toBeChecked();
+  expect(send).toHaveTextContent("Done");
+  expect(within(send).getByRole("button", { name: "Undo" })).toBeInTheDocument();
+  expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]);
 });

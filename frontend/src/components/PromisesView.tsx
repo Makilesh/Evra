@@ -20,11 +20,11 @@ const SECTIONS: { direction: Direction; title: string }[] = [
   { direction: "them", title: strings.theyPromised },
 ];
 
-/** Where the focus was among the rows: the control, and its row's place. */
+/** Where the focus is among the rows: the control, and its row. */
 interface Focused {
   control: Element;
+  id: string;
   direction: Direction;
-  index: number;
 }
 
 // Every open promise across the 1:1s on the note's sheet, what you promised, then what they did.
@@ -34,19 +34,23 @@ export function PromisesView({ promises, onStatus, onOpenMeeting, now = Date.now
   const heading = useRef<HTMLHeadingElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const focused = useRef<Focused | null>(null);
+  const before = useRef<ShownPromises | null>(null); // the rows as the last render showed them
 
-  /** The control and where its row is; null outside the rows. */
+  /** The control and its row; null outside the rows. */
   function locate(control: Element): Focused | null {
     const row = control.closest<HTMLElement>("[data-promise-id]");
+    const id = row?.dataset.promiseId;
     const direction = row?.closest<HTMLElement>("[data-direction]")?.dataset.direction as Direction | undefined;
-    const index = direction ? (promises?.[direction].findIndex((r) => r.promise.id === row?.dataset.promiseId) ?? -1) : -1;
-    return direction && index >= 0 ? { control, direction, index } : null;
+    return id && direction ? { control, id, direction } : null;
   }
 
-  // A row that leaves with the focus in it (its 5 seconds of Undo are up) hands the focus to the
-  // Done box of the row now in its place, else to the title, so the keyboard keeps its place on
-  // the page. A control that goes while its row stays has passed the focus on itself (Undo).
+  // A control that goes with the focus in it hands the focus to the Done box now in its row's
+  // place: its own row's when the row stays (a refused set-aside's Undo goes), else the row that
+  // came after it, else the one before, else the title. The neighbours are the rows as last shown,
+  // so rows that left above it meanwhile don't move the target. The keyboard keeps its place.
   useLayoutEffect(() => {
+    const shown = before.current;
+    before.current = promises;
     const last = focused.current;
     if (!last || last.control.isConnected) return;
     const active = document.activeElement;
@@ -55,9 +59,13 @@ export function PromisesView({ promises, onStatus, onOpenMeeting, now = Date.now
       return;
     }
     focused.current = null;
-    const section = sheet.current?.querySelector(`[data-direction="${last.direction}"]`);
-    const boxes = Array.from(section?.querySelectorAll<HTMLElement>('input[type="checkbox"]') ?? []);
-    (boxes[Math.min(last.index, boxes.length - 1)] ?? heading.current)?.focus();
+    const present = new Set(promises?.[last.direction].map((r) => r.promise.id));
+    const then = shown?.[last.direction].map((r) => r.promise.id) ?? [];
+    const at = Math.max(0, then.indexOf(last.id));
+    const next = [...then.slice(at), ...then.slice(0, at).reverse()].find((id) => present.has(id));
+    const rows = Array.from(sheet.current?.querySelectorAll<HTMLElement>("[data-promise-id]") ?? []);
+    const box = rows.find((row) => row.dataset.promiseId === next)?.querySelector<HTMLElement>('input[type="checkbox"]');
+    (box ?? heading.current)?.focus();
   });
 
   function track(event: FocusEvent<HTMLDivElement>) {

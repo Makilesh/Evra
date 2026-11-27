@@ -38,13 +38,11 @@ export interface ShownPromise {
 
 export type ShownPromises = Record<Direction, ShownPromise[]>;
 
-/** A promise the window changed lately. It keeps its place on the page, by id, until Python's list
- *  has been read since its last save, and one done or set aside until its Undo time ends too. */
+/** A promise the window changed lately. It stays on the page until Python's list has been read
+ *  since its last save, and one done or set aside until its Undo time ends too. */
 interface Held {
   promise: OpenPromise;
   direction: Direction;
-  /** Its place in its list when the window first changed it. */
-  index: number;
   status: ItemStatus;
   /** The read of Python's list that decides for it once shown; none while a save runs. */
   read: number;
@@ -58,35 +56,53 @@ interface PromiseState {
   /** The newest read shown: an older read that answers later is dropped. */
   read: number;
   held: Record<string, Held>;
+  /** Each list's promises in the order last shown, so a held one keeps its place among its
+   *  neighbours while Python's list changes around it. */
+  order: Record<Direction, string[]>;
 }
+
+const DIRECTIONS: Direction[] = ["you", "them"];
 
 /** A promise Python lists, as the window would first hold it. */
 function located(listed: PromiseLists | null, id: string): Held | undefined {
-  if (!listed) return undefined;
-  for (const direction of ["you", "them"] as const) {
-    const index = listed[direction].findIndex((p) => p.id === id);
-    if (index >= 0) return { promise: listed[direction][index], direction, index, status: "open", read: 0, undoEnds: 0 };
+  for (const direction of DIRECTIONS) {
+    const promise = listed?.[direction].find((p) => p.id === id);
+    if (promise) return { promise, direction, status: "open", read: 0, undoEnds: 0 };
   }
   return undefined;
 }
 
-/** The state without the held promises Python's list now decides for. */
-function released(s: PromiseState, now: number): PromiseState {
-  const kept = Object.entries(s.held).filter(([, h]) => s.read < h.read || (h.status !== "open" && now < h.undoEnds));
-  return kept.length === Object.keys(s.held).length ? s : { ...s, held: Object.fromEntries(kept) };
+/** A list's order after a change: a promise still listed or held keeps its place, and one Python
+ *  newly lists goes in after the one Python lists before it. */
+function arranged(order: string[], listed: OpenPromise[], held: Record<string, Held>): string[] {
+  const ids = listed.map((p) => p.id);
+  const next = order.filter((id) => ids.includes(id) || id in held);
+  ids.forEach((id, i) => {
+    if (!next.includes(id)) next.splice(i === 0 ? 0 : next.indexOf(ids[i - 1]) + 1, 0, id);
+  });
+  return next.length === order.length && next.every((id, i) => id === order[i]) ? order : next;
 }
 
-/** Python's lists with the window's changes laid over them: a held promise keeps its place even
- *  once Python no longer lists it (ticked done, or set aside). */
-function shownPromises(listed: PromiseLists, held: Record<string, Held>): ShownPromises {
-  const shown = (direction: Direction): ShownPromise[] => {
-    const rows = listed[direction].map((promise) => ({ promise, status: held[promise.id]?.status ?? "open" }));
-    const unlisted = Object.values(held)
-      .filter((h) => h.direction === direction && !listed[direction].some((p) => p.id === h.promise.id))
-      .sort((a, b) => a.index - b.index);
-    for (const h of unlisted) rows.splice(Math.min(h.index, rows.length), 0, { promise: h.promise, status: h.status });
-    return rows;
-  };
+/** The state once the held promises Python's list now decides for are let go, with each list's
+ *  order brought up to date. The same state when nothing changed. */
+function settled(s: PromiseState, now: number): PromiseState {
+  const kept = Object.entries(s.held).filter(([, h]) => s.read < h.read || (h.status !== "open" && now < h.undoEnds));
+  const held = kept.length === Object.keys(s.held).length ? s.held : Object.fromEntries(kept);
+  const listed = s.listed;
+  const you = listed ? arranged(s.order.you, listed.you, held) : s.order.you;
+  const them = listed ? arranged(s.order.them, listed.them, held) : s.order.them;
+  const order = you === s.order.you && them === s.order.them ? s.order : { you, them };
+  return held === s.held && order === s.order ? s : { ...s, held, order };
+}
+
+/** Each list in the order shown, with the window's changes laid over Python's: a held promise
+ *  stays even once Python no longer lists it (ticked done, or set aside). */
+function shownPromises(s: PromiseState): ShownPromises {
+  const shown = (direction: Direction): ShownPromise[] =>
+    s.order[direction].flatMap((id) => {
+      const promise = s.listed?.[direction].find((p) => p.id === id) ?? s.held[id]?.promise;
+      return promise ? [{ promise, status: s.held[id]?.status ?? "open" }] : [];
+    });
   return { you: shown("you"), them: shown("them") };
 }
 
@@ -177,7 +193,7 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
     [refreshPeople],
   );
 
-  const [promised, setPromised] = useState<PromiseState>({ listed: null, read: 0, held: {} });
+  const [promised, setPromised] = useState<PromiseState>({ listed: null, read: 0, held: {}, order: { you: [], them: [] } });
   const asked = useRef(0); // reads of the promises asked for so far
   // The promises as last shown, so a tick finds the status it starts from.
   const shown = useRef(promised);
@@ -195,7 +211,7 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
       return; // the page keeps what it shows; the next change reads again
     }
     const now = Date.now();
-    setPromised((s) => (read > s.read ? released({ ...s, listed, read }, now) : s));
+    setPromised((s) => (read > s.read ? settled({ ...s, listed, read }, now) : s));
   }, []);
 
   useEffect(() => {
@@ -214,7 +230,7 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
       .filter((h) => h.status !== "open" && h.undoEnds > now)
       .map((h) => h.undoEnds);
     if (ends.length === 0) return;
-    const timer = window.setTimeout(() => setPromised((s) => released(s, Date.now())), Math.min(...ends) - now);
+    const timer = window.setTimeout(() => setPromised((s) => settled(s, Date.now())), Math.min(...ends) - now);
     return () => window.clearTimeout(timer);
   }, [promised.held]);
 
@@ -237,14 +253,14 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
         const known = s.held[id] ?? located(s.listed, id);
         if (!known) return s;
         const undoEnds = status === "open" ? 0 : known.status === status ? known.undoEnds : now + UNDO_MS;
-        return released({ ...s, held: { ...s.held, [id]: { ...known, status, read, undoEnds } } }, now);
+        return settled({ ...s, held: { ...s.held, [id]: { ...known, status, read, undoEnds } } }, now);
       });
       if (saved) void refreshPromises();
     },
     [promiseStatus, refreshPromises],
   );
 
-  const promises = useMemo(() => promised.listed && shownPromises(promised.listed, promised.held), [promised]);
+  const promises = useMemo(() => promised.listed && shownPromises(promised), [promised]);
   const openPromises = promises && [...promises.you, ...promises.them].filter((row) => row.status === "open").length;
 
   return {
