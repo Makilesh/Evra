@@ -163,7 +163,9 @@ def _spoken_numbers(words: Sequence[str], *, lone_ambiguous: bool = True) -> set
 class _Vocabulary:
     lower: frozenset[str]  # word forms the meeting uses in lowercase: ordinary words
     said: frozenset[str]  # every word form said in the meeting
-    # the words of who was on the call, by name (C6): known like "You" and "Them", never cited
+    # who was on the call, by name (C6): known like "You" and "Them", never cited. Each name in
+    # every form a bullet's names are read in: its words ("d'souza") and the capitalised pieces
+    # _names finds ("souza")
     people: frozenset[str] = frozenset()
 
 
@@ -175,7 +177,11 @@ def _vocabulary(texts: Iterable[str], people: Iterable[str] = ()) -> _Vocabulary
             said.add(_base(word))
             if word[0].islower():
                 lower.add(_base(word))
-    known = frozenset(_base(word) for name in people for word in _WORD.findall(name))
+    names = list(people)
+    known = frozenset(
+        {_base(word) for name in names for word in _WORD.findall(name)}
+        | {piece.lower() for name in names for piece in _CAPITALISED.findall(name)}
+    )
     return _Vocabulary(frozenset(lower), frozenset(said), known)
 
 

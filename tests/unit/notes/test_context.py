@@ -9,7 +9,7 @@ import pytest
 from evra.config import LlmSettings
 from evra.llm.prompt_files import load_part
 from evra.notes.context import EXCERPT_NOTE, build_context, estimate_tokens
-from evra.notes.job import write_and_save, write_note_and_items
+from evra.notes.job import SavedNote, write_and_save, write_note_and_items
 from evra.notes.templates import load_template
 from evra.notes.user_notes import meeting_context
 from evra.store.db import connect
@@ -29,6 +29,13 @@ NAMED = (
     'You (the owner of this note), Priya (the other person on the call; "Them" in the transcript)'
 )
 NO_ITEMS = json.dumps({"items": []})
+# A1's reply: one point that names the person
+POINT_NOTE = json.dumps(
+    {
+        "summary": [{"text": "Priya will move the launch to October 14.", "citations": ["u:1"]}],
+        "sections": [],
+    }
+)
 MEETING = {"title": "Budget sync", "started_at": STARTED, "situation": "call_headphones"}
 ARGS: dict[str, Any] = {
     "meeting": MEETING,
@@ -130,8 +137,31 @@ def conn(tmp_path: Path) -> sqlite3.Connection:
     return c
 
 
-def _with_priya(conn: sqlite3.Connection, meeting_id: str) -> None:
-    SpeakerStore(conn).set_person(meeting_id, PersonStore(conn).find_or_create("Priya").id)
+def _link(conn: sqlite3.Connection, meeting_id: str, name: str = "Priya") -> None:
+    SpeakerStore(conn).set_person(meeting_id, PersonStore(conn).find_or_create(name).id)
+
+
+def _tasks(owner: str) -> str:
+    """A4's reply: one task the model gives to `owner`."""
+    task = {"text": "Tell marketing the launch moves to October 14", "owner": owner}
+    return json.dumps({"items": [task | {"due": None, "confidence": 0.9, "citations": ["u:1"]}]})
+
+
+def _write(conn: sqlite3.Connection, meeting_id: str, provider: FakeProvider) -> SavedNote:
+    """The note job on a stored meeting, in one pass."""
+    store = MeetingStore(conn)
+    vid = store.current_transcript_version(meeting_id)
+    assert vid is not None
+    return write_and_save(
+        conn,
+        meeting=store.get_meeting(meeting_id),
+        version_id=vid,
+        utterances=store.utterances(vid),
+        template=load_template("one_on_one"),
+        provider=provider,
+        model="fake:1b",
+        settings=LlmSettings(),
+    )
 
 
 def test_participants_line_names_them(conn: sqlite3.Connection) -> None:
@@ -147,7 +177,7 @@ def test_participants_line_names_them(conn: sqlite3.Connection) -> None:
     mid = saved_meeting(conn, "Weekly 1:1", with_note=False)
     before, _ = meeting_context(conn, mid)
     assert f"participants: {PARTICIPANTS_1ON1}\n" in before.system and before.names == {}
-    _with_priya(conn, mid)
+    _link(conn, mid)
     context, _ = meeting_context(conn, mid)  # what the note, its title and asking all send
     assert f"participants: {NAMED}\n" in context.system
     assert "[u:1] [00:00] Them: The launch moves to October 14." in context.system
@@ -159,29 +189,23 @@ def test_owner_name_maps_to_them(conn: sqlite3.Connection) -> None:
     """C1: the job hands the person's name to the lists, so a task the model gives to "Priya"
     is theirs ("Them"); every call names them, and a point may say their name (C6)."""
     mid = saved_meeting(conn, "Weekly 1:1", with_note=False)
-    _with_priya(conn, mid)
-    point = {"text": "Priya will move the launch to October 14.", "citations": ["u:1"]}
-    note = json.dumps({"summary": [point], "sections": []})
-    task = {"text": "Tell marketing the launch moves to October 14", "owner": "Priya"}
-    tasks = json.dumps({"items": [task | {"due": None, "confidence": 0.9, "citations": ["u:1"]}]})
-    provider = FakeProvider([note, tasks, NO_ITEMS, NO_ITEMS])
-    store = MeetingStore(conn)
-    vid = store.current_transcript_version(mid)
-    assert vid is not None
-    saved = write_and_save(
-        conn,
-        meeting=store.get_meeting(mid),
-        version_id=vid,
-        utterances=store.utterances(vid),
-        template=load_template("one_on_one"),
-        provider=provider,
-        model="fake:1b",
-        settings=LlmSettings(),
-    )
+    _link(conn, mid)
+    provider = FakeProvider([POINT_NOTE, _tasks("Priya"), NO_ITEMS, NO_ITEMS])
+    saved = _write(conn, mid, provider)
     assert len(provider.calls) == 4 and all(NAMED in call[0].content for call in provider.calls)
     assert [b.text for b in saved.result.note.summary] == [
         "Priya will move the launch to October 14."
     ]
+    [item] = ItemStore(conn).for_generation(saved.generation_id)
+    assert (item.text, item.owner) == ("Tell marketing the launch moves to October 14", "Them")
+
+
+def test_first_name_owner_maps_to_them(conn: sqlite3.Connection) -> None:
+    """M6: with "Priya Shah" linked, a task the model gives to "Priya" is theirs ("Them"), so it
+    is one of their promises, not a task with no owner."""
+    mid = saved_meeting(conn, "Weekly 1:1", with_note=False)
+    _link(conn, mid, "Priya Shah")
+    saved = _write(conn, mid, FakeProvider([POINT_NOTE, _tasks("Priya"), NO_ITEMS, NO_ITEMS]))
     [item] = ItemStore(conn).for_generation(saved.generation_id)
     assert (item.text, item.owner) == ("Tell marketing the launch moves to October 14", "Them")
 

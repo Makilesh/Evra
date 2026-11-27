@@ -121,6 +121,18 @@ def test_owner_is_normalised() -> None:
     assert result.items[0].owner is None
 
 
+def test_the_persons_first_name_or_any_word_of_it_is_them() -> None:
+    """M6: with "Priya Shah" linked, an owner the model writes as any word of the name is
+    theirs ("Them"), the same words the grounder knows; anyone else stays None (§7.5.5)."""
+    names = {"Them": "Priya Shah"}
+    for owner in ("Priya", "shah", "PRIYA SHAH", "  priya   Shah "):
+        assert normalise_owner(owner, names=names) == "Them"
+    assert normalise_owner("Raj", names=names) is None
+    assert normalise_owner("Priya Patel", names=names) is None  # one word is not the name
+    assert normalise_owner("you", names=names) == "You"
+    assert normalise_owner("You", names={"Them": "You Chen"}) == "You"  # You and Them first
+
+
 def test_low_confidence_is_dropped() -> None:
     reply = items_reply(QUOTE, action("Update the deck", ["u:5"], confidence=0.3))
     result = run(FakeProvider([reply]), kinds=("action_item",))

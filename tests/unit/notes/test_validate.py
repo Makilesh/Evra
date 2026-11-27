@@ -453,3 +453,9 @@ def test_the_person_on_the_call_is_a_known_name() -> None:
         aliases={"u:1": "t-1"}, utterance_text=common["utterance_text"], people=["Dana"]
     )
     assert known.check(b("Dana will send the budget deck by Friday."))[1] == ""
+    # a name with an apostrophe is read in pieces ("D'Souza" as "Souza"), and known all the same
+    full = NoteDraft(summary=[b("Anita D'Souza will send the budget deck by Friday.")], sections=[])
+    assert check_note(full, **common, people=["Anita D'Souza"]).kept == 1
+    curly = f"O{chr(0x2019)}Brien will send the budget deck by Friday."  # a typographic one
+    surname = NoteDraft(summary=[b(curly)], sections=[])
+    assert check_note(surname, **common, people=["Sinead O'Brien"]).kept == 1

@@ -98,7 +98,9 @@ class RawItem:
 def normalise_owner(
     owner: str | None, *, names: Mapping[str, str] = MappingProxyType({})
 ) -> str | None:
-    """ "You", "Them" or None: a name the model made up becomes None (BUILD.md §7.5.5)."""
+    """ "You", "Them" or None: a name the model made up becomes None (BUILD.md §7.5.5). A label
+    in `names` is matched by the whole name it stands for or by any one of its words ("Priya"
+    for "Priya Shah"), the words the grounder knows; "You" and "Them" are matched first."""
     if owner is None:
         return None
     word = " ".join(owner.split()).casefold()
@@ -107,7 +109,8 @@ def normalise_owner(
     if word in _THEM:
         return "Them"
     for label, display in names.items():
-        if display and word == " ".join(display.split()).casefold():
+        whole = " ".join(display.split()).casefold()
+        if whole and (word == whole or word in whole.split()):
             return label
     return None
 
