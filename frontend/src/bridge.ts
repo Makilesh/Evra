@@ -195,9 +195,9 @@ export interface PersonPage {
 }
 
 /** Why Python did not start a brief: no such person, no note from a 1:1 with them yet, a
- *  question or another brief is being written, or a recording is (as for asking). Nothing was
- *  started. */
-export type BriefRefusal = "invalid" | "unknown" | "no_notes" | "busy" | "recording";
+ *  question or another brief is being written, or a recording or a note is (as for asking).
+ *  Nothing was started. */
+export type BriefRefusal = "invalid" | "unknown" | "no_notes" | "busy" | "recording" | "note";
 
 export interface BriefReply {
   ok: boolean;
@@ -251,8 +251,9 @@ export type QuestionState = "asking" | "answered" | "not_found" | "unchecked" | 
 /** A question fails for the note's reasons, or because Evra closed while answering it. */
 export type AskFailureReason = NoteFailureReason | "interrupted";
 
-/** Why Python did not take a question (nothing was stored). */
-export type AskRefusal = "invalid" | "busy" | "recording" | "no_transcript";
+/** Why Python did not take a question (nothing was stored): bad input, a recording or a note being
+ *  written meanwhile, another question or brief, or nothing transcribed. */
+export type AskRefusal = "invalid" | "recording" | "note" | "busy" | "no_transcript";
 
 /** A question about one meeting. Its answer is points cited like a note's. */
 export interface Question {

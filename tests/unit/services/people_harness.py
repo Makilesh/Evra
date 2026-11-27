@@ -160,6 +160,7 @@ class Folder:
             "emit": self.emit,
             "slot": JobSlot(),
             "recording_busy": lambda: False,
+            "note_busy": lambda: False,
             "provider_factory": lambda _s: provider or FakeProvider([]),
         }
         args.update(kw)
@@ -171,6 +172,7 @@ class Folder:
             llm=lambda: LlmSettings(model="fake:1b"),
             emit=lambda _name, payload: heard.append(payload),
             recording_busy=lambda: False,
+            note_busy=lambda: False,
             provider_factory=lambda _s: provider,
             slot=slot,
         )

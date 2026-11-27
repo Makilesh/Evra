@@ -103,6 +103,7 @@ it("says why there is no brief to show", async () => {
     .fn()
     .mockResolvedValueOnce({ ok: false, reason: "busy" })
     .mockResolvedValueOnce({ ok: false, reason: "recording" })
+    .mockResolvedValueOnce({ ok: false, reason: "note" })
     .mockResolvedValue({ ok: true });
   await openPriya(peopleApi({ write_brief }));
   const catchUp = region("Catch me up");
@@ -119,10 +120,15 @@ it("says why there is no brief to show", async () => {
   expect(write).toHaveFocus();
   expect(shown.mock.contexts.some((el) => catchUp.contains(el as Node))).toBe(true);
   shown.mockRestore();
+  // a note being written (RC11): said the same way
+  await userEvent.keyboard("{Enter}");
+  expect(catchUp).toHaveTextContent("You can write a brief once the note is written.");
+  expect(catchUp).not.toHaveTextContent("once the recording ends");
+  expect(write).toHaveFocus();
   await userEvent.click(within(catchUp).getByRole("button", { name: "Write a brief" }));
   act(() => emit("brief.updated", { person_id: "p1", state: "unchecked" }));
   expect(catchUp).toHaveTextContent("Evra couldn't check a brief against your notes, so none is shown.");
-  expect(catchUp).not.toHaveTextContent("once the recording ends");
+  expect(catchUp).not.toHaveTextContent("once the note is written");
   await userEvent.click(within(catchUp).getByRole("button", { name: "Write again" }));
   act(() => emit("brief.updated", { person_id: "p1", state: "failed", reason: "ollama_down" }));
   expect(within(catchUp).getByRole("alert")).toHaveTextContent("Ollama isn't running");
@@ -144,11 +150,17 @@ it("says why there is no brief to show", async () => {
   const theirs = region("Catch me up");
   expect(theirs).toHaveTextContent("There's no note from a 1:1 with them yet.");
   expect(within(theirs).queryByRole("button")).toBeNull();
-  expect(write_brief).toHaveBeenCalledTimes(6);
+  expect(write_brief).toHaveBeenCalledTimes(7);
 });
 
 it("renames a person", async () => {
-  const api = await openPriya();
+  const api = peopleApi();
+  const rename = api.rename_person;
+  // "Boom" is a save that throws (the bridge went away)
+  api.rename_person = vi.fn((id: string, name: string) =>
+    name === "Boom" ? Promise.reject(new Error("gone")) : rename(id, name),
+  );
+  await openPriya(api);
   const reads = vi.mocked(api.list_promises).mock.calls.length;
   // Escape keeps the name
   await userEvent.click(screen.getByRole("button", { name: "Rename person" }));
@@ -170,6 +182,20 @@ it("renames a person", async () => {
   await userEvent.type(input, "You{Enter}");
   expect(await screen.findByText("Evra shows you as “You”. Pick another name.")).toBeInTheDocument();
   expect(screen.queryByText("Someone else already has that name.")).toBeNull();
+  expect(input).toHaveFocus();
+  // an empty name, and a save that fails, say so too, with the input kept open (M3)
+  const calls = vi.mocked(api.rename_person).mock.calls.length;
+  await userEvent.clear(input);
+  await userEvent.keyboard("  {Enter}");
+  expect(await screen.findByText("Type a name, or press Escape to keep the old one.")).toBeInTheDocument();
+  expect(api.rename_person).toHaveBeenCalledTimes(calls); // nothing to save
+  expect(input).toHaveFocus();
+  expect(input).toHaveAttribute("aria-invalid", "true");
+  await userEvent.clear(input);
+  await userEvent.type(input, "Boom{Enter}");
+  expect(
+    await screen.findByText("Couldn't save that name. Try again, or press Escape to keep the old one."),
+  ).toBeInTheDocument();
   expect(input).toHaveFocus();
   // a free name is theirs everywhere they show
   await userEvent.clear(input);

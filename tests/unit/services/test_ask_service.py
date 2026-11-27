@@ -16,7 +16,7 @@ from evra.llm.provider import (
 )
 from evra.notes.context import build_context
 from evra.notes.user_notes import meeting_context
-from evra.services.ask import PREPARE_EVERY_S
+from evra.services.ask import PREPARE_EVERY_S, JobSlot
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.notepad import LineIn, NotepadStore
@@ -113,6 +113,29 @@ def test_no_transcript(tmp_path: Path) -> None:
     assert h.stored() == []
     # a refusal frees the slot: the next one is "no_transcript" again, not "busy"
     assert service.ask(h.meeting_id, "q?")["reason"] == "no_transcript"
+
+
+def test_asking_waits_for_the_note(tmp_path: Path) -> None:
+    """RC11: while the note job runs (speakers, linking, the note, its lists, its title), a
+    question and the Ask tab's pre-read are refused before any model call, in the order invalid,
+    recording, note, busy; once the note is done, asking works again."""
+    h = Harness(tmp_path)
+    provider = FakeProvider([NOT_FOUND])
+    writing = [True]
+    slot = JobSlot()
+    service = h.service(provider, note_busy=lambda: writing[0], slot=slot)
+    assert service.ask(5, "q?") == {"ok": False, "reason": "invalid"}
+    assert service.ask(h.meeting_id, "q?") == {"ok": False, "reason": "note"}
+    assert service.prepare(h.meeting_id) == {"ok": False}
+    assert slot.take()  # a brief being written meanwhile: "note" still, not "busy"
+    assert service.ask(h.meeting_id, "q?") == {"ok": False, "reason": "note"}
+    slot.release()
+    both = h.service(provider, recording_busy=lambda: True, note_busy=lambda: True)
+    assert both.ask(h.meeting_id, "q?") == {"ok": False, "reason": "recording"}
+    assert provider.calls == [] and h.stored() == []
+    writing[0] = False
+    assert service.ask(h.meeting_id, "q?")["ok"] is True
+    assert h.wait_event()["question"]["state"] == "not_found"
 
 
 def test_shutdown_refuses_later_asks(tmp_path: Path) -> None:

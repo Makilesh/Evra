@@ -1,11 +1,18 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from "react";
 import type { BriefRefusal, ItemStatus, NoteBlock, Person, PersonPage } from "@/bridge";
 import { PencilIcon } from "@/components/icons";
-import { MAX_NAME } from "@/components/MeetingView";
+import {
+  DISPLAY_TITLE,
+  InlineRefusal,
+  MAX_NAME,
+  RENAME_PENCIL,
+  TITLE_INPUT,
+} from "@/components/InlineEdit";
 import { GroupHead, MeetingLink, PromiseSections, SectionHead as Head } from "@/components/PromiseSections";
 import { dayLabel, formatClock, meetingLine } from "@/format";
 import { useFocusOnLanding } from "@/landing";
 import { briefFailureText, strings } from "@/strings";
+import { useInlineEdit } from "@/useInlineEdit";
 import { promisesOf, type RenameRefusal, type ShownPromises } from "@/usePeople";
 import type { BriefStatus } from "@/usePersonPage";
 
@@ -171,6 +178,7 @@ function LastRow({ block, where, onOpen }: { block: NoteBlock; where: string; on
 const REFUSALS: Partial<Record<BriefRefusal | "failed", string>> = {
   busy: strings.briefBusy,
   recording: strings.briefAfterRecording,
+  note: strings.briefAfterNote,
   no_notes: strings.briefNeedsNotes,
 };
 
@@ -303,59 +311,25 @@ interface NameTitleProps {
   onRename: (name: string) => Promise<RenameRefusal | null>;
 }
 
-// The name as the page's title, renamed in place as a meeting's title is: the pencil opens an
-// input in the same display type on the band. Enter saves; a name someone else has, or "You", is
-// refused under it with the input kept open; Escape cancels. Either puts the focus on the pencil.
+/** What a refused name says under it; any other refusal reads as a name not saved. */
+const RENAME_REFUSALS: Partial<Record<RenameRefusal, string>> = {
+  taken: strings.nameTaken,
+  reserved: strings.nameReserved,
+};
+
+// The name as the page's title, renamed in place as a meeting's title is (`useInlineEdit`): the
+// pencil opens an input in the same display type on the band. Enter saves; a refusal says why under
+// it with the input kept open; Escape cancels. Either puts the focus on the pencil.
 function NameTitle({ ref, name, onRename }: NameTitleProps) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
-  const [refusal, setRefusal] = useState("");
-  const button = useRef<HTMLButtonElement>(null);
-  const open = useRef(false); // the input, for a reply that lands after it closed
-  const saving = useRef(false);
-  const refocus = useRef(false);
-  const refusalId = useId();
-
-  useEffect(() => {
-    if (editing || !refocus.current) return;
-    refocus.current = false;
-    button.current?.focus();
-  }, [editing]);
-
-  function begin() {
-    open.current = true;
-    setDraft(name);
-    setRefusal("");
-    setEditing(true);
-  }
-
-  function end(focusButton: boolean) {
-    open.current = false;
-    refocus.current = focusButton;
-    setRefusal("");
-    setEditing(false);
-  }
-
-  async function save() {
-    if (saving.current) return;
-    saving.current = true;
-    const refused = await onRename(draft).finally(() => {
-      saving.current = false;
-    });
-    if (!open.current) return;
-    if (refused === null) end(true);
-    else if (refused === "taken") setRefusal(strings.nameTaken);
-    else if (refused === "reserved") setRefusal(strings.nameReserved);
-  }
-
+  const { editing, refusal, refusalId, begin, button, input } = useInlineEdit<RenameRefusal>({
+    initial: name,
+    save: onRename,
+    refusalText: (reason) => RENAME_REFUSALS[reason] ?? null,
+  });
   if (!editing) {
     return (
       <div className="flex items-start gap-2">
-        <h1
-          ref={ref}
-          tabIndex={-1}
-          className="line-clamp-2 min-w-0 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[0.95] font-extrabold text-balance [overflow-wrap:anywhere] outline-none"
-        >
+        <h1 ref={ref} tabIndex={-1} className={`${DISPLAY_TITLE} [overflow-wrap:anywhere] outline-none`}>
           {name}
         </h1>
         <button
@@ -363,7 +337,7 @@ function NameTitle({ ref, name, onRename }: NameTitleProps) {
           type="button"
           aria-label={strings.renamePerson}
           onClick={begin}
-          className="mt-[0.15em] inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-band hover:text-ink"
+          className={RENAME_PENCIL}
         >
           <PencilIcon />
         </button>
@@ -374,36 +348,13 @@ function NameTitle({ ref, name, onRename }: NameTitleProps) {
     <>
       <input
         aria-label={strings.personName}
-        aria-describedby={refusal ? refusalId : undefined}
-        aria-invalid={refusal ? true : undefined}
-        autoFocus
         autoComplete="off"
         spellCheck={false}
-        value={draft}
         maxLength={MAX_NAME}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          setRefusal("");
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault(); // no keypress: it would press the pencil the focus returns to
-            void save();
-          }
-          if (event.key === "Escape") end(true);
-        }}
-        onBlur={() => {
-          if (open.current) end(false);
-        }}
-        className="w-full rounded-lg bg-band px-2 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.1] font-extrabold"
+        {...input}
+        className={TITLE_INPUT}
       />
-      <div aria-live="polite">
-        {refusal && (
-          <p id={refusalId} className="mt-1 text-[13px] leading-5 text-muted">
-            {refusal}
-          </p>
-        )}
-      </div>
+      <InlineRefusal refusal={refusal} id={refusalId} />
     </>
   );
 }

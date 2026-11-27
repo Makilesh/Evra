@@ -4,6 +4,13 @@ import { copyText } from "@/clipboard";
 import { AskView } from "@/components/AskView";
 import { Banner } from "@/components/Banner";
 import { CheckIcon, CopyIcon, PencilIcon } from "@/components/icons";
+import {
+  DISPLAY_TITLE,
+  InlineRefusal,
+  MAX_NAME,
+  RENAME_PENCIL,
+  TITLE_INPUT,
+} from "@/components/InlineEdit";
 import { NotepadView } from "@/components/NotepadView";
 import { NoteView } from "@/components/NoteView";
 import { Stamp } from "@/components/Stamp";
@@ -13,9 +20,8 @@ import { noteToMarkdown, pointCount } from "@/note";
 import { lineAt } from "@/notepad";
 import { strings } from "@/strings";
 import type { NoteStatus } from "@/useEvra";
+import { useInlineEdit } from "@/useInlineEdit";
 import type { WithRefusal } from "@/usePeople";
-
-export const MAX_NAME = 80; // Python's limit on a person's name (store/people.py)
 
 interface MeetingViewProps {
   detail: MeetingDetail;
@@ -267,9 +273,7 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
   if (!editing) {
     return (
       <div className="flex items-start gap-2">
-        <h1 className="line-clamp-2 min-w-0 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[0.95] font-extrabold text-balance">
-          {keepNumbersWhole(title)}
-        </h1>
+        <h1 className={DISPLAY_TITLE}>{keepNumbersWhole(title)}</h1>
         <button
           type="button"
           aria-label={strings.renameMeeting}
@@ -277,7 +281,7 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
             setDraft(title);
             setEditing(true);
           }}
-          className="mt-[0.15em] inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-band hover:text-ink"
+          className={RENAME_PENCIL}
         >
           <PencilIcon />
         </button>
@@ -296,7 +300,7 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
         if (event.key === "Escape") setEditing(false);
       }}
       onBlur={() => setEditing(false)}
-      className="w-full rounded-lg bg-band px-2 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.1] font-extrabold"
+      className={TITLE_INPUT}
     />
   );
 }
@@ -309,49 +313,16 @@ interface DateLineProps {
 }
 
 // The day, time and length, then who the 1:1 was with. The name is a quiet button; it opens an
-// input on the band, as the title does, suggesting everyone named so far. Enter saves (an empty
-// name says no one), Escape cancels, and either puts the focus back on the button.
+// input on the band, as the title does, suggesting everyone named so far (`useInlineEdit`): Enter
+// saves (an empty name says no one), Escape cancels, and either puts the focus back on the button.
 function DateLine({ meeting, person, people, onSetPerson }: DateLineProps) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [refusal, setRefusal] = useState("");
-  const button = useRef<HTMLButtonElement>(null);
-  const open = useRef(false); // the input, for a reply that lands after it closed
-  const saving = useRef(false);
-  const refocus = useRef(false);
+  const { editing, refusal, refusalId, begin, button, input } = useInlineEdit<WithRefusal>({
+    initial: person?.name ?? "",
+    save: onSetPerson,
+    refusalText: (reason) => (reason === "reserved" ? strings.nameReserved : null),
+    allowEmpty: true,
+  });
   const listId = useId();
-  const refusalId = useId();
-
-  useEffect(() => {
-    if (editing || !refocus.current) return;
-    refocus.current = false;
-    button.current?.focus();
-  }, [editing]);
-
-  function begin() {
-    open.current = true;
-    setDraft(person?.name ?? "");
-    setRefusal("");
-    setEditing(true);
-  }
-
-  function end(focusButton: boolean) {
-    open.current = false;
-    refocus.current = focusButton;
-    setRefusal("");
-    setEditing(false);
-  }
-
-  async function save() {
-    if (saving.current) return;
-    saving.current = true;
-    const refused = await onSetPerson(draft.trim());
-    saving.current = false;
-    if (!open.current) return;
-    if (refused === null) end(true);
-    else if (refused === "reserved") setRefusal(strings.nameReserved);
-  }
-
   const day = meetingLine(meeting);
   const lead = strings.withPerson(""); // the words before the name
   return (
@@ -364,29 +335,11 @@ function DateLine({ meeting, person, people, onSetPerson }: DateLineProps) {
             {lead}
             <input
               aria-label={strings.withLabel}
-              aria-describedby={refusal ? refusalId : undefined}
-              aria-invalid={refusal ? true : undefined}
-              autoFocus
               autoComplete="off"
               spellCheck={false}
               list={listId}
-              value={draft}
               maxLength={MAX_NAME}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                setRefusal("");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  // no keypress: it would press the button the focus is about to return to
-                  event.preventDefault();
-                  void save();
-                }
-                if (event.key === "Escape") end(true);
-              }}
-              onBlur={() => {
-                if (open.current) end(false);
-              }}
+              {...input}
               className="ml-0.5 w-56 max-w-full rounded-md bg-band px-1.5 font-semibold text-ink"
             />
             <datalist id={listId}>
@@ -412,13 +365,7 @@ function DateLine({ meeting, person, people, onSetPerson }: DateLineProps) {
           </>
         )}
       </p>
-      <div aria-live="polite">
-        {refusal && (
-          <p id={refusalId} className="mt-1 text-[13px] leading-5 text-muted">
-            {refusal}
-          </p>
-        )}
-      </div>
+      <InlineRefusal refusal={refusal} id={refusalId} />
     </>
   );
 }

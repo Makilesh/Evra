@@ -48,7 +48,9 @@ from evra.store.questions import QuestionStore, StoredQuestion
 
 log = structlog.get_logger(__name__)
 
-AskRefusal = Literal["invalid", "busy", "recording", "no_transcript"]
+# Why a question is not taken, checked in this order: bad input, a recording under way, a note
+# being written (RC11), another question or brief, then a meeting with nothing transcribed.
+AskRefusal = Literal["invalid", "recording", "note", "busy", "no_transcript"]
 PREPARE_EVERY_S = 240.0
 EMBEDDERS_KEPT = 2  # meetings whose vectors stay in memory, the most recently asked
 PREFILL_USER = 'Reply with {"ready": true}.'
@@ -98,6 +100,7 @@ class AskService:
         llm: Callable[[], LlmSettings],
         emit: Emit,
         recording_busy: Callable[[], bool],
+        note_busy: Callable[[], bool],
         provider_factory: Callable[[LlmSettings], LlmProvider] = OllamaProvider,
         clock: Callable[[], float] = time.monotonic,
         slot: JobSlot | None = None,
@@ -106,6 +109,7 @@ class AskService:
         self._llm = llm
         self._emit = emit
         self._recording_busy = recording_busy
+        self._note_busy = note_busy  # a note being written (app.py)
         self._provider_factory = provider_factory
         self._clock = clock
         self._slot = slot or JobSlot()  # shared with the prep brief (app.py)
@@ -120,6 +124,8 @@ class AskService:
             return {"ok": False, "reason": "invalid"}
         if self._recording_busy():
             return {"ok": False, "reason": "recording"}
+        if self._note_busy():
+            return {"ok": False, "reason": "note"}
         if not self._slot.take():
             return {"ok": False, "reason": "busy"}
         stored: StoredQuestion | None = None
@@ -144,7 +150,7 @@ class AskService:
         return {"ok": True, "question": question_view(stored, {})}
 
     def prepare(self, meeting_id: object) -> dict[str, Any]:
-        if not isinstance(meeting_id, str) or self._recording_busy():
+        if not isinstance(meeting_id, str) or self._recording_busy() or self._note_busy():
             return {"ok": False}
         with self._lock:
             if self._slot.busy() or self._preparing:

@@ -185,6 +185,27 @@ def test_a_brief_waits_for_the_recording(tmp_path: Path) -> None:
     wait_for(heard)
 
 
+def test_a_brief_waits_for_the_note(tmp_path: Path) -> None:
+    """RC11: while a note is being written, a brief is refused as a question is: after a
+    recording, before the slot (busy or not) and with no model call; the slot stays free."""
+    f = Folder(tmp_path)
+    slot = JobSlot()
+    provider = FakeProvider([])
+    people = f.service(provider, slot=slot, note_busy=lambda: True)
+    assert people.write_brief(5) == {"ok": False, "reason": "invalid"}
+    assert people.write_brief(f.priya.id) == {"ok": False, "reason": "note"}
+    assert slot.take()  # a question being answered meanwhile: "note" still, not "busy"
+    assert people.write_brief(f.priya.id) == {"ok": False, "reason": "note"}
+    slot.release()
+    both = f.service(provider, slot=slot, recording_busy=lambda: True, note_busy=lambda: True)
+    assert both.write_brief(f.priya.id) == {"ok": False, "reason": "recording"}
+    assert provider.calls == [] and f.events == []
+    heard: list[object] = []
+    asker = f.asker(FakeProvider([NOT_FOUND]), slot, heard)
+    assert asker.ask(f.latest, "What did I promise?")["ok"] is True  # the slot was left free
+    wait_for(heard)
+
+
 def test_unchecked_brief_is_not_shown(tmp_path: Path) -> None:
     """Review focus 4: a brief whose every point fails the check is not shown, and does not
     replace the one before."""

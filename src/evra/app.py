@@ -71,11 +71,18 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
         """A recording loads, runs or stops: no question or brief calls the model meanwhile."""
         return service.state()["state"] in ("loading", "recording", "stopping")
 
+    def note_busy() -> bool:
+        """The note job runs (speakers, linking, the note, its lists, its title): a question or a
+        brief waits for it, as diarization and the model never share the GPU (BUILD.md §8.3)."""
+        state: str = service.state()["state"]
+        return state == "processing"
+
     asker = AskService(
         paths=paths,
         llm=lambda: service.settings.llm,
         emit=bus.emit,
         recording_busy=recording_busy,
+        note_busy=note_busy,
         slot=slot,
     )
     asker.recover()
@@ -84,6 +91,7 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
         llm=lambda: service.settings.llm,
         emit=bus.emit,
         recording_busy=recording_busy,
+        note_busy=note_busy,
         slot=slot,
     )
     api = BridgeApi(

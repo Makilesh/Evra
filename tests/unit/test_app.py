@@ -213,3 +213,13 @@ def test_a_brief_waits_for_a_recording_as_a_question_does(
     monkeypatch.setattr(app.service, "state", lambda: {"state": "stopping"})
     assert app.api.write_brief("nobody") == {"ok": False, "reason": "recording"}
     assert app.api.ask_meeting("m", "When?") == {"ok": False, "reason": "recording"}
+
+
+def test_asking_and_a_brief_wait_for_a_note_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RC11: one note-job check from app.py for both: while a note is written, both wait."""
+    app = build_app(AppPaths.under(tmp_path), debug=False)
+    monkeypatch.setattr(app.service, "state", lambda: {"state": "processing"})
+    assert app.api.write_brief("nobody") == {"ok": False, "reason": "note"}
+    assert app.api.ask_meeting("m", "When?") == {"ok": False, "reason": "note"}

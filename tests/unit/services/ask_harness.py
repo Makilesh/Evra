@@ -80,6 +80,7 @@ class Harness:
             "llm": lambda: LlmSettings(model="fake:1b"),
             "emit": self.emit,
             "recording_busy": lambda: False,
+            "note_busy": lambda: False,
             "provider_factory": lambda _s: provider,
         }
         args.update(kw)

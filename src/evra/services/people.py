@@ -41,7 +41,10 @@ from evra.store.speakers import THEM, SpeakerStore, names_for
 
 log = structlog.get_logger(__name__)
 
-BriefRefusal = Literal["unknown", "no_notes"]
+# Why a brief is not started, checked in asking's order: bad input, a recording under way, a note
+# being written (RC11), a question or another brief, then no such person or no note from them yet.
+BriefRefusal = Literal["invalid", "recording", "note", "busy", "unknown", "no_notes"]
+_NothingToWrite = Literal["unknown", "no_notes"]
 # how a decision and a question read among a note's lines for a brief (RC8)
 _RECORD_LEADS: dict[ItemKind, str] = {"decision": "Decision", "open_question": "Open question"}
 
@@ -240,6 +243,7 @@ class PeopleService:
         llm: Callable[[], LlmSettings],
         emit: Emit,
         recording_busy: Callable[[], bool],
+        note_busy: Callable[[], bool],
         slot: JobSlot,
         provider_factory: Callable[[LlmSettings], LlmProvider] = OllamaProvider,
     ) -> None:
@@ -247,6 +251,7 @@ class PeopleService:
         self._llm = llm
         self._emit = emit
         self._recording_busy = recording_busy  # asking's rule too (app.py)
+        self._note_busy = note_busy  # and its rule for a note being written
         self._slot = slot  # asking's: one question or brief at a time
         self._provider_factory = provider_factory
 
@@ -261,13 +266,16 @@ class PeopleService:
 
     def write_brief(self, person_id: object) -> dict[str, Any]:
         """Start the person's brief: {"ok": True} at once, the brief later as `brief.updated`.
-        Refused, in asking's order: while a recording loads, runs or stops ("recording", RC9);
-        while a question or another brief is being written, or the app closes ("busy"); for no
-        such person ("unknown"), or someone with no note from a 1:1 yet ("no_notes")."""
+        Refused, in asking's order (`BriefRefusal`): while a recording loads, runs or stops
+        ("recording", RC9); while a note is being written ("note", RC11); while a question or
+        another brief is being written, or the app closes ("busy"); for no such person
+        ("unknown"), or someone with no note from a 1:1 yet ("no_notes")."""
         if not isinstance(person_id, str):
             return {"ok": False, "reason": "invalid"}
         if self._recording_busy():
             return {"ok": False, "reason": "recording"}
+        if self._note_busy():
+            return {"ok": False, "reason": "note"}
         if not self._slot.take():
             return {"ok": False, "reason": "busy"}
         try:
@@ -287,7 +295,7 @@ class PeopleService:
 
     # --- internals -------------------------------------------------------------------------
 
-    def _job(self, person_id: str) -> _Job | BriefRefusal:
+    def _job(self, person_id: str) -> _Job | _NothingToWrite:
         """Who the brief is for, the notes it is read from and their open promises both ways;
         or why there is none to write."""
         conn = connect(self._paths.db_path)

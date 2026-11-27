@@ -59,6 +59,7 @@ describe("asking", () => {
     expect(askRefusalText("invalid")).toBe("Type a question of up to 500 characters.");
     expect(askRefusalText("busy")).toBe("Evra is still answering the last question.");
     expect(askRefusalText("recording")).toBe("You can ask once the recording ends.");
+    expect(askRefusalText("note")).toBe("You can ask once the note is written.");
     expect(askRefusalText("no_transcript")).toBe("There's no transcript to ask about yet.");
   });
 
@@ -100,9 +101,10 @@ describe("people and briefs", () => {
     expect(strings.promisedCounts(0, 0)).toBe("");
   });
 
-  it("dates a brief, and waits for a recording", () => {
+  it("dates a brief, and waits for a recording or a note", () => {
     expect(strings.briefWritten("Tue 3 Nov")).toBe("Written Tue 3 Nov");
     expect(strings.briefAfterRecording).toBe("You can write a brief once the recording ends.");
+    expect(strings.briefAfterNote).toBe("You can write a brief once the note is written.");
   });
 
   it("explains a failed brief in brief words, sharing the Ollama texts with the note", () => {

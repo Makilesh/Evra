@@ -166,6 +166,12 @@ it("shows a refusal", async () => {
   expect(await screen.findByText("Evra is still answering the last question.")).toBeInTheDocument();
 });
 
+it("says a question waits for the note being written", async () => {
+  view({ onAsk: vi.fn(async () => "note" as const) });
+  await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
+  expect(await screen.findByText("You can ask once the note is written.")).toBeInTheDocument();
+});
+
 it("keeps a refused question in the box", async () => {
   view({ onAsk: vi.fn(async () => "recording" as const) });
   const { input } = controls();

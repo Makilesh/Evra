@@ -169,6 +169,26 @@ it("keeps the name open when Evra refuses it", async () => {
   expect(screen.queryByText("Evra shows you as “You”. Pick another name.")).toBeNull();
 });
 
+it("says when the name couldn't be saved, and keeps it open", async () => {
+  const onSetPerson = vi
+    .fn<(name: string) => Promise<WithRefusal | null>>()
+    .mockResolvedValueOnce("invalid")
+    .mockRejectedValueOnce(new Error("gone"));
+  view({ onSetPerson });
+  await userEvent.click(screen.getByRole("button", { name: "Add who it was with" }));
+  const input = screen.getByRole("combobox", { name: "Who the 1:1 was with" });
+  const sorry = "Couldn't save that name. Try again, or press Escape to keep the old one.";
+  for (const tried of ["Priya", "Sam"]) {
+    // a refusal Evra has no other words for (M3), and a save that throws, say the same
+    await userEvent.clear(input);
+    await userEvent.type(input, `${tried}{Enter}`);
+    expect(await screen.findByText(sorry)).toBeInTheDocument();
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  }
+  expect(onSetPerson.mock.calls).toEqual([["Priya"], ["Sam"]]);
+});
+
 it("copies who the 1:1 was with", async () => {
   const writeText = mockClipboard(async () => {});
   view({ detail: { ...DETAIL, with: PRIYA } });

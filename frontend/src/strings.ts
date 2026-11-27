@@ -48,6 +48,8 @@ export const strings = {
   withLabel: "Who the 1:1 was with",
   nameTaken: "Someone else already has that name.",
   nameReserved: "Evra shows you as “You”. Pick another name.",
+  nameEmpty: "Type a name, or press Escape to keep the old one.",
+  nameNotSaved: "Couldn't save that name. Try again, or press Escape to keep the old one.",
   renameMeeting: "Rename meeting",
   meetingTitle: "Meeting title",
   captureNotes: "Capture notes",
@@ -100,6 +102,7 @@ export const strings = {
   briefUncheckedKept: "Evra couldn't check the new brief against your notes, so the earlier one is still shown.",
   briefWritten: (day: string) => `Written ${day}`,
   briefAfterRecording: "You can write a brief once the recording ends.",
+  briefAfterNote: "You can write a brief once the note is written.",
   briefBusy: "Evra is busy answering a question or writing a brief. Try again when it's done.",
   forgetPerson: "Forget this person",
   forgetConfirm: (name: string) => `Forget ${name}? Their meetings say “Them” again, and their brief is deleted.`,
@@ -130,6 +133,7 @@ export const strings = {
   askAgain: "Ask again",
   askAnswered: "Answer ready",
   askAfterRecording: "You can ask once the recording ends.",
+  askAfterNote: "You can ask once the note is written.",
   bridgeDown: "Evra couldn't reach its Python side. Close the window and start Evra again.",
   settings: "Settings",
   settingsShortcut: "Ctrl ,",
@@ -243,6 +247,7 @@ const ASK_REFUSALS: Record<AskRefusal, string> = {
   invalid: "Type a question of up to 500 characters.",
   busy: "Evra is still answering the last question.",
   recording: strings.askAfterRecording,
+  note: strings.askAfterNote,
   no_transcript: "There's no transcript to ask about yet.",
 };
 
