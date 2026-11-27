@@ -83,7 +83,7 @@ def test_notes_are_linked_first_when_there_are_notes(tmp_path: Path) -> None:
         events.wait_for("note.ready", meeting_id=mid)
         wait_for_note_jobs()
         stages = [p["stage"] for n, p in events.items if n == "note.stage"]
-        assert stages == ["writing", "linking", "writing", "items"]
+        assert stages == ["linking", "writing", "items"]  # BUILD.md 7.3: linking comes first
         assert "[n:1] (00:10) Words noted || aligned: u:1" in writer.calls[0][0].content
     finally:
         service.shutdown()

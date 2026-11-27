@@ -118,6 +118,13 @@ class NotepadStore:
             raise
         return saved
 
+    def has_lines(self, meeting_id: str) -> bool:
+        """Whether the owner typed anything for the meeting (blank lines are never stored)."""
+        found = self._conn.execute(
+            "SELECT 1 FROM note_block WHERE meeting_id = ? LIMIT 1", (meeting_id,)
+        ).fetchone()
+        return found is not None
+
     def lines(self, meeting_id: str) -> list[NoteLine]:
         rows = self._conn.execute(
             "SELECT * FROM note_block WHERE meeting_id = ? ORDER BY position", (meeting_id,)

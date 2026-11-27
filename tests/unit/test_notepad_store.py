@@ -51,6 +51,9 @@ def test_blank_lines_are_dropped(conn: sqlite3.Connection) -> None:
         ("c", 1, "Dana"),
     ]
     assert store.lines(mid) == saved
+    assert store.has_lines(mid)
+    store.replace(mid, [typed("b", "  \n\t")])  # only a blank line: nothing typed
+    assert not store.has_lines(mid)
 
 
 def test_long_paste_is_context(conn: sqlite3.Connection) -> None:

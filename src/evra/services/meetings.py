@@ -33,6 +33,7 @@ from evra.paths import AppPaths
 from evra.services.views import utterance_view
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore, Utterance
+from evra.store.notepad import NotepadStore
 from evra.transcribe.recording import RecordingResult
 from evra.workers.protocol import WorkerCrashed, WorkerError
 
@@ -267,17 +268,32 @@ class MeetingService:
         return {"ok": True}
 
     def _start_note_job(self, meeting_id: str) -> None:
-        self._emit("note.stage", {"meeting_id": meeting_id, "stage": "writing"})
+        first = self._first_stage(meeting_id)
+        self._emit("note.stage", {"meeting_id": meeting_id, "stage": first})
         threading.Thread(
-            target=self._note_job, args=(meeting_id,), name="note-writer", daemon=True
+            target=self._note_job, args=(meeting_id, first), name="note-writer", daemon=True
         ).start()
 
-    def _note_job(self, meeting_id: str) -> None:
+    def _first_stage(self, meeting_id: str) -> str:
+        """The job's first stage, shown at once (BUILD.md §7.3): "linking" when the owner typed
+        notes, which are linked before the note's chats (RB35), else "writing"."""
+        try:
+            conn = connect(self._paths.db_path)
+            try:
+                typed = NotepadStore(conn).has_lines(meeting_id)
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:  # e.g. busy: Stop must not fail; the job says it as it goes
+            log.warning("note_stage_not_read", error=type(exc).__name__)
+            return "writing"
+        return "linking" if typed else "writing"
+
+    def _note_job(self, meeting_id: str, first: str) -> None:
         llm = self._settings.llm  # the note and its title use the same model
         try:
             conn = connect(self._paths.db_path)
             try:
-                event = self._write(conn, meeting_id, llm)
+                event = self._write(conn, meeting_id, llm, first)
                 MeetingStore(conn).finish_meeting(meeting_id, state="ready")
             finally:
                 conn.close()
@@ -314,13 +330,13 @@ class MeetingService:
             self._emit("meeting.renamed", {"meeting_id": meeting_id, "title": title})
 
     def _write(
-        self, conn: sqlite3.Connection, meeting_id: str, llm: LlmSettings
+        self, conn: sqlite3.Connection, meeting_id: str, llm: LlmSettings, first: str
     ) -> tuple[str, dict[str, Any]]:
         store = MeetingStore(conn)
         meeting = store.get_meeting(meeting_id)
         version_id = store.current_transcript_version(meeting_id)
         utterances = store.utterances(version_id) if version_id else []
-        shown = ["writing"]  # _start_note_job showed it already
+        shown = [first]  # _start_note_job showed it already
 
         def on_stage(stage: str) -> None:  # each stage once, in order (D16)
             if stage != shown[-1]:
@@ -340,7 +356,8 @@ class MeetingService:
                 provider=provider,
                 model=llm.model,
                 settings=llm,
-                # the same Ollama embeds, once every chat call is done (BUILD.md §8.3)
+                # the same Ollama embeds: the typed lines' links before the chats (RB35), the
+                # check's batch once every chat call is done (BUILD.md §8.3)
                 semantic=SemanticCheck(Embedder(provider, llm.embedding_model)),
                 on_stage=on_stage,
             )
