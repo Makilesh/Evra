@@ -26,7 +26,7 @@ const LIVE: MeetingSummary = {
   has_note: false,
   duration_ms: null,
 };
-const LIVE_DETAIL: MeetingDetail = { meeting: LIVE, utterances: [], note: null, questions: [], notes: [] };
+const LIVE_DETAIL: MeetingDetail = { meeting: LIVE, utterances: [], note: null, questions: [], notes: [], with: null };
 
 it("loads the meetings and opens the newest one", async () => {
   setApiForTests(makeFakeApi());

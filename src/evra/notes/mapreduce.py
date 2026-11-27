@@ -227,10 +227,11 @@ def _read_parts(
     settings: LlmSettings,
     notes: NotesInput,
     on_stage: Callable[[str], None],
+    names: Mapping[str, str] | None,
 ) -> list[_Part]:
-    """A2 on every window, back to back, each with the notes about it. A part that fails is left
-    out (a retry at temperature 0 repeats it); when every part fails, the first error is
-    raised."""
+    """A2 on every window, back to back, each with the notes about it and the meeting's names.
+    A part that fails is left out (a retry at temperature 0 repeats it); when every part fails,
+    the first error is raised."""
     windows = split_windows(utterances)
     shown = notes_by_part(notes.lines, windows)
     task = load_part("a2_digest")
@@ -245,6 +246,7 @@ def _read_parts(
             only=frozenset(window.ids),
             note=part_note(window, len(windows)),
             shown_notes=shown[window.index],
+            names=names,
         )
         try:
             reply = _read_part(
@@ -335,9 +337,10 @@ def write_long_note(
 ) -> tuple[NoteResult, Extraction]:
     """The note's own sections (A3) and its records (from the digests), checked, not yet saved.
     Each part sees the owner's notes about it and the combining call all of them, numbered alike
-    (RB36). A3's reply has twice the usual room, inside the same context (RB45). When A3's JSON
-    fails even after its repair, the records alone make the note (RB16); A3's NoteCutOff and
-    NoteTooLong are raised, and so is every LlmError.
+    (RB36). Every call names who the 1:1 was with, and the records' owners map by the same
+    `names` (C1). A3's reply has twice the usual room, inside the same context (RB45). When A3's
+    JSON fails even after its repair, the records alone make the note (RB16); A3's NoteCutOff
+    and NoteTooLong are raised, and so is every LlmError.
 
     The note's version is a0-v1+a2-v1+a3-v2 ("+a9-v1" after a part's or A3's repair) and its
     tokens and seconds are every call's; a note of the records alone has the A0 version, and
@@ -350,11 +353,17 @@ def write_long_note(
         settings=settings,
         notes=notes,
         on_stage=on_stage,
+        names=names,
     )
     digests, numbered = digests_text(parts)
     on_stage("combining")
     context = notes_context(
-        meeting=meeting, utterances=utterances, notes=notes, only=(), note=COMBINE_NOTE
+        meeting=meeting,
+        utterances=utterances,
+        notes=notes,
+        only=(),
+        note=COMBINE_NOTE,
+        names=names,
     )
     prompt = combine_prompt(
         context, template=template, schema=CombinedNote.model_json_schema(), digests=digests

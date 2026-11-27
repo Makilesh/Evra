@@ -12,6 +12,8 @@ import { useEvra } from "@/useEvra";
 export default function App() {
   const {
     state,
+    people,
+    setMeetingPerson,
     select,
     startRecording,
     stopRecording,
@@ -122,6 +124,8 @@ export default function App() {
             onPrepareAsk={() => prepareAsk(detail.meeting.id)}
             onItemStatus={(itemId, status) => void setItemStatus(itemId, status)}
             onNotes={(lines) => editNotes(detail.meeting.id, lines)}
+            people={people}
+            onSetPerson={(name) => setMeetingPerson(detail.meeting.id, name)}
           />
         ) : state.ready && state.meetings.length === 0 ? (
           <Welcome />

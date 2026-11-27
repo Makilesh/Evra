@@ -1,5 +1,6 @@
 """JSON-ready views of meetings for the window (M3c spec §3.3). Their text goes only to the
-user's own window, never to logs."""
+user's own window, never to logs. Once the owner has said who a 1:1 was with, its transcript
+lines and its records name that person where they would say "Them"."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from evra.store.meetings import MeetingStore, Utterance
 from evra.store.notepad import NoteLine, NotepadStore
 from evra.store.notes import SUMMARY, NoteStore, StoredNote
 from evra.store.questions import QuestionStore, StoredQuestion
+from evra.store.speakers import SpeakerStore, names_for
 from evra.transcribe.labels import speaker_label
 
 MAX_TITLE = 200
@@ -29,14 +31,16 @@ def meeting_summary(row: Mapping[str, Any]) -> dict[str, Any]:
         "duration_ms": None if ended is None else int(ended) - int(row["started_at"]),
         "state": row["state"],
         "has_note": bool(row.get("has_note", False)),
+        "with_name": row.get("with_name"),
     }
 
 
-def utterance_view(utterance: Utterance) -> dict[str, Any]:
+def utterance_view(utterance: Utterance, names: Mapping[str, str] | None = None) -> dict[str, Any]:
+    label = speaker_label(utterance.channel)
     return {
         "id": utterance.id,
         "channel": utterance.channel,
-        "speaker": speaker_label(utterance.channel),
+        "speaker": (names or {}).get(label, label),
         "start_ms": utterance.start_ms,
         "end_ms": utterance.end_ms,
         "text": utterance.text,
@@ -92,11 +96,13 @@ def note_view(
     items: Sequence[StoredItem] = (),
     *,
     lines: Sequence[NoteLine] = (),
+    names: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The summary, then the template's sections in order: the note's own points, and in the
     sections the records fill, the generation's items (a dismissed one is left out). An older
     note kept its lists as points, so those still show. A point that cites the owner's notes
-    carries the typed line it quotes (`lines`, in the pad's order)."""
+    carries the typed line it quotes (`lines`, in the pad's order). A record's owner shows as
+    the person it stands for (`names`), in the record and at the start of a task's text (C3)."""
     try:
         known = load_template(note.template).sections
     except KeyError:
@@ -122,7 +128,8 @@ def note_view(
     for item in items:
         if item.status == "dismissed":
             continue
-        shown = item_text(item.kind, item.owner, item.text, item.due)
+        owner = None if item.owner is None else (names or {}).get(item.owner, item.owner)
+        shown = item_text(item.kind, owner, item.text, item.due)
         blocks.setdefault(ITEM_SECTIONS[item.kind], []).append(
             point(shown, item.citations)
             | {
@@ -130,7 +137,7 @@ def note_view(
                     "id": item.id,
                     "kind": item.kind,
                     "status": item.status,
-                    "owner": item.owner,
+                    "owner": owner,
                     "due": item.due,
                 },
             }
@@ -191,6 +198,7 @@ def note_line_view(line: NoteLine, started_at: int, starts: Mapping[str, int]) -
 
 
 def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] | None:
+    """A meeting as its page shows it, and who its 1:1 was with (`with`, None until said)."""
     store = MeetingStore(conn)
     try:
         meeting = store.get_meeting(meeting_id)
@@ -203,10 +211,18 @@ def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] 
     items = ItemStore(conn).for_generation(note.generation_id) if note is not None else []
     started_at = int(meeting["started_at"])
     lines = NotepadStore(conn).lines(meeting_id)
+    person = SpeakerStore(conn).person_for(meeting_id)
+    names = names_for(person)
+    with_name = None if person is None else person.name
     return {
-        "meeting": meeting_summary({**meeting, "has_note": note is not None}),
-        "utterances": [utterance_view(u) for u in utterances],
-        "note": None if note is None else note_view(note, utterances, items, lines=lines),
+        "meeting": meeting_summary(
+            {**meeting, "has_note": note is not None, "with_name": with_name}
+        ),
+        "with": None if person is None else {"id": person.id, "name": person.name},
+        "utterances": [utterance_view(u, names) for u in utterances],
+        "note": (
+            None if note is None else note_view(note, utterances, items, lines=lines, names=names)
+        ),
         "questions": [
             question_view(q, starts) for q in QuestionStore(conn).for_meeting(meeting_id)
         ],
@@ -217,3 +233,12 @@ def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] 
 def clean_title(title: str) -> str | None:
     cleaned = " ".join(title.split())
     return cleaned if 1 <= len(cleaned) <= MAX_TITLE else None
+
+
+def meeting_list(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Every meeting, newest first, each with who its 1:1 was with."""
+    named = {mid: person.name for mid, person in SpeakerStore(conn).people_by_meeting().items()}
+    return [
+        meeting_summary({**row, "with_name": named.get(row["id"])})
+        for row in MeetingStore(conn).list_meetings()
+    ]

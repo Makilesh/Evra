@@ -108,14 +108,18 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "list_meetings",
         "list_mics",
         "list_note_models",
+        "list_people",
         "open_data_folder",
         "ping",
         "prepare_ask",
         "recording_state",
+        "remove_person",
         "rename_meeting",
+        "rename_person",
         "request_hello",
         "save_notes",
         "set_item_status",
+        "set_meeting_person",
         "set_note_model",
         "set_theme",
         "start_recording",
@@ -290,6 +294,75 @@ def test_notes_are_saved_and_come_back_with_the_meeting(tmp_path: Path) -> None:
     assert api.save_notes(mid, []) == {"ok": True}  # every line deleted
     again = api.get_meeting(mid)
     assert again is not None and again["notes"] == []
+
+
+def test_who_a_1on1_was_with_is_set_by_name(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    mid, other = _meeting(db), _meeting(db, "Design review")
+    reply = api.set_meeting_person(mid, "  Priya ")
+    priya = reply["with"]
+    assert reply == {"ok": True, "with": {"id": priya["id"], "name": "Priya"}}
+    assert api.set_meeting_person(other, "PRIYA") == {"ok": True, "with": priya}  # the same one
+    assert api.list_people() == [priya]
+    detail = api.get_meeting(mid)
+    assert detail is not None and detail["with"] == priya
+    assert [m["with_name"] for m in api.list_meetings()] == ["Priya", "Priya"]
+    assert api.set_meeting_person(mid, "") == {"ok": True, "with": None}
+    assert api.set_meeting_person(other, None) == {"ok": True, "with": None}
+    assert [m["with_name"] for m in api.list_meetings()] == [None, None]
+    assert api.list_people() == [priya]  # unlinked, not forgotten: removing is its own call
+
+
+def test_set_meeting_person_refuses_you_and_bad_names(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    mid = _meeting(db)
+    assert api.set_meeting_person(mid, " you ") == {"ok": False, "reason": "reserved"}
+    for bad in ["   ", "x" * 81, 5, ["Priya"]]:
+        assert api.set_meeting_person(mid, bad) == {"ok": False, "reason": "invalid"}  # type: ignore[arg-type]
+    assert api.set_meeting_person(5, "Priya") == {"ok": False}  # type: ignore[arg-type]
+    assert api.set_meeting_person("nope", "Priya") == {"ok": False}  # no such meeting
+    assert api.list_people() == []  # a refused call leaves no one behind
+
+
+def test_people_are_renamed_and_removed(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    mid = _meeting(db)
+    priya = api.set_meeting_person(mid, "Priya")["with"]
+    sam = api.set_meeting_person(_meeting(db), "Sam")["with"]
+    for person_id, name, reason in [
+        (sam["id"], " priya", "taken"),
+        (priya["id"], "YOU", "reserved"),
+        (priya["id"], "  ", "invalid"),
+        (priya["id"], None, "invalid"),
+        ("nope", "Dana", "unknown"),
+        (5, "Dana", "unknown"),
+    ]:
+        assert api.rename_person(person_id, name) == {"ok": False, "reason": reason}  # type: ignore[arg-type]
+    assert api.rename_person(priya["id"], "Priya  Shah") == {"ok": True}
+    detail = api.get_meeting(mid)
+    assert detail is not None and detail["with"] == {"id": priya["id"], "name": "Priya Shah"}
+    assert api.remove_person(priya["id"]) == {"ok": True}
+    assert api.remove_person(priya["id"]) == {"ok": False}
+    assert api.remove_person(5) == {"ok": False}  # type: ignore[arg-type]
+    assert api.list_people() == [sam]
+    detail = api.get_meeting(mid)
+    assert detail is not None and detail["with"] is None
+
+
+def test_names_never_reach_the_log(tmp_path: Path) -> None:
+    """A person's name is content: the people calls log ids and counts only."""
+    api, db = _api(tmp_path)
+    mid = _meeting(db)
+    with structlog.testing.capture_logs() as logs:
+        person = api.set_meeting_person(mid, "Priya")["with"]
+        api.set_meeting_person(mid, "You")
+        api.list_people()
+        api.rename_person(person["id"], "Priyanka")
+        api.get_meeting(mid)
+        api.list_meetings()
+        api.remove_person(person["id"])
+    assert [e["event"] for e in logs] == ["meeting_person_set"]
+    assert "priya" not in json.dumps(logs).lower()
 
 
 def test_recording_calls_go_to_the_service_and_bad_input_is_refused(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ export const MEETING: MeetingSummary = {
   duration_ms: 720_000,
   state: "ready",
   has_note: true,
+  with_name: null,
 };
 
 export const DETAIL: MeetingDetail = {
@@ -35,6 +36,7 @@ export const DETAIL: MeetingDetail = {
   },
   questions: [],
   notes: [],
+  with: null,
 };
 
 export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
@@ -72,6 +74,13 @@ export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
       question: { id: "q1", text: question, asked_at: 1, state: "asking" as const, points: [], excerpt: false },
     })),
     prepare_ask: vi.fn(async () => ({ ok: true })),
+    list_people: vi.fn(async () => []),
+    set_meeting_person: vi.fn(async (_meetingId: string, name: string | null) => ({
+      ok: true,
+      with: name ? { id: "p1", name } : null,
+    })),
+    rename_person: vi.fn(async () => ({ ok: true })),
+    remove_person: vi.fn(async () => ({ ok: true })),
     ...overrides,
   };
 }

@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import type { NoteLine, Question } from "@/bridge";
+import type { NoteLine, Person, Question } from "@/bridge";
 import { MeetingView } from "@/components/MeetingView";
 import { DETAIL, MEETING } from "@/test/fakeApi";
+import type { WithRefusal } from "@/usePeople";
+
+const PRIYA: Person = { id: "p1", name: "Priya" };
+const PEOPLE: Person[] = [PRIYA, { id: "p2", name: "Sam" }];
 
 function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
   const props = {
@@ -20,6 +24,8 @@ function view(extra: Partial<Parameters<typeof MeetingView>[0]> = {}) {
     onPrepareAsk: vi.fn(),
     onItemStatus: vi.fn(),
     onNotes: vi.fn(),
+    people: PEOPLE,
+    onSetPerson: vi.fn(async (): Promise<WithRefusal | null> => null),
     ...extra,
   };
   return { props, ...render(<MeetingView {...props} />) };
@@ -108,6 +114,67 @@ it("shows the title, then the day, time, length and kind of meeting", () => {
   view();
   expect(screen.getByRole("heading", { level: 1, name: "Weekly 1:1" })).toBeInTheDocument();
   expect(screen.getByText(/^Mon 28 Sept? · 13:51 · 12 min · 1:1$/)).toBeInTheDocument();
+});
+
+it("names who the 1:1 was with", async () => {
+  const { props, rerender } = view();
+  // no one yet: the date line offers to say who it was with
+  await userEvent.click(screen.getByRole("button", { name: "Add who it was with" }));
+  const input = screen.getByRole("combobox", { name: "Who the 1:1 was with" });
+  expect(input).toHaveFocus();
+  expect(input).toHaveValue("");
+  const listed = document.getElementById(input.getAttribute("list") ?? "")?.querySelectorAll("option");
+  expect(Array.from(listed ?? [], (option) => option.value)).toEqual(["Priya", "Sam"]);
+  await userEvent.type(input, "Priya{Enter}");
+  expect(props.onSetPerson).toHaveBeenCalledWith("Priya");
+  expect(screen.queryByRole("combobox", { name: "Who the 1:1 was with" })).toBeNull();
+  // Python said who it was with: the header names them, the name a quiet button
+  rerender(<MeetingView {...props} detail={{ ...DETAIL, with: PRIYA }} />);
+  const named = screen.getByRole("button", { name: "1:1 with Priya" });
+  expect(named).toHaveTextContent(/^Priya$/);
+  expect(named.closest("p")).toHaveTextContent(/^Mon 28 Sept? · 13:51 · 12 min · 1:1 with Priya$/);
+  // Escape leaves it as it was
+  await userEvent.click(named);
+  const again = screen.getByRole("combobox", { name: "Who the 1:1 was with" });
+  expect(again).toHaveValue("Priya");
+  await userEvent.type(again, " Shah{Escape}");
+  expect(props.onSetPerson).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "1:1 with Priya" })).toHaveFocus();
+  // an emptied name says it was with no one
+  await userEvent.click(screen.getByRole("button", { name: "1:1 with Priya" }));
+  await userEvent.clear(screen.getByRole("combobox", { name: "Who the 1:1 was with" }));
+  await userEvent.keyboard("  {Enter}");
+  expect(props.onSetPerson).toHaveBeenLastCalledWith("");
+});
+
+it("never lets the Enter that saves the name press the button the focus returns to", async () => {
+  view();
+  await userEvent.click(screen.getByRole("button", { name: "Add who it was with" }));
+  const input = screen.getByRole("combobox", { name: "Who the 1:1 was with" });
+  // a cancelled keydown sends no keypress, so the button never opens the input again
+  expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+  expect(await screen.findByRole("button", { name: "Add who it was with" })).toHaveFocus();
+});
+
+it("keeps the name open when Evra refuses it", async () => {
+  const onSetPerson = vi.fn(async (): Promise<WithRefusal | null> => "reserved");
+  view({ onSetPerson });
+  await userEvent.click(screen.getByRole("button", { name: "Add who it was with" }));
+  await userEvent.type(screen.getByRole("combobox", { name: "Who the 1:1 was with" }), "you{Enter}");
+  expect(await screen.findByText("Evra shows you as “You”. Pick another name.")).toBeInTheDocument();
+  const input = screen.getByRole("combobox", { name: "Who the 1:1 was with" });
+  expect(input).toHaveFocus();
+  expect(input).toHaveValue("you");
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByText("Evra shows you as “You”. Pick another name.")).toBeNull();
+});
+
+it("copies who the 1:1 was with", async () => {
+  const writeText = mockClipboard(async () => {});
+  view({ detail: { ...DETAIL, with: PRIYA } });
+  fireEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
+  expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  expect(writeText.mock.calls[0][0]).toMatch(/^# Weekly 1:1\nMon 28 Sept? · 13:51 · 12 min · 1:1 with Priya\n\n/);
 });
 
 it("never breaks a date or time in the title", () => {

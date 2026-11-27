@@ -186,6 +186,7 @@ def check_drafted(
         template=template,
         user_notes=user_notes,
         semantic=semantic,
+        people=context.names.values(),  # who the call was with, as the context names them
     )
     log.info(
         "note_written",

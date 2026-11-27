@@ -1,5 +1,5 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
-import type { AskRefusal, ItemStatus, MeetingDetail, NoteLine } from "@/bridge";
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import type { AskRefusal, ItemStatus, MeetingDetail, MeetingSummary, NoteLine, Person } from "@/bridge";
 import { copyText } from "@/clipboard";
 import { AskView } from "@/components/AskView";
 import { Banner } from "@/components/Banner";
@@ -13,6 +13,9 @@ import { noteToMarkdown, pointCount } from "@/note";
 import { lineAt } from "@/notepad";
 import { strings } from "@/strings";
 import type { NoteStatus } from "@/useEvra";
+import type { WithRefusal } from "@/usePeople";
+
+const MAX_NAME = 80; // Python's limit on a person's name (store/people.py)
 
 interface MeetingViewProps {
   detail: MeetingDetail;
@@ -30,6 +33,10 @@ interface MeetingViewProps {
   onPrepareAsk: () => void;
   onItemStatus: (itemId: string, status: ItemStatus) => void;
   onNotes: (lines: NoteLine[]) => void;
+  /** Everyone the owner has named, suggested when saying who the 1:1 was with. */
+  people: Person[];
+  /** Say who the 1:1 was with ("" for no one): null once said, else why not. */
+  onSetPerson: (name: string) => Promise<WithRefusal | null>;
 }
 
 type Tab = "note" | "transcript" | "ask" | "notes";
@@ -50,6 +57,8 @@ export function MeetingView({
   onPrepareAsk,
   onItemStatus,
   onNotes,
+  people,
+  onSetPerson,
 }: MeetingViewProps) {
   // While live, the owner takes notes; a finished meeting opens on what was written from them.
   const [tab, setTab] = useState<Tab>(isLive ? "notes" : "note");
@@ -65,7 +74,8 @@ export function MeetingView({
     if (stage && !seenStage) setTab("note");
   }
   const { meeting, note, utterances } = detail;
-  const line = [meetingLine(meeting), strings.oneOnOne].join(" · ");
+  const person = detail.with ?? null;
+  const line = [meetingLine(meeting), person ? strings.withPerson(person.name) : strings.oneOnOne].join(" · ");
   const settled = note !== null && !stage;
 
   // Arrow keys cycle the tabs, as Windows tab strips do; Tab leaves the strip.
@@ -103,7 +113,7 @@ export function MeetingView({
         <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
           <div className="min-w-0 flex-[1_1_20rem]">
             <Title title={meeting.title} onRename={onRename} />
-            <p className="mt-2 text-[13px] leading-5 text-muted tabular-nums">{line}</p>
+            <DateLine meeting={meeting} person={person} people={people} onSetPerson={onSetPerson} />
             {hints && hints.length > 0 && (
               <ul aria-label={strings.captureNotes} className="mt-2 space-y-0.5 text-[13px] leading-5 text-muted">
                 {hints.map((hint) => (
@@ -277,5 +287,127 @@ function Title({ title, onRename }: { title: string; onRename: (title: string) =
       onBlur={() => setEditing(false)}
       className="w-full rounded-lg bg-band px-2 font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.1] font-extrabold"
     />
+  );
+}
+
+interface DateLineProps {
+  meeting: MeetingSummary;
+  person: Person | null;
+  people: Person[];
+  onSetPerson: (name: string) => Promise<WithRefusal | null>;
+}
+
+// The day, time and length, then who the 1:1 was with. The name is a quiet button; it opens an
+// input on the band, as the title does, suggesting everyone named so far. Enter saves (an empty
+// name says no one), Escape cancels, and either puts the focus back on the button.
+function DateLine({ meeting, person, people, onSetPerson }: DateLineProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [refusal, setRefusal] = useState("");
+  const button = useRef<HTMLButtonElement>(null);
+  const open = useRef(false); // the input, for a reply that lands after it closed
+  const saving = useRef(false);
+  const refocus = useRef(false);
+  const listId = useId();
+  const refusalId = useId();
+
+  useEffect(() => {
+    if (editing || !refocus.current) return;
+    refocus.current = false;
+    button.current?.focus();
+  }, [editing]);
+
+  function begin() {
+    open.current = true;
+    setDraft(person?.name ?? "");
+    setRefusal("");
+    setEditing(true);
+  }
+
+  function end(focusButton: boolean) {
+    open.current = false;
+    refocus.current = focusButton;
+    setRefusal("");
+    setEditing(false);
+  }
+
+  async function save() {
+    if (saving.current) return;
+    saving.current = true;
+    const refused = await onSetPerson(draft.trim());
+    saving.current = false;
+    if (!open.current) return;
+    if (refused === null) end(true);
+    else if (refused === "reserved") setRefusal(strings.nameReserved);
+  }
+
+  const day = meetingLine(meeting);
+  const lead = strings.withPerson(""); // the words before the name
+  return (
+    <>
+      <p className="mt-2 text-[13px] leading-5 text-muted tabular-nums">
+        {editing ? (
+          <>
+            <span>{day}</span>
+            {" · "}
+            {lead}
+            <input
+              aria-label={strings.withLabel}
+              aria-describedby={refusal ? refusalId : undefined}
+              aria-invalid={refusal ? true : undefined}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              list={listId}
+              value={draft}
+              maxLength={MAX_NAME}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setRefusal("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  // no keypress: it would press the button the focus is about to return to
+                  event.preventDefault();
+                  void save();
+                }
+                if (event.key === "Escape") end(true);
+              }}
+              onBlur={() => {
+                if (open.current) end(false);
+              }}
+              className="ml-0.5 w-56 max-w-full rounded-md bg-band px-1.5 font-semibold text-ink"
+            />
+            <datalist id={listId}>
+              {people.map((p) => (
+                <option key={p.id} value={p.name} />
+              ))}
+            </datalist>
+          </>
+        ) : (
+          <>
+            <span>{person ? day : `${day} · ${strings.oneOnOne}`}</span>
+            {" · "}
+            {person && <span aria-hidden="true">{lead}</span>}
+            <button
+              ref={button}
+              type="button"
+              aria-label={person ? strings.withPerson(person.name) : undefined}
+              onClick={begin}
+              className="ml-0.5 rounded-md font-semibold text-ink underline decoration-rule underline-offset-[3px] hover:decoration-2"
+            >
+              {person ? person.name : strings.addWith}
+            </button>
+          </>
+        )}
+      </p>
+      <div aria-live="polite">
+        {refusal && (
+          <p id={refusalId} className="mt-1 text-[13px] leading-5 text-muted">
+            {refusal}
+          </p>
+        )}
+      </div>
+    </>
   );
 }

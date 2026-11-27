@@ -223,6 +223,28 @@ def test_whole_meeting_boundary_follows_the_context_window() -> None:
     assert not whole_meeting_fits(context, 3073 - est, s)
 
 
+def test_a_long_call_is_asked_with_who_it_was_with() -> None:
+    """C6: the parts read for a question about a long call name the person too, and an answer
+    may say their name."""
+    lines = [
+        utt(f"x{i}", 0, i * 1000, i * 1000 + 900, f"Filler talk number {i}.", seq=i)
+        for i in range(400)
+    ]
+    lines[200] = utt("x200", 1, 200_000, 200_900, "I'll send the vendor quote by Friday.", seq=200)
+    point = {"text": "Priya will send the vendor quote by Friday.", "citations": ["u:201"]}
+    provider = FakeProvider([json.dumps({"found": True, "points": [point]})])
+    result = _ask(
+        provider,
+        utterances=lines,
+        question="What about the vendor quote?",
+        settings=LlmSettings(context_budget=2000),
+        context=build_context(meeting=MEETING, utterances=lines, names={"Them": "Priya"}),
+    )
+    assert result.excerpt is True
+    assert "Priya (the other person on the call" in provider.calls[0][0].content
+    assert [p.text for p in result.points] == ["Priya will send the vendor quote by Friday."]
+
+
 def test_excerpt_stays_inside_a_small_context_window() -> None:
     lines = _long_meeting(200, "The vendor quote is due Friday.")
     provider = FakeProvider([NOT_FOUND])

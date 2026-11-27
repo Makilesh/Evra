@@ -117,23 +117,27 @@ def write_note_and_items(
     on_stage: Callable[[str], None] = _quiet,
     notes: NotesInput = NO_NOTES,
     context: MeetingContext | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> tuple[NoteResult, Extraction]:
     """The note's own sections and its records, checked, not yet saved, from the call and the
-    owner's linked `notes`. `context` is the meeting's shared A0 when the caller built it
-    (`meeting_context`); otherwise it is built here, the same way. A call too long for one pass
-    is read in parts (stages "part:i:n", then "combining"); otherwise A1 writes the note
-    ("writing"), then A4-A6 list the records ("items"). When Ollama cuts A1's prompt (its count
-    reaches the room although the estimate fit), the call is read in parts after all. A1's
-    NoteCutOff stops here; its NoteInvalid only when nothing was listed either."""
+    owner's linked `notes`. `names` maps the transcript's labels to who they stand for
+    ({"Them": "Priya"}): both paths list a record the model gives to "Priya" as theirs, and a
+    point may name them (C1, C6). `context` is the meeting's shared A0 when the caller built it
+    (`meeting_context`, with the same names); otherwise it is built here, the same way. A call
+    too long for one pass is read in parts (stages "part:i:n", then "combining"); otherwise A1
+    writes the note ("writing"), then A4-A6 list the records ("items"). When Ollama cuts A1's
+    prompt (its count reaches the room although the estimate fit), the call is read in parts
+    after all. A1's NoteCutOff stops here; its NoteInvalid only when nothing was listed either."""
     if not utterances:
         raise NoTranscript("no transcript")
     if context is None:
-        context = notes_context(meeting=meeting, utterances=utterances, notes=notes)
+        context = notes_context(meeting=meeting, utterances=utterances, notes=notes, names=names)
     grounder = Grounder(
         aliases=context.aliases,
         utterance_text=context.utterance_text,
         user_notes=notes.user_notes,
         semantic=semantic,
+        people=context.names.values(),  # the names the prompts give, as the note's check
     )
     # on the estimate draft_note checks, so a call too long for one prompt is read in parts
     tokens = note_prompt_tokens(context, template)
@@ -148,6 +152,7 @@ def write_note_and_items(
             grounder=grounder,
             notes=notes,
             on_stage=on_stage,
+            names=names,
         )
     on_stage("writing")
     drafted: DraftedNote | None = None
@@ -173,12 +178,19 @@ def write_note_and_items(
             grounder=grounder,
             notes=notes,
             on_stage=on_stage,
+            names=names,
         )
     kinds = item_kinds(template)
     if kinds:
         on_stage("items")
     extraction = extract_items(
-        provider, model=model, context=context, settings=settings, grounder=grounder, kinds=kinds
+        provider,
+        model=model,
+        context=context,
+        settings=settings,
+        grounder=grounder,
+        kinds=kinds,
+        names=names,
     )
     if extraction.failed_kinds:  # their sections stay empty
         log.info("note_items_failed", kinds=list(extraction.failed_kinds))
@@ -241,8 +253,8 @@ def write_and_save(
     semantic: SemanticCheck | None = None,
     on_stage: Callable[[str], None] = _quiet,
 ) -> SavedNote:
-    """Link the typed notes, then write the note on the meeting's shared context (RB1) and save
-    it with its records."""
+    """Link the typed notes, then write the note on the meeting's shared context (RB1), which
+    names who the 1:1 was with (C6), and save it with its records."""
     if not utterances:
         raise NoTranscript("no transcript")
     meeting_id = str(meeting["id"])
@@ -260,6 +272,7 @@ def write_and_save(
         on_stage=on_stage,
         notes=notes,
         context=context,
+        names=context.names,
     )
     if result.note.kept == 0 and not extraction.items:  # never replace a usable note with nothing
         raise NothingSupported(result.note.dropped + extraction.dropped)

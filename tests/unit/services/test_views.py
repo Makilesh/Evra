@@ -6,13 +6,21 @@ import pytest
 
 from evra.notes.extract import CheckedItem
 from evra.notes.validate import CheckedBullet, CheckedNote, CheckedSection
-from evra.services.views import clean_title, item_text, meeting_detail, meeting_summary
+from evra.services.views import (
+    clean_title,
+    item_text,
+    meeting_detail,
+    meeting_list,
+    meeting_summary,
+)
 from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
 from evra.store.notepad import LineIn, NotepadStore
 from evra.store.notes import NoteStore
+from evra.store.people import PersonStore
+from evra.store.speakers import SpeakerStore
 
 
 @pytest.fixture
@@ -207,6 +215,57 @@ def test_note_view_items_carry_status(conn: sqlite3.Connection) -> None:
     json.dumps(detail)
 
 
+def test_them_item_shows_the_name(conn: sqlite3.Connection) -> None:
+    """C3 (RB21, RB41b): once the owner says who the 1:1 was with, a record owned by "Them"
+    shows their name, as its owner and (a task's) at the start of its text."""
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="Weekly 1:1", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    line = store.add_utterance(
+        version_id=vid,
+        meeting_id=mid,
+        channel=1,
+        start_ms=20_000,
+        end_ms=24_000,
+        text="I'll plan the offsite, and we go with the annual plan.",
+    )
+    NoteStore(conn).save_generation(
+        meeting_id=mid,
+        transcript_version_id=vid,
+        note=CheckedNote((), (), 0, 0, {}),
+        provider="ollama",
+        model="gemma4:12b",
+        prompt_version="a0-v1+a4-v2+a5-v2",
+        template="one_on_one",
+        tokens_in=1,
+        tokens_out=1,
+        items=[
+            CheckedItem("action_item", "Plan the offsite", (line.id,), "Them", "by June", 0.9),
+            CheckedItem("action_item", "Book the venue", (line.id,), "You", None, 0.8),
+            CheckedItem("decision", "Go with the annual plan.", (line.id,), "Them", None, None),
+        ],
+    )
+    SpeakerStore(conn).set_person(mid, PersonStore(conn).find_or_create("Priya").id)
+    detail = meeting_detail(conn, mid)
+    assert detail is not None and detail["note"] is not None
+    blocks = {s["id"]: s["blocks"] for s in detail["note"]["sections"]}
+    assert [(b["text"], b["item"]["owner"]) for b in blocks["action_items"]] == [
+        ("Priya: Plan the offsite (by June)", "Priya"),
+        ("You: Book the venue", "You"),
+    ]
+    assert [(b["text"], b["item"]["owner"]) for b in blocks["decisions"]] == [
+        ("Go with the annual plan.", "Priya"),  # who made it stays in the record (RB21)
+    ]
+    SpeakerStore(conn).set_person(mid, None)
+    detail = meeting_detail(conn, mid)
+    assert detail is not None and detail["note"] is not None
+    blocks = {s["id"]: s["blocks"] for s in detail["note"]["sections"]}
+    first = blocks["action_items"][0]
+    assert (first["text"], first["item"]["owner"]) == ("Them: Plan the offsite (by June)", "Them")
+
+
 def test_item_text_names_a_tasks_owner_and_its_due_date_once() -> None:
     assert item_text("action_item", "You", "Send the vendor quote", "by Friday") == (
         "You: Send the vendor quote (by Friday)"
@@ -327,7 +386,28 @@ def test_summary_duration_only_once_finished() -> None:
         "duration_ms": 60_000,
         "state": "ready",
         "has_note": False,
+        "with_name": None,
     }
+    assert meeting_summary({**base, "with_name": "Priya"})["with_name"] == "Priya"
+
+
+def test_the_list_says_who_each_1on1_was_with(conn: sqlite3.Connection) -> None:
+    store = MeetingStore(conn)
+    first, second = (
+        store.create_meeting(
+            title=title,
+            mode="one_on_one",
+            situation="call_headphones",
+            template="one_on_one",
+            started_at_ms=at,
+        )
+        for title, at in [("Monday", 1_000), ("Tuesday", 2_000)]
+    )
+    SpeakerStore(conn).set_person(first, PersonStore(conn).find_or_create("Priya").id)
+    SpeakerStore(conn).one_on_one(second)  # its speakers, but no one named
+    listed = meeting_list(conn)
+    assert [(m["id"], m["with_name"]) for m in listed] == [(second, None), (first, "Priya")]
+    json.dumps(listed)
 
 
 @pytest.mark.parametrize(

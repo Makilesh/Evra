@@ -16,6 +16,7 @@ import {
   type NoteItem,
   type NoteLine,
   type NoteModels,
+  type Person,
   type Question,
   type QuestionUpdated,
   type RecordingFinished,
@@ -27,6 +28,7 @@ import {
 import { NOTES_SAVE_MS } from "@/notepad";
 import { strings } from "@/strings";
 import { applyTheme } from "@/theme";
+import { spokenBy, usePeople, withMeetingPerson } from "@/usePeople";
 
 export interface NoteStatus {
   stage?: string;
@@ -244,6 +246,17 @@ export function useEvra() {
     }
   }, []);
 
+  // Who a 1:1 was with shows at once in the list, the header and the transcript; the meeting is
+  // read again for its records' names.
+  const linked = useCallback(
+    (meetingId: string, person: Person | null) => {
+      setState((s) => withMeetingPerson(s, meetingId, person));
+      if (selected.current === meetingId) void loadDetail(meetingId);
+    },
+    [loadDetail],
+  );
+  const people = usePeople(linked); // the people list, who a 1:1 was with, renaming
+
   const select = useCallback(
     (id: string) => {
       // the lines typed in the meeting being left are saved under it now (RB42)
@@ -273,7 +286,8 @@ export function useEvra() {
           const detail = s.detail;
           if (!detail || detail.meeting.id !== meeting_id) return s;
           if (detail.utterances.some((u) => u.id === utterance.id)) return s;
-          return { ...s, detail: { ...detail, utterances: [...detail.utterances, utterance] } };
+          const line = spokenBy(utterance, detail.with);
+          return { ...s, detail: { ...detail, utterances: [...detail.utterances, line] } };
         });
       }),
       onEvent("recording.finished", (payload) => {
@@ -494,6 +508,7 @@ export function useEvra() {
 
   return {
     state,
+    ...people,
     select,
     startRecording,
     stopRecording,

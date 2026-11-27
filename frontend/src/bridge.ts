@@ -31,6 +31,30 @@ export interface MeetingSummary {
   duration_ms: number | null;
   state: string;
   has_note: boolean;
+  /** Who the 1:1 was with, once the owner has said. */
+  with_name: string | null;
+}
+
+/** Someone the owner named as who a 1:1 was with. Never the owner, who shows as "You". */
+export interface Person {
+  id: string;
+  name: string;
+}
+
+/** Why Python refused a name: someone else has it, "You" is the owner's, it is empty or longer
+ *  than 80 characters, or there is no such person. */
+export type NameRefusal = "taken" | "reserved" | "invalid" | "unknown";
+
+export interface WithReply {
+  ok: boolean;
+  reason?: "reserved" | "invalid";
+  /** Only when ok: who the 1:1 is with now, or null for no one. */
+  with?: Person | null;
+}
+
+export interface NameReply {
+  ok: boolean;
+  reason?: NameRefusal;
 }
 
 export interface Utterance {
@@ -104,6 +128,8 @@ export interface MeetingDetail {
   questions: Question[];
   /** The owner's typed lines, in the pad's order. */
   notes: NoteLine[];
+  /** Who the 1:1 was with: its "Them" lines and records then show their name. */
+  with: Person | null;
 }
 
 export interface MicList {
@@ -227,6 +253,13 @@ export interface EvraApi {
     lines: { id: string; text: string; captured_at: number | null; pasted: boolean }[],
   ): Promise<OkReply>;
   recording_state(): Promise<RecordingState>;
+  /** Who a 1:1 was with, by name (found whatever its case, else made); null or "" for no one. */
+  set_meeting_person(meetingId: string, name: string | null): Promise<WithReply>;
+  /** Everyone the owner has named, by name. */
+  list_people(): Promise<Person[]>;
+  rename_person(personId: string, name: string): Promise<NameReply>;
+  /** Forget a person: their meetings say "Them" again. */
+  remove_person(personId: string): Promise<OkReply>;
   get_settings(): Promise<SettingsInfo>;
   set_theme(theme: Theme): Promise<OkReply>;
   set_note_model(model: string): Promise<OkReply>;

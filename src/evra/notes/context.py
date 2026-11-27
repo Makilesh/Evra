@@ -1,6 +1,7 @@
 """One system message per meeting (A0): the transcript first, because it never changes once a
 call ends, then the user's notes, gaps and metadata. Every call about a meeting (the note,
-questions) sends this same text, so Ollama can reuse the prompt it already processed."""
+questions) sends this same text, so Ollama can reuse the prompt it already processed. Once the
+owner says who a 1:1 was with, its participants name them (C6); the transcript keeps "Them"."""
 
 from __future__ import annotations
 
@@ -8,10 +9,12 @@ import math
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any
 
 from evra.llm.prompt_files import load_part
 from evra.store.meetings import Utterance
+from evra.store.speakers import THEM
 from evra.transcribe.cli import format_ms
 from evra.transcribe.labels import PARTICIPANTS_1ON1, speaker_label
 
@@ -36,6 +39,9 @@ class MeetingContext:
     utterance_text: Mapping[str, str]  # every utterance id -> text
     estimated_tokens: int
     excerpt: bool
+    # the transcript's labels mapped to who they stand for ({"Them": "Priya"}), so every call
+    # built on this context reads and checks the same names
+    names: Mapping[str, str] = MappingProxyType({})
 
 
 def as_data(text: str) -> str:
@@ -85,6 +91,18 @@ def transcript_lines(
     return "\n".join(lines), aliases
 
 
+def participants(names: Mapping[str, str]) -> str:
+    """Who was on the call: the other person by name once the owner has said who the 1:1 was
+    with, and how the transcript calls them."""
+    person = names.get(THEM)
+    if not person:
+        return PARTICIPANTS_1ON1
+    return (
+        f"You (the owner of this note), {_one_line(person)}"
+        f' (the other person on the call; "{THEM}" in the transcript)'
+    )
+
+
 def _gap_lines(gaps: Sequence[Mapping[str, Any]]) -> str:
     lines = []
     for gap in gaps:
@@ -101,9 +119,12 @@ def build_context(
     user_notes: str = NONE,
     only: Collection[str] | None = None,
     note: str | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> MeetingContext:
     """`note` is the text placed before the transcript lines (a long call's part says which part
-    it is); with `only` and no note, it is the excerpt note."""
+    it is); with `only` and no note, it is the excerpt note. `names` maps the transcript's
+    labels to who they stand for ({"Them": "Priya"}): the participants name them."""
+    named = MappingProxyType(dict(names or {}))
     if not utterances:
         raise ValueError("no utterances")
     part = load_part("a0_context")
@@ -121,7 +142,7 @@ def build_context(
         date_iso=started.date().isoformat(),
         duration_minutes=str(max(1, round(end_ms / 60_000))),
         setting=_one_line(str(meeting.get("situation") or "unknown").replace("_", " ")),
-        participants=PARTICIPANTS_1ON1,
+        participants=participants(named),
     )
     return MeetingContext(
         system=system,
@@ -130,4 +151,5 @@ def build_context(
         utterance_text={u.id: u.text for u in utterances},
         estimated_tokens=estimate_tokens(system),
         excerpt=only is not None,
+        names=named,
     )

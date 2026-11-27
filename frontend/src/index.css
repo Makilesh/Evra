@@ -398,12 +398,14 @@
     padding-top: 5px;
   }
 
+  /* A name longer than the column (who the 1:1 was with) wraps inside it, so the words keep
+     their one left edge. */
   .line-speaker {
     grid-column: 2;
     font-size: 14px;
     line-height: 23px;
     padding: 2px 0 3px 10px;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .line-body {

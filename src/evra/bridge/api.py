@@ -22,11 +22,13 @@ from evra.bridge.events import EventBus
 from evra.capture.devices import MicList, list_mics
 from evra.config import LlmSettings, Settings, Theme
 from evra.llm.ollama import is_cloud_model_name
-from evra.services.views import clean_title, meeting_detail, meeting_summary
-from evra.store.db import connect
+from evra.services.views import clean_title, meeting_detail, meeting_list
+from evra.store.db import connect, writing
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.notepad import LineIn, NotepadStore
+from evra.store.people import NameRefused, Person, PersonStore
+from evra.store.speakers import SpeakerStore
 
 log = structlog.get_logger(__name__)
 
@@ -40,6 +42,10 @@ def open_folder(path: Path) -> None:
     if sys.platform != "win32":
         raise OSError("folders open only on Windows")
     os.startfile(path)
+
+
+def _person(person: Person) -> dict[str, str]:
+    return {"id": person.id, "name": person.name}
 
 
 def _typed_lines(raw: object) -> list[LineIn] | None:
@@ -130,7 +136,7 @@ class BridgeApi:
 
     def list_meetings(self) -> list[dict[str, Any]]:
         with self._db() as conn:
-            return [meeting_summary(row) for row in MeetingStore(conn).list_meetings()]
+            return meeting_list(conn)
 
     def get_meeting(self, meeting_id: str) -> dict[str, Any] | None:
         if not isinstance(meeting_id, str):
@@ -201,6 +207,49 @@ class BridgeApi:
             return {"ok": False}
         with self._db() as conn:
             return {"ok": MeetingStore(conn).rename_meeting(meeting_id, cleaned)}
+
+    # --- people: who each 1:1 was with (BUILD.md §6.5, D14). Names are content: logs get ids.
+
+    def set_meeting_person(self, meeting_id: str, name: str | None) -> dict[str, Any]:
+        """Say who a 1:1 was with, by name: the person with that name, whatever its case or
+        spacing, else a new one; None or "" says no one. "You" is the owner's ("reserved"); an
+        empty or too long name is "invalid". The person is made and linked in one transaction,
+        so a refused link leaves no one behind."""
+        if not isinstance(meeting_id, str):
+            return {"ok": False}
+        if name is not None and not isinstance(name, str):
+            return {"ok": False, "reason": "invalid"}
+        try:
+            with self._db() as conn, writing(conn):
+                person = PersonStore(conn).find_or_create(name) if name else None
+                SpeakerStore(conn).set_person(meeting_id, None if person is None else person.id)
+        except NameRefused as exc:
+            return {"ok": False, "reason": exc.reason}
+        except KeyError:  # no such meeting
+            return {"ok": False}
+        log.info("meeting_person_set", meeting_id=meeting_id, named=person is not None)
+        return {"ok": True, "with": None if person is None else _person(person)}
+
+    def list_people(self) -> list[dict[str, str]]:
+        with self._db() as conn:
+            return [_person(p) for p in PersonStore(conn).list_people()]
+
+    def rename_person(self, person_id: str, name: str) -> dict[str, Any]:
+        """A person's new name, everywhere they show; "taken" when someone else has it."""
+        if not isinstance(person_id, str):
+            return {"ok": False, "reason": "unknown"}
+        if not isinstance(name, str):
+            return {"ok": False, "reason": "invalid"}
+        with self._db() as conn:
+            result = PersonStore(conn).rename(person_id, name)
+        return {"ok": True} if result == "ok" else {"ok": False, "reason": result}
+
+    def remove_person(self, person_id: str) -> dict[str, Any]:
+        """Forget a person: their meetings say "Them" again."""
+        if not isinstance(person_id, str):
+            return {"ok": False}
+        with self._db() as conn:
+            return {"ok": PersonStore(conn).remove(person_id)}
 
     def recording_state(self) -> dict[str, Any]:
         return self._control.state()

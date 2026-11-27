@@ -18,6 +18,7 @@ from evra.notes.context import NONE, MeetingContext, as_data, build_context, lin
 from evra.notes.errors import NoTranscript
 from evra.store.meetings import MeetingStore, Utterance
 from evra.store.notepad import NoteLine, NotepadStore
+from evra.store.speakers import SpeakerStore, names_for
 from evra.transcribe.cli import format_ms
 
 
@@ -84,10 +85,11 @@ def notes_context(
     only: Collection[str] | None = None,
     note: str | None = None,
     shown_notes: Collection[str] | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> MeetingContext:
-    """The meeting's A0 with its notes, linked on the whole meeting's u:1..u:N. `only` and
-    `note` are build_context's (the lines printed, and the text before them); `shown_notes`
-    limits the notes shown, by id."""
+    """The meeting's A0 with its notes, linked on the whole meeting's u:1..u:N. `only`, `note`
+    and `names` are build_context's (the lines printed, the text before them, and who the
+    labels stand for); `shown_notes` limits the notes shown, by id."""
     user_notes = format_user_notes(notes.lines, line_aliases(utterances), only=shown_notes)
     return build_context(
         meeting=meeting,
@@ -96,6 +98,7 @@ def notes_context(
         user_notes=user_notes,
         only=only,
         note=note,
+        names=names,
     )
 
 
@@ -106,9 +109,9 @@ def meeting_context(
     only: Collection[str] | None = None,
     note: str | None = None,
 ) -> tuple[MeetingContext, NotesInput]:
-    """A stored meeting's shared context: its current transcript, and its typed lines with the
-    links the last note stored. KeyError for an unknown meeting, NoTranscript for one with no
-    lines."""
+    """A stored meeting's shared context: its current transcript, its typed lines with the
+    links the last note stored, and who the 1:1 was with, once the owner has said (C6). KeyError
+    for an unknown meeting, NoTranscript for one with no lines."""
     store = MeetingStore(conn)
     meeting = store.get_meeting(meeting_id)
     version_id = store.current_transcript_version(meeting_id)
@@ -117,6 +120,11 @@ def meeting_context(
         raise NoTranscript("no transcript")
     notes = notes_input(NotepadStore(conn).lines(meeting_id))
     context = notes_context(
-        meeting=meeting, utterances=utterances, notes=notes, only=only, note=note
+        meeting=meeting,
+        utterances=utterances,
+        notes=notes,
+        only=only,
+        note=note,
+        names=names_for(SpeakerStore(conn).person_for(meeting_id)),
     )
     return context, notes

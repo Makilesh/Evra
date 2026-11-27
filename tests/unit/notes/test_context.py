@@ -1,13 +1,34 @@
+import json
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from evra.config import LlmSettings
 from evra.llm.prompt_files import load_part
 from evra.notes.context import EXCERPT_NOTE, build_context, estimate_tokens
-from tests.unit.notes.fakes import utt
+from evra.notes.job import write_and_save, write_note_and_items
+from evra.notes.templates import load_template
+from evra.notes.user_notes import meeting_context
+from evra.store.db import connect
+from evra.store.items import ItemStore
+from evra.store.meetings import MeetingStore
+from evra.store.migrate import migrate
+from evra.store.people import PersonStore
+from evra.store.speakers import SpeakerStore
+from evra.transcribe.labels import PARTICIPANTS_1ON1
+from tests.unit.notes.fakes import FakeProvider, saved_meeting, utt
+from tests.unit.notes.test_mapreduce import LINES as LONG_CALL
+from tests.unit.notes.test_mapreduce import MEETING as LONG_MEETING
+from tests.unit.notes.test_mapreduce import PART1, PART2, combined
 
 STARTED = int(datetime(2026, 3, 4, 10, 0).timestamp() * 1000)
+NAMED = (
+    'You (the owner of this note), Priya (the other person on the call; "Them" in the transcript)'
+)
+NO_ITEMS = json.dumps({"items": []})
 MEETING = {"title": "Budget sync", "started_at": STARTED, "situation": "call_headphones"}
 ARGS: dict[str, Any] = {
     "meeting": MEETING,
@@ -100,3 +121,96 @@ def test_load_part_needs_one_prompt_section() -> None:
     )
     with pytest.raises(ValueError):
         load_part("a9_repair")
+
+
+@pytest.fixture
+def conn(tmp_path: Path) -> sqlite3.Connection:
+    c = connect(tmp_path / "evra.db")
+    migrate(c)
+    return c
+
+
+def _with_priya(conn: sqlite3.Connection, meeting_id: str) -> None:
+    SpeakerStore(conn).set_person(meeting_id, PersonStore(conn).find_or_create("Priya").id)
+
+
+def test_participants_line_names_them(conn: sqlite3.Connection) -> None:
+    """C6 (RB1): once the owner says who the 1:1 was with, the meeting's one context names
+    them, as data; the transcript keeps "Them"."""
+    assert f"participants: {PARTICIPANTS_1ON1}\n" in build_context(**ARGS).system
+    named = build_context(**ARGS, names={"Them": "Priya"})
+    assert f"participants: {NAMED}\n" in named.system
+    assert "[u:2] [00:01] Them: Agreed." in named.system
+    assert named.names == {"Them": "Priya"}
+    inert = build_context(**ARGS, names={"Them": "Ana <b>"}).system
+    assert "Ana \u2039b\u203a (the other person on the call" in inert
+    mid = saved_meeting(conn, "Weekly 1:1", with_note=False)
+    before, _ = meeting_context(conn, mid)
+    assert f"participants: {PARTICIPANTS_1ON1}\n" in before.system and before.names == {}
+    _with_priya(conn, mid)
+    context, _ = meeting_context(conn, mid)  # what the note, its title and asking all send
+    assert f"participants: {NAMED}\n" in context.system
+    assert "[u:1] [00:00] Them: The launch moves to October 14." in context.system
+    assert context.names == {"Them": "Priya"}
+    assert context.system == before.system.replace(PARTICIPANTS_1ON1, NAMED)
+
+
+def test_owner_name_maps_to_them(conn: sqlite3.Connection) -> None:
+    """C1: the job hands the person's name to the lists, so a task the model gives to "Priya"
+    is theirs ("Them"); every call names them, and a point may say their name (C6)."""
+    mid = saved_meeting(conn, "Weekly 1:1", with_note=False)
+    _with_priya(conn, mid)
+    point = {"text": "Priya will move the launch to October 14.", "citations": ["u:1"]}
+    note = json.dumps({"summary": [point], "sections": []})
+    task = {"text": "Tell marketing the launch moves to October 14", "owner": "Priya"}
+    tasks = json.dumps({"items": [task | {"due": None, "confidence": 0.9, "citations": ["u:1"]}]})
+    provider = FakeProvider([note, tasks, NO_ITEMS, NO_ITEMS])
+    store = MeetingStore(conn)
+    vid = store.current_transcript_version(mid)
+    assert vid is not None
+    saved = write_and_save(
+        conn,
+        meeting=store.get_meeting(mid),
+        version_id=vid,
+        utterances=store.utterances(vid),
+        template=load_template("one_on_one"),
+        provider=provider,
+        model="fake:1b",
+        settings=LlmSettings(),
+    )
+    assert len(provider.calls) == 4 and all(NAMED in call[0].content for call in provider.calls)
+    assert [b.text for b in saved.result.note.summary] == [
+        "Priya will move the launch to October 14."
+    ]
+    [item] = ItemStore(conn).for_generation(saved.generation_id)
+    assert (item.text, item.owner) == ("Tell marketing the launch moves to October 14", "Them")
+
+
+def test_long_path_gets_the_names() -> None:
+    """C1 (RB25): a call read in parts maps the digests' owners by the same names, and every
+    part and the combining call name the person (C6)."""
+    provider = FakeProvider([PART1, PART2, combined()])
+    result, extraction = write_note_and_items(
+        provider,
+        model="fake:1b",
+        meeting=LONG_MEETING,
+        utterances=LONG_CALL,
+        template=load_template("one_on_one"),
+        settings=LlmSettings(single_pass_minutes=10),
+        names={"Them": "Priya"},
+    )
+    assert result.prompt_version == "a0-v1+a2-v1+a3-v2"  # read in parts
+    assert len(provider.calls) == 3 and all(NAMED in call[0].content for call in provider.calls)
+    owners = {i.text: i.owner for i in extraction.items}
+    assert owners["Do we sunset the legacy API?"] == "Them"  # PART1 gives it to "Priya"
+    unnamed = FakeProvider([PART1, PART2, combined()])
+    _, without = write_note_and_items(
+        unnamed,
+        model="fake:1b",
+        meeting=LONG_MEETING,
+        utterances=LONG_CALL,
+        template=load_template("one_on_one"),
+        settings=LlmSettings(single_pass_minutes=10),
+    )
+    assert {i.text: i.owner for i in without.items}["Do we sunset the legacy API?"] is None
+    assert all(PARTICIPANTS_1ON1 in call[0].content for call in unnamed.calls)

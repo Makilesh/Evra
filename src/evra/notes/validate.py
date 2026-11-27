@@ -163,9 +163,11 @@ def _spoken_numbers(words: Sequence[str], *, lone_ambiguous: bool = True) -> set
 class _Vocabulary:
     lower: frozenset[str]  # word forms the meeting uses in lowercase: ordinary words
     said: frozenset[str]  # every word form said in the meeting
+    # the words of who was on the call, by name (C6): known like "You" and "Them", never cited
+    people: frozenset[str] = frozenset()
 
 
-def _vocabulary(texts: Iterable[str]) -> _Vocabulary:
+def _vocabulary(texts: Iterable[str], people: Iterable[str] = ()) -> _Vocabulary:
     lower: set[str] = set()
     said: set[str] = set()
     for text in texts:
@@ -173,7 +175,8 @@ def _vocabulary(texts: Iterable[str]) -> _Vocabulary:
             said.add(_base(word))
             if word[0].islower():
                 lower.add(_base(word))
-    return _Vocabulary(frozenset(lower), frozenset(said))
+    known = frozenset(_base(word) for name in people for word in _WORD.findall(name))
+    return _Vocabulary(frozenset(lower), frozenset(said), known)
 
 
 def _names(text: str, vocabulary: _Vocabulary) -> set[str]:
@@ -259,7 +262,7 @@ def _details(
     text, cited = claim.text, list(claim.cited)
     have_numbers, have_names = _facts(claim.source)
     missing_numbers = _claim_numbers(text) - have_numbers
-    missing_names = _names(text, vocabulary) - have_names
+    missing_names = _names(text, vocabulary) - have_names - vocabulary.people
     contexts = _number_contexts(text)
     for extra in _nearby(cited, aliases, utterance_text):
         if not missing_numbers and not missing_names:
@@ -339,7 +342,8 @@ def _nearby(
 class Grounder:
     """Checks bullets against one meeting; the vocabulary is built once. With a meaning check,
     `check_all` also keeps a bullet whose words fall short of what it cites but whose meaning
-    is close enough to it."""
+    is close enough to it. `people` are the names of who was on the call, which every prompt
+    gives (C6): a bullet may say them without a line that does."""
 
     def __init__(
         self,
@@ -348,12 +352,13 @@ class Grounder:
         utterance_text: Mapping[str, str],
         user_notes: str = "",
         semantic: SemanticCheck | None = None,
+        people: Iterable[str] = (),
     ) -> None:
         self._aliases = aliases
         self._utterance_text = utterance_text
         self._user_notes = user_notes
         self._semantic = semantic
-        self._vocabulary = _vocabulary([*utterance_text.values(), user_notes])
+        self._vocabulary = _vocabulary([*utterance_text.values(), user_notes], people)
 
     @property
     def semantic(self) -> SemanticCheck | None:
@@ -420,9 +425,14 @@ def check_note(
     template: Template,
     user_notes: str = "",
     semantic: SemanticCheck | None = None,
+    people: Iterable[str] = (),
 ) -> CheckedNote:
     grounder = Grounder(
-        aliases=aliases, utterance_text=utterance_text, user_notes=user_notes, semantic=semantic
+        aliases=aliases,
+        utterance_text=utterance_text,
+        user_notes=user_notes,
+        semantic=semantic,
+        people=people,
     )
     groups = [draft.summary, *(section.bullets for section in draft.sections)]
     # the whole note in one pass, so the meaning check is one batch

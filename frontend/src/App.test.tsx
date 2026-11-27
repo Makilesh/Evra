@@ -32,7 +32,7 @@ it("records, takes notes beside the live transcript, then shows the note once it
     list_meetings: async () => meetings,
     get_meeting: async (id) =>
       id === "m2"
-        ? { meeting: LIVE, utterances: [], note: noted ? DETAIL.note : null, questions: [], notes: [] }
+        ? { meeting: LIVE, utterances: [], note: noted ? DETAIL.note : null, questions: [], notes: [], with: null }
         : DETAIL,
   });
   setApiForTests(api);

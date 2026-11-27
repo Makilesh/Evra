@@ -201,15 +201,16 @@ def _parts_prompt(
     notes: NotesInput,
     settings: LlmSettings,
     embedder: Embedder | None,
+    names: Mapping[str, str],
 ) -> _Prompt | None:
     """The prompt with only the parts of the call that best match the question (and all of the
-    owner's notes). While it does not fit, the oldest exchanges go first; NoteTooLong when even
-    none leaves no room, None when no part matches the question."""
+    owner's notes, and who the call was with). While it does not fit, the oldest exchanges go
+    first; NoteTooLong when even none leaves no room, None when no part matches the question."""
     limit = min(settings.context_budget, settings.num_ctx - output_tokens(settings))
 
     def context_of(only: set[str]) -> MeetingContext:
         return notes_context(
-            meeting=meeting, utterances=utterances, notes=notes, gaps=gaps, only=only
+            meeting=meeting, utterances=utterances, notes=notes, gaps=gaps, only=only, names=names
         )
 
     skeleton = context_of(set())
@@ -275,6 +276,7 @@ def ask_meeting(
             notes=notes,
             settings=settings,
             embedder=embedder,
+            names=context.names,
         )
     if prompt is None:
         log.info("question_answered", state="not_found", kept=0, dropped=0, excerpt=True)
@@ -317,6 +319,7 @@ def ask_meeting(
             utterance_text=context.utterance_text,
             user_notes=notes.user_notes,
             semantic=None if embedder is None else SemanticCheck(embedder),
+            people=context.names.values(),
         )
         for checked, how in grounder.check_all(answer.points):
             if checked is None:

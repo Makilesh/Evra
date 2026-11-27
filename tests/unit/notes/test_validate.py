@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Any
 
 import pytest
 import structlog
@@ -431,3 +432,24 @@ def test_single_check_has_no_meaning_step() -> None:
     assert grounder.check(b(PARAPHRASE)) == (None, "unsupported")
     assert provider.embed_calls == []
     assert grounder.check_all([b(PARAPHRASE)]) == [(CheckedBullet(PARAPHRASE, ("p-1",)), "meaning")]
+
+
+def test_the_person_on_the_call_is_a_known_name() -> None:
+    """C6: once the owner says who the 1:1 was with, every prompt names them, so a point may
+    too: their name needs no line that says it; any other name still does."""
+    common: dict[str, Any] = {
+        "aliases": {"u:1": "t-1"},
+        "utterance_text": {"t-1": DECK[0]},
+        "template": TEMPLATE,
+    }
+    named = NoteDraft(summary=[b("Dana Lee will send the budget deck by Friday.")], sections=[])
+    assert check_note(named, **common).drop_reasons == {"name_not_cited": 1}
+    assert check_note(named, **common, people=["Dana Lee"]).kept == 1
+    other = NoteDraft(summary=[b("Dana will ask Marcus for the deck by Friday.")], sections=[])
+    assert check_note(other, **common, people=["Dana Lee"]).drop_reasons == {"name_not_cited": 1}
+    grounder = Grounder(aliases={"u:1": "t-1"}, utterance_text=common["utterance_text"])
+    assert grounder.check(b("Dana will send the budget deck by Friday."))[1] == "name_not_cited"
+    known = Grounder(
+        aliases={"u:1": "t-1"}, utterance_text=common["utterance_text"], people=["Dana"]
+    )
+    assert known.check(b("Dana will send the budget deck by Friday."))[1] == ""
