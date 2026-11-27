@@ -2,6 +2,8 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { Banner } from "@/components/Banner";
 import { MeetingList } from "@/components/MeetingList";
 import { MeetingView } from "@/components/MeetingView";
+import { PeopleView } from "@/components/PeopleView";
+import { PersonView } from "@/components/PersonView";
 import { PromisesView } from "@/components/PromisesView";
 import { Rail, type Page } from "@/components/Rail";
 import { SettingsView } from "@/components/SettingsView";
@@ -16,14 +18,23 @@ interface Opened {
 }
 
 // The main window: the chipboard rail on the left; on the pad, the open meeting, the Promises
-// page or Settings.
+// page, the People page (or a person's page, with a person chosen) or Settings.
 export default function App() {
   const {
     state,
     people,
+    refreshPeople,
     setMeetingPerson,
     promises,
+    promisesUnread,
     openPromises,
+    refreshPromises,
+    personPage,
+    openPersonPage,
+    briefs,
+    writeBrief,
+    renamePerson,
+    forgetPerson,
     select,
     startRecording,
     stopRecording,
@@ -42,22 +53,48 @@ export default function App() {
   } = useEvra();
   const [page, setPage] = useState<Page>("meeting");
   const [opened, setOpened] = useState<Opened | null>(null);
+  // A person's page is the People page with a person chosen, as a meeting is opened from a promise.
+  const [personId, setPersonId] = useState<string | null>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const beforeSettings = useRef<Page>("meeting"); // the page closing Settings goes back to
+
+  // Every page that shows promises reads them again as it opens: a read that failed has another go.
+  const readFor = useCallback(
+    (next: Page) => {
+      if (next === "promises" || next === "people") void refreshPromises();
+      if (next === "people") void refreshPeople();
+    },
+    [refreshPromises, refreshPeople],
+  );
 
   const openPage = useCallback(
     (next: Page) => {
       if (next === "settings" && page !== "settings") beforeSettings.current = page;
       setOpened(null); // a meeting opened from a promise opens as usual the next time
+      if (next !== "settings") {
+        setPersonId(null); // Settings keeps the person's page to come back to
+        openPersonPage(null);
+      }
+      readFor(next);
       setPage(next);
     },
-    [page],
+    [page, openPersonPage, readFor],
+  );
+
+  const openPerson = useCallback(
+    (id: string) => {
+      openPage("people");
+      setPersonId(id);
+      openPersonPage(id);
+    },
+    [openPage, openPersonPage],
   );
 
   const closeSettings = useCallback(() => {
     setPage(beforeSettings.current);
+    readFor(beforeSettings.current);
     settingsButton.current?.focus();
-  }, []);
+  }, [readFor]);
 
   // A promise's meeting, on its note, or on its transcript at the line the promise came from.
   const openMeeting = useCallback(
@@ -96,6 +133,7 @@ export default function App() {
   const isLive = detail !== null && detail.meeting.id === liveId;
   const canWrite = detail !== null && !isLive && recording.state === "idle" && detail.utterances.length > 0;
   const writingIds = Object.keys(state.noteStatus).filter((id) => state.noteStatus[id].stage);
+  const person = page === "people" && personId !== null ? (people.find((p) => p.id === personId) ?? null) : null;
   return (
     <div className="grid h-full grid-cols-[var(--rail-w)_minmax(0,1fr)]">
       <Rail
@@ -131,9 +169,30 @@ export default function App() {
         {page === "promises" ? (
           <PromisesView
             promises={promises}
+            unread={promisesUnread}
             onStatus={(itemId, status) => void setItemStatus(itemId, status)}
             onOpenMeeting={openMeeting}
           />
+        ) : page === "people" && person ? (
+          <PersonView
+            key={person.id}
+            person={person}
+            page={personPage?.person.id === person.id ? personPage : null}
+            promises={promises}
+            promisesUnread={promisesUnread}
+            brief={briefs[person.id]}
+            onStatus={(itemId, status) => void setItemStatus(itemId, status)}
+            onOpenMeeting={openMeeting}
+            onWriteBrief={() => void writeBrief(person.id)}
+            onRename={(name) => renamePerson(person.id, name)}
+            onForget={async () => {
+              const forgotten = await forgetPerson(person.id);
+              if (forgotten) setPersonId(null); // back to everyone else
+              return forgotten;
+            }}
+          />
+        ) : page === "people" ? (
+          <PeopleView people={people} promises={promises} promisesUnread={promisesUnread} onOpenPerson={openPerson} />
         ) : page === "settings" && state.settings ? (
           <SettingsView
             appName={state.appName}

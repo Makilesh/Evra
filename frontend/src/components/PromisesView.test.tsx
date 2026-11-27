@@ -401,3 +401,22 @@ it("ticks a promise set aside, and it ends done in its place", async () => {
   expect(within(send).getByRole("button", { name: "Undo" })).toBeInTheDocument();
   expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]);
 });
+
+it("says when the promises couldn't be read, and reads them again when the page opens", async () => {
+  const list_promises = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("gone")) // as the window starts
+    .mockRejectedValueOnce(new Error("gone")) // as the page opens
+    .mockResolvedValue({ you: [SEND], them: [] });
+  setApiForTests(promisesApi(undefined, { list_promises }));
+  render(<App />);
+  await userEvent.click(await screen.findByRole("button", { name: "Promises" }));
+  const unread = "Evra couldn't read your promises. Open the page again to try once more.";
+  expect(await screen.findByText(unread)).toHaveClass("text-muted");
+  expect(list_promises).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText(/No open promises/)).toBeNull(); // nothing is known: not "none"
+  await userEvent.click(screen.getByRole("button", { name: "Promises" })); // open it again
+  expect(await screen.findByRole("checkbox", { name: "Done: Send the proposal" })).toBeInTheDocument();
+  expect(screen.queryByText(unread)).toBeNull();
+  expect(screen.getByRole("button", { name: "Promises 1 open" })).toBeInTheDocument();
+});

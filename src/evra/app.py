@@ -16,8 +16,9 @@ from evra.config import Settings, Theme, debug_enabled, load_settings
 from evra.constants import APP_NAME
 from evra.logging_setup import LOG_FILE_NAME, configure_logging
 from evra.paths import AppPaths, resolve_paths
-from evra.services.ask import AskService
+from evra.services.ask import AskService, JobSlot
 from evra.services.meetings import MeetingService
+from evra.services.people import PeopleService
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
@@ -49,6 +50,7 @@ class App:
     debug: bool
     service: MeetingService
     asker: AskService
+    people: PeopleService
 
 
 def build_app(paths: AppPaths, *, debug: bool) -> App:
@@ -63,25 +65,36 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
         conn.close()
     bus = EventBus()
     service = MeetingService(paths=paths, settings=settings, emit=bus.emit, kit=RecordingKit(paths))
+    slot = JobSlot()  # one question or brief at a time (BUILD.md §8.3)
     asker = AskService(
         paths=paths,
         llm=lambda: service.settings.llm,
         emit=bus.emit,
         recording_busy=lambda: service.state()["state"] in ("loading", "recording", "stopping"),
+        slot=slot,
     )
     asker.recover()
+    people = PeopleService(paths=paths, llm=lambda: service.settings.llm, emit=bus.emit, slot=slot)
     api = BridgeApi(
         app_name=APP_NAME,
         version=__version__,
         bus=bus,
         control=service,
         asker=asker,
+        people=people,
         db_path=paths.db_path,
         mic_lister=service.list_mics,
     )
     log.info("app_started", version=__version__, schema_version=schema, recovered=recovered)
     return App(
-        paths=paths, settings=settings, bus=bus, api=api, debug=debug, service=service, asker=asker
+        paths=paths,
+        settings=settings,
+        bus=bus,
+        api=api,
+        debug=debug,
+        service=service,
+        asker=asker,
+        people=people,
     )
 
 

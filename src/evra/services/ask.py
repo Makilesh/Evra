@@ -4,6 +4,9 @@ the meeting's shared system message while the owner types; for a call too long t
 loads the model and embeds the call's parts instead. Each of the two meetings asked most
 recently keeps its embedder for the session, so a long call's parts are embedded once.
 
+One question at a time is the `JobSlot`, which a person's prep brief takes too (Plan C): while
+either is being written, the other is refused as "busy" (BUILD.md §8.3).
+
 Nothing slow, and no event, runs while holding the lock. Question and answer text go only to the
 owner's window and the database; logs get codes and counts.
 """
@@ -56,6 +59,37 @@ PREFILL_SCHEMA: dict[str, Any] = {
 }
 
 
+class JobSlot:
+    """One question or brief at a time (BUILD.md §8.3). A job takes the slot before its thread
+    starts and gives it back once its result is stored; while the slot is taken, or once the app
+    is closing, the next job is refused as "busy"."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._taken = False
+        self._closing = False
+
+    def take(self) -> bool:
+        with self._lock:
+            if self._taken or self._closing:
+                return False
+            self._taken = True
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._taken = False
+
+    def busy(self) -> bool:
+        with self._lock:
+            return self._taken or self._closing
+
+    def close(self) -> None:
+        """The app is closing: no job starts from now on."""
+        with self._lock:
+            self._closing = True
+
+
 class AskService:
     def __init__(
         self,
@@ -66,6 +100,7 @@ class AskService:
         recording_busy: Callable[[], bool],
         provider_factory: Callable[[LlmSettings], LlmProvider] = OllamaProvider,
         clock: Callable[[], float] = time.monotonic,
+        slot: JobSlot | None = None,
     ) -> None:
         self._paths = paths
         self._llm = llm
@@ -73,10 +108,9 @@ class AskService:
         self._recording_busy = recording_busy
         self._provider_factory = provider_factory
         self._clock = clock
+        self._slot = slot or JobSlot()  # shared with the prep brief (app.py)
         self._lock = threading.Lock()
-        self._pending = False
         self._preparing = False
-        self._closing = False
         self._prepared: dict[str, float] = {}
         self._embedders: OrderedDict[tuple[str, str], Embedder] = OrderedDict()
 
@@ -86,10 +120,8 @@ class AskService:
             return {"ok": False, "reason": "invalid"}
         if self._recording_busy():
             return {"ok": False, "reason": "recording"}
-        with self._lock:
-            if self._pending or self._closing:
-                return {"ok": False, "reason": "busy"}
-            self._pending = True
+        if not self._slot.take():
+            return {"ok": False, "reason": "busy"}
         stored: StoredQuestion | None = None
         try:
             conn = connect(self._paths.db_path)
@@ -115,7 +147,7 @@ class AskService:
         if not isinstance(meeting_id, str) or self._recording_busy():
             return {"ok": False}
         with self._lock:
-            if self._pending or self._closing or self._preparing:
+            if self._slot.busy() or self._preparing:
                 return {"ok": False}
             last = self._prepared.get(meeting_id)
             if last is not None and self._clock() - last < PREPARE_EVERY_S:
@@ -146,14 +178,13 @@ class AskService:
             conn.close()
 
     def shutdown(self) -> None:
-        with self._lock:
-            self._closing = True
+        """The window closed: no question (and, through the shared slot, no brief) starts."""
+        self._slot.close()
 
     # --- internals -------------------------------------------------------------------------
 
     def _release(self) -> None:
-        with self._lock:
-            self._pending = False
+        self._slot.release()
 
     def _prefill_plan(self, meeting_id: str) -> str | list[Utterance] | None:
         """What to read ahead: the meeting's shared system message when the whole meeting fits

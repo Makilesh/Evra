@@ -1,5 +1,5 @@
 // Every user-facing string in one place (BUILD.md §8.4: one i18n layer later).
-import type { AskFailureReason, AskRefusal, NoteFailureReason, Theme } from "@/bridge";
+import type { AskFailureReason, AskRefusal, BriefFailureReason, NoteFailureReason, Theme } from "@/bridge";
 
 const STAGES: Record<string, string> = {
   linking: "Linking your notes…",
@@ -78,6 +78,30 @@ export const strings = {
   setAside: "Set aside",
   undo: "Undo",
   noPromises: "No open promises. Action items from your 1:1s show up here until you tick them done.",
+  promisesUnread: "Evra couldn't read your promises. Open the page again to try once more.",
+  people: "People",
+  noPeople: "No people yet. Say who a 1:1 was with from its page.",
+  lastMet: (day: string) => `Last 1:1 ${day}`,
+  /** A person's open promises both ways; a side with none is left out. */
+  promisedCounts: (you: number, them: number) =>
+    [you ? `You promised ${you}` : "", them ? `They promised ${them}` : ""].filter(Boolean).join(" · "),
+  renamePerson: "Rename person",
+  personName: "Name",
+  fromLastTime: "From your last 1:1",
+  forNextTime: "For next time",
+  openQuestions: "Open questions",
+  catchMeUp: "Catch me up",
+  writeBrief: "Write a brief",
+  writeAgain: "Write again",
+  writingBrief: "Writing the brief…",
+  briefNeedsNotes: "There's no note from a 1:1 with them yet.",
+  briefUnchecked: "Evra couldn't check a brief against your notes, so none is shown.",
+  briefBusy: "Evra is busy answering a question or writing a brief. Try again when it's done.",
+  forgetPerson: "Forget this person",
+  forgetConfirm: (name: string) => `Forget ${name}? Their meetings say “Them” again, and their brief is deleted.`,
+  forgetYes: "Forget",
+  forgetNo: "Keep",
+  forgetFailed: "Evra couldn't forget them. Try again.",
   fromYourNotes: "From your notes",
   notesTab: "My notes",
   notesPlaceholder: "Type a note. Each line is stamped with the time you wrote it.",
@@ -187,6 +211,27 @@ export function askFailureText(reason: AskFailureReason | undefined): string {
       return noteFailureText(reason);
     default:
       return "The question couldn't be answered.";
+  }
+}
+
+/** Why a brief wasn't written, in brief words; Ollama's own problems read as they do for a note. */
+export function briefFailureText(reason: BriefFailureReason | undefined): string {
+  switch (reason) {
+    case "too_long":
+      return "Your notes with them are too long for the model's settings to write a brief.";
+    case "cut_off":
+      return "The model ran out of room while writing the brief.";
+    case "invalid":
+      return "The model didn't return a valid brief.";
+    case "timeout":
+      return "The model took too long to write the brief.";
+    case "model_missing":
+      return askFailureText(reason);
+    case "ollama_down":
+    case "cloud_model":
+      return noteFailureText(reason);
+    default:
+      return "The brief couldn't be written.";
   }
 }
 

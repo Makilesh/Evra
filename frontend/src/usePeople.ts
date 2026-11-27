@@ -1,6 +1,7 @@
 // The people the owner has named, who each 1:1 was with, and the promises across the 1:1s (Plan C).
 // useEvra composes it: the people and the promises live here, a meeting's "with" lands in
 // useEvra's state through `onLinked`, and a record's ticks show here through `showPromiseStatus`.
+// A person's page and their brief are usePersonPage's, composed here.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getApi,
@@ -9,14 +10,15 @@ import {
   type MeetingDetail,
   type MeetingSummary,
   type NameRefusal,
-  type NameReply,
   type OpenPromise,
   type Person,
+  type PersonSummary,
   type PromiseLists,
   type Utterance,
   type WithReply,
 } from "@/bridge";
 import { strings } from "@/strings";
+import { usePersonPage } from "@/usePersonPage";
 
 /** Why who a 1:1 was with didn't change: Python refused the name, or couldn't be asked. */
 export type WithRefusal = "reserved" | "invalid" | "failed";
@@ -59,6 +61,8 @@ interface PromiseState {
   /** Each list's promises in the order last shown, so a held one keeps its place among its
    *  neighbours while Python's list changes around it. */
   order: Record<Direction, string[]>;
+  /** The newest read asked for failed (a page that shows nothing yet says so). */
+  failed: boolean;
 }
 
 const DIRECTIONS: Direction[] = ["you", "them"];
@@ -133,7 +137,7 @@ export function withMeetingPerson<S extends Shown>(s: S, meetingId: string, pers
 }
 
 export function usePeople(onLinked: (meetingId: string, person: Person | null) => void) {
-  const [people, setPeople] = useState<Person[]>([]);
+  const [people, setPeople] = useState<PersonSummary[]>([]);
 
   const refreshPeople = useCallback(async () => {
     try {
@@ -177,23 +181,13 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
     [onLinked, refreshPeople],
   );
 
-  // A person's new name; "taken" when someone else has it. Null when renamed.
-  const renamePerson = useCallback(
-    async (personId: string, name: string): Promise<RenameRefusal | null> => {
-      let reply: NameReply;
-      try {
-        reply = await (await getApi()).rename_person(personId, name);
-      } catch {
-        return "failed";
-      }
-      if (!reply.ok) return reply.reason ?? "failed";
-      void refreshPeople();
-      return null;
-    },
-    [refreshPeople],
-  );
-
-  const [promised, setPromised] = useState<PromiseState>({ listed: null, read: 0, held: {}, order: { you: [], them: [] } });
+  const [promised, setPromised] = useState<PromiseState>({
+    listed: null,
+    read: 0,
+    held: {},
+    order: { you: [], them: [] },
+    failed: false,
+  });
   const asked = useRef(0); // reads of the promises asked for so far
   // The promises as last shown, so a tick finds the status it starts from.
   const shown = useRef(promised);
@@ -208,10 +202,12 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
     try {
       listed = await (await getApi()).list_promises();
     } catch {
-      return; // the page keeps what it shows; the next change reads again
+      // the page keeps what it shows; the next change, or opening a page, reads again
+      setPromised((s) => (read > s.read ? { ...s, failed: true } : s));
+      return;
     }
     const now = Date.now();
-    setPromised((s) => (read > s.read ? settled({ ...s, listed, read }, now) : s));
+    setPromised((s) => (read > s.read ? settled({ ...s, listed, read, failed: false }, now) : s));
   }, []);
 
   useEffect(() => {
@@ -262,18 +258,27 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
 
   const promises = useMemo(() => promised.listed && shownPromises(promised), [promised]);
   const openPromises = promises && [...promises.you, ...promises.them].filter((row) => row.status === "open").length;
+  const personPage = usePersonPage(refreshPeople, refreshPromises);
 
   return {
     people,
     refreshPeople,
     setMeetingPerson,
-    renamePerson,
     /** Null until Python has listed them. */
     promises,
+    /** Nothing listed yet, and the last read failed. */
+    promisesUnread: promised.listed === null && promised.failed,
     /** How many the page shows open (the rail's count); null until listed. */
     openPromises,
     refreshPromises,
     promiseStatus,
     showPromiseStatus,
+    ...personPage,
   };
+}
+
+/** The shown promises of the 1:1s with one person, both ways (RC7: one list in the window). */
+export function promisesOf(promises: ShownPromises, personId: string): ShownPromises {
+  const theirs = (rows: ShownPromise[]) => rows.filter((row) => row.promise.person?.id === personId);
+  return { you: theirs(promises.you), them: theirs(promises.them) };
 }

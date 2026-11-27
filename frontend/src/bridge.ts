@@ -41,6 +41,12 @@ export interface Person {
   name: string;
 }
 
+/** Someone named, as the People page lists them: when their newest 1:1 started (epoch ms), or
+ *  null when no 1:1 is linked to them now. */
+export interface PersonSummary extends Person {
+  last_met: number | null;
+}
+
 /** Why Python refused a name: someone else has it, "You" is the owner's, it is empty or longer
  *  than 80 characters, or there is no such person. */
 export type NameRefusal = "taken" | "reserved" | "invalid" | "unknown";
@@ -153,6 +159,60 @@ export interface MeetingDetail {
   notes: NoteLine[];
   /** Who the 1:1 was with: its "Them" lines and records then show their name. */
   with: Person | null;
+}
+
+/** From a person's newest 1:1 that has a note: what was left for next time, and the questions
+ *  still open, as its note shows them. */
+export interface LastOneOnOne {
+  meeting_id: string;
+  title: string;
+  started_at: number;
+  next_time: NoteBlock[];
+  open_questions: NoteBlock[];
+}
+
+/** A meeting a brief's point comes from, by its name now. */
+export interface BriefMeeting {
+  id: string;
+  title: string;
+  started_at: number;
+}
+
+/** A person's prep brief (A13): points from the notes of their recent 1:1s, each checked against
+ *  the notes it cites. */
+export interface Brief {
+  created_at: number;
+  points: { text: string; meetings: BriefMeeting[] }[];
+}
+
+/** A person's page. Their open promises are the window's one list (`list_promises`). */
+export interface PersonPage {
+  person: Person;
+  last: LastOneOnOne | null;
+  brief: Brief | null;
+  /** Their 1:1s, newest first. */
+  meetings: MeetingSummary[];
+}
+
+/** Why Python did not start a brief: no such person, no note from a 1:1 with them yet, or a
+ *  question or another brief is being written. Nothing was started. */
+export type BriefRefusal = "invalid" | "unknown" | "no_notes" | "busy";
+
+export interface BriefReply {
+  ok: boolean;
+  reason?: BriefRefusal;
+}
+
+/** A brief fails for the note's reasons, or "unknown" when the person was forgotten meanwhile. */
+export type BriefFailureReason = NoteFailureReason | "unknown";
+
+/** How a brief ended: written (and here it is), none of its points could be checked, or it
+ *  failed. */
+export interface BriefUpdated {
+  person_id: string;
+  state: "written" | "unchecked" | "failed";
+  reason?: BriefFailureReason;
+  brief?: Brief;
 }
 
 export interface MicList {
@@ -282,10 +342,14 @@ export interface EvraApi {
   /** Who a 1:1 was with, by name (found whatever its case, else made); null or "" for no one. */
   set_meeting_person(meetingId: string, name: string | null): Promise<WithReply>;
   /** Everyone the owner has named, by name. */
-  list_people(): Promise<Person[]>;
+  list_people(): Promise<PersonSummary[]>;
   rename_person(personId: string, name: string): Promise<NameReply>;
-  /** Forget a person: their meetings say "Them" again. */
+  /** Forget a person: their meetings say "Them" again, and their brief is deleted. */
   remove_person(personId: string): Promise<OkReply>;
+  /** Null for no such person. */
+  person_page(personId: string): Promise<PersonPage | null>;
+  /** Taken, it arrives as `brief.updated`. */
+  write_brief(personId: string): Promise<BriefReply>;
   get_settings(): Promise<SettingsInfo>;
   set_theme(theme: Theme): Promise<OkReply>;
   set_note_model(model: string): Promise<OkReply>;

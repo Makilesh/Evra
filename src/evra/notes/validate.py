@@ -4,8 +4,10 @@ supported by them: it shares at least 20% of its content words with them (5-lett
 embedding is close enough to theirs (`SemanticCheck`, one batch for all such bullets). Every
 number and name in it must still appear in what it cites ("twelve thousand" counts for 12,000,
 and so does "12k"). Conversation carries context across turns, so a name or number said up to
-three lines from a cited line gets that line added as a citation. A typed note cited by its label
-(n:3, or user.3 as gemma4 writes it) cites the owner's notes, as [user] does."""
+three lines from a cited line gets that line added as a citation (the prep brief's check turns
+that off: its sources are meetings, not lines). A typed note cited by its label (n:3, or user.3
+as gemma4 writes it) cites the owner's notes, as [user] does; a brief's m:2 cites a meeting's
+note."""
 
 from __future__ import annotations
 
@@ -33,7 +35,7 @@ CITATION_RE = re.compile(r"^(u:[\w-]+|user|n:[\w-]+|m:\d+|d:\d+|w:\d+|g)$")
 # Either cites the notes, as "user" does.
 _NOTE_LABEL = r"(?:n|user)[.:]\d+"
 _NOTE_CITATION = re.compile(rf"^{_NOTE_LABEL}$")
-_CITED = rf"(?:u:[\w-]+|{_NOTE_LABEL}|user)"
+_CITED = rf"(?:u:[\w-]+|m:\d+|{_NOTE_LABEL}|user)"
 _INLINE = re.compile(rf"\s*\[({_CITED}(?:\s*,\s*{_CITED})*)\]")
 _WORD = re.compile(rf"[A-Za-z0-9]+(?:['{_RSQUO}][A-Za-z]+)?")
 _NUMBER = re.compile(r"\d+(?:[.,:]\d+)*")
@@ -262,15 +264,16 @@ def _details(
     aliases: Mapping[str, str],
     utterance_text: Mapping[str, str],
     vocabulary: _Vocabulary,
+    nearby: int,
 ) -> tuple[CheckedBullet | None, str]:
-    """Stage 3, numbers and names: each must be in what the claim cites, or said nearby (that
-    line is then cited too)."""
+    """Stage 3, numbers and names: each must be in what the claim cites, or said up to `nearby`
+    lines from it (that line is then cited too)."""
     text, cited = claim.text, list(claim.cited)
     have_numbers, have_names = _facts(claim.source)
     missing_numbers = _claim_numbers(text) - have_numbers
     missing_names = _names(text, vocabulary) - have_names - vocabulary.people
     contexts = _number_contexts(text)
-    for extra in _nearby(cited, aliases, utterance_text):
+    for extra in _nearby(cited, aliases, utterance_text, nearby):
         if not missing_numbers and not missing_names:
             break
         line = utterance_text[extra]
@@ -329,14 +332,17 @@ def _facts(source: str, *, lone_ambiguous: bool = True) -> tuple[set[str], set[s
 
 
 def _nearby(
-    cited: Sequence[str], aliases: Mapping[str, str], utterance_text: Mapping[str, str]
+    cited: Sequence[str],
+    aliases: Mapping[str, str],
+    utterance_text: Mapping[str, str],
+    nearby: int,
 ) -> list[str]:
-    """Utterances within NEARBY lines of the cited ones, closest first."""
+    """Utterances within `nearby` lines of the cited ones, closest first."""
     position = {uid: int(alias[2:]) for alias, uid in aliases.items() if alias[2:].isdigit()}
     by_position = {n: uid for uid, n in position.items()}
     anchors = [position[c] for c in cited if c in position]
     found: list[str] = []
-    for distance in range(1, NEARBY + 1):
+    for distance in range(1, nearby + 1):
         for anchor in anchors:
             for n in (anchor - distance, anchor + distance):
                 uid = by_position.get(n)
@@ -349,7 +355,8 @@ class Grounder:
     """Checks bullets against one meeting; the vocabulary is built once. With a meaning check,
     `check_all` also keeps a bullet whose words fall short of what it cites but whose meaning
     is close enough to it. `people` are the names of who was on the call, which every prompt
-    gives (C6): a bullet may say them without a line that does."""
+    gives (C6): a bullet may say them without a line that does. `nearby` is how many lines
+    away a cited line's names and numbers are still found; 0 for sources that are not lines."""
 
     def __init__(
         self,
@@ -359,11 +366,13 @@ class Grounder:
         user_notes: str = "",
         semantic: SemanticCheck | None = None,
         people: Iterable[str] = (),
+        nearby: int = NEARBY,
     ) -> None:
         self._aliases = aliases
         self._utterance_text = utterance_text
         self._user_notes = user_notes
         self._semantic = semantic
+        self._nearby = nearby
         self._vocabulary = _vocabulary([*utterance_text.values(), user_notes], people)
 
     @property
@@ -378,7 +387,7 @@ class Grounder:
             return None, reason
         if not _shares_words(claim):
             return None, "unsupported"
-        return _details(claim, self._aliases, self._utterance_text, self._vocabulary)
+        return self._details(claim)
 
     def check_all(self, bullets: Sequence[NoteBullet]) -> list[tuple[CheckedBullet | None, str]]:
         """Each bullet's verdict, in order: `(bullet, "")` kept by its words, `(bullet,
@@ -392,16 +401,17 @@ class Grounder:
             if claim is None:
                 verdicts.append((None, reason))
             elif _shares_words(claim):
-                verdicts.append(
-                    _details(claim, self._aliases, self._utterance_text, self._vocabulary)
-                )
+                verdicts.append(self._details(claim))
             else:
                 candidates.append((len(verdicts), claim))
                 verdicts.append((None, "unsupported"))
         for index, claim in self._close_in_meaning(candidates):
-            checked, reason = _details(claim, self._aliases, self._utterance_text, self._vocabulary)
+            checked, reason = self._details(claim)
             verdicts[index] = (checked, KEPT_BY_MEANING) if checked is not None else (None, reason)
         return verdicts
+
+    def _details(self, claim: _Claim) -> tuple[CheckedBullet | None, str]:
+        return _details(claim, self._aliases, self._utterance_text, self._vocabulary, self._nearby)
 
     def meaning_pair(self, bullet: NoteBullet) -> tuple[str, str] | None:
         """The (claim, what it cites) pair the meaning check scores; None when the bullet is

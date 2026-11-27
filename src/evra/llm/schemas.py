@@ -87,6 +87,14 @@ class MeetingAnswer(BaseModel):
     points: list[NoteBullet] = Field(default_factory=list, max_length=4)
 
 
+class PrepBrief(BaseModel):
+    """A13. Every point is checked against the notes it cites (m:<n>) by `evra.notes.brief`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    points: list[NoteBullet] = Field(default_factory=list, max_length=6)
+
+
 class ActionItem(BaseModel):
     """A4. `evra.notes.extract` checks each item against the transcript."""
 

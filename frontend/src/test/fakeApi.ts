@@ -82,6 +82,8 @@ export function makeFakeApi(overrides: Partial<EvraApi> = {}): EvraApi {
     })),
     rename_person: vi.fn(async () => ({ ok: true })),
     remove_person: vi.fn(async () => ({ ok: true })),
+    person_page: vi.fn(async () => null),
+    write_brief: vi.fn(async () => ({ ok: true })),
     ...overrides,
   };
 }

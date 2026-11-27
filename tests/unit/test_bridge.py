@@ -91,6 +91,11 @@ def _meeting(db: Path, title: str = "Weekly 1:1") -> str:
         conn.close()
 
 
+def _named(listed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The people as {"id", "name"}, without when each was last met (test_bridge_people.py)."""
+    return [{"id": p["id"], "name": p["name"]} for p in listed]
+
+
 def _payload_from(script: str) -> Any:
     prefix = 'window.__evraEmit && window.__evraEmit("app.hello", '
     assert script.startswith(prefix) and script.endswith(");")
@@ -111,6 +116,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "list_people",
         "list_promises",
         "open_data_folder",
+        "person_page",
         "ping",
         "prepare_ask",
         "recording_state",
@@ -125,6 +131,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "set_theme",
         "start_recording",
         "stop_recording",
+        "write_brief",
         "write_note",
     ]
 
@@ -304,14 +311,14 @@ def test_who_a_1on1_was_with_is_set_by_name(tmp_path: Path) -> None:
     priya = reply["with"]
     assert reply == {"ok": True, "with": {"id": priya["id"], "name": "Priya"}}
     assert api.set_meeting_person(other, "PRIYA") == {"ok": True, "with": priya}  # the same one
-    assert api.list_people() == [priya]
+    assert _named(api.list_people()) == [priya]
     detail = api.get_meeting(mid)
     assert detail is not None and detail["with"] == priya
     assert [m["with_name"] for m in api.list_meetings()] == ["Priya", "Priya"]
     assert api.set_meeting_person(mid, "") == {"ok": True, "with": None}
     assert api.set_meeting_person(other, None) == {"ok": True, "with": None}
     assert [m["with_name"] for m in api.list_meetings()] == [None, None]
-    assert api.list_people() == [priya]  # unlinked, not forgotten: removing is its own call
+    assert _named(api.list_people()) == [priya]  # unlinked, not forgotten: removing is its own call
 
 
 def test_set_meeting_person_refuses_you_and_bad_names(tmp_path: Path) -> None:
@@ -345,7 +352,7 @@ def test_people_are_renamed_and_removed(tmp_path: Path) -> None:
     assert api.remove_person(priya["id"]) == {"ok": True}
     assert api.remove_person(priya["id"]) == {"ok": False}
     assert api.remove_person(5) == {"ok": False}  # type: ignore[arg-type]
-    assert api.list_people() == [sam]
+    assert _named(api.list_people()) == [sam]
     detail = api.get_meeting(mid)
     assert detail is not None and detail["with"] is None
 

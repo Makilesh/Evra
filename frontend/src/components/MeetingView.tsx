@@ -15,7 +15,7 @@ import { strings } from "@/strings";
 import type { NoteStatus } from "@/useEvra";
 import type { WithRefusal } from "@/usePeople";
 
-const MAX_NAME = 80; // Python's limit on a person's name (store/people.py)
+export const MAX_NAME = 80; // Python's limit on a person's name (store/people.py)
 
 interface MeetingViewProps {
   detail: MeetingDetail;

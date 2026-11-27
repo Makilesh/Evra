@@ -88,6 +88,18 @@ export function PromisesIcon(props: IconProps) {
   );
 }
 
+// Two people, one a step behind the other: the people you have 1:1s with.
+export function PeopleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6" cy="5.25" r="2.25" />
+      <path d="M2.25 13c0-2.2 1.6-3.75 3.75-3.75s3.75 1.55 3.75 3.75" />
+      <path d="M10.25 3.15a2.25 2.25 0 0 1 0 4.2" />
+      <path d="M11.75 9.6c1.25.45 2 1.6 2 3.4" />
+    </Icon>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>

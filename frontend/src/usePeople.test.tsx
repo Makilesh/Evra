@@ -10,6 +10,7 @@ afterEach(() => {
 });
 
 const PRIYA: Person = { id: "p1", name: "Priya" };
+const LISTED = { ...PRIYA, last_met: MEETING.started_at }; // as list_people gives her
 
 /** A bridge that keeps who m1 was with, and labels its lines as Python does. */
 function linkingApi(overrides: Parameters<typeof makeFakeApi>[0] = {}) {
@@ -23,7 +24,7 @@ function linkingApi(overrides: Parameters<typeof makeFakeApi>[0] = {}) {
   return makeFakeApi({
     list_meetings: vi.fn(async () => [detail().meeting]),
     get_meeting: vi.fn(async () => detail()),
-    list_people: vi.fn(async () => (person ? [person] : [])),
+    list_people: vi.fn(async () => (person ? [{ ...person, last_met: MEETING.started_at }] : [])),
     set_meeting_person: vi.fn(async (_meetingId: string, name: string | null) => {
       person = name ? { ...PRIYA, name } : null;
       return { ok: true, with: person };
@@ -33,9 +34,9 @@ function linkingApi(overrides: Parameters<typeof makeFakeApi>[0] = {}) {
 }
 
 it("lists the people for the 'with' suggestions", async () => {
-  setApiForTests(makeFakeApi({ list_people: vi.fn(async () => [PRIYA]) }));
+  setApiForTests(makeFakeApi({ list_people: vi.fn(async () => [LISTED]) }));
   const { result } = renderHook(() => useEvra());
-  await waitFor(() => expect(result.current.people).toEqual([PRIYA]));
+  await waitFor(() => expect(result.current.people).toEqual([LISTED]));
 });
 
 it("names them at once in the list, the open meeting's header and its transcript", () => {
@@ -69,7 +70,7 @@ it("says who a 1:1 was with, and a live line from them names them", async () => 
   expect(result.current.state.detail?.with).toEqual(PRIYA);
   expect(result.current.state.detail?.utterances.map((u) => u.speaker)).toEqual(["Priya", "You"]);
   expect(result.current.state.meetings.map((m) => m.with_name)).toEqual(["Priya"]);
-  await waitFor(() => expect(result.current.people).toEqual([PRIYA]));
+  await waitFor(() => expect(result.current.people).toEqual([LISTED]));
   // a live line from the other side names them too
   act(() => {
     emit("transcript.utterance", { meeting_id: "m1", id: "x1", channel: 1, speaker: "Them", start_ms: 200_000, end_ms: 201_000, text: "Bye." });
@@ -108,10 +109,10 @@ it("renames a person, and says when someone else has the name", async () => {
     .fn()
     .mockResolvedValueOnce({ ok: false, reason: "taken" })
     .mockResolvedValueOnce({ ok: true });
-  const list_people = vi.fn(async () => [PRIYA]);
+  const list_people = vi.fn(async () => [LISTED]);
   setApiForTests(makeFakeApi({ rename_person, list_people }));
   const { result } = renderHook(() => useEvra());
-  await waitFor(() => expect(result.current.people).toEqual([PRIYA]));
+  await waitFor(() => expect(result.current.people).toEqual([LISTED]));
   let refused: string | null = null;
   await act(async () => {
     refused = await result.current.renamePerson("p1", "Sam");

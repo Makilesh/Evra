@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { AskFailureReason } from "@/bridge";
-import { askFailureText, askRefusalText, canAskAgain, canRetry, noteFailureText, strings } from "@/strings";
+import type { AskFailureReason, BriefFailureReason } from "@/bridge";
+import {
+  askFailureText,
+  askRefusalText,
+  briefFailureText,
+  canAskAgain,
+  canRetry,
+  noteFailureText,
+  strings,
+} from "@/strings";
 
 describe("cloud_model failure", () => {
   it("says what happened and what to do", () => {
@@ -81,5 +89,27 @@ describe("note stages", () => {
     expect(strings.stages("items")).toBe("Listing action items…");
     expect(strings.stages("part:x:2")).toBeUndefined();
     expect(strings.stages("something new")).toBeUndefined();
+  });
+});
+
+describe("people and briefs", () => {
+  it("counts a person's open promises both ways, leaving out a side with none", () => {
+    expect(strings.promisedCounts(2, 1)).toBe("You promised 2 · They promised 1");
+    expect(strings.promisedCounts(0, 3)).toBe("They promised 3");
+    expect(strings.promisedCounts(1, 0)).toBe("You promised 1");
+    expect(strings.promisedCounts(0, 0)).toBe("");
+  });
+
+  it("explains a failed brief in brief words, sharing the Ollama texts with the note", () => {
+    expect(briefFailureText("cut_off")).toBe("The model ran out of room while writing the brief.");
+    expect(briefFailureText("invalid")).toBe("The model didn't return a valid brief.");
+    expect(briefFailureText("timeout")).toBe("The model took too long to write the brief.");
+    expect(briefFailureText("ollama_down")).toBe(noteFailureText("ollama_down"));
+    expect(briefFailureText("cloud_model")).toBe(noteFailureText("cloud_model"));
+    expect(briefFailureText("model_missing")).toBe(askFailureText("model_missing"));
+    const reasons: BriefFailureReason[] = ["too_long", "nothing_supported", "no_transcript", "llm_error", "unknown"];
+    for (const reason of [...reasons, undefined]) {
+      expect(briefFailureText(reason)).toMatch(/brief/);
+    }
   });
 });

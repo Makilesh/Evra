@@ -15,7 +15,7 @@ def test_build_app_creates_dirs_logs_and_migrated_db(tmp_path: Path) -> None:
     app = build_app(paths, debug=False)
     assert paths.db_path.exists()
     conn = connect(paths.db_path)
-    assert current_version(conn) == 3
+    assert current_version(conn) == 4
     conn.close()
     assert (paths.log_dir / "evra.log").exists()
     assert app.api.app_info()["name"] == "Evra"
@@ -193,3 +193,13 @@ def test_recover_runs_at_start(tmp_path: Path) -> None:
     stored = QuestionStore(conn).get(qid)
     conn.close()
     assert (stored.state, stored.reason) == ("failed", "interrupted")
+
+
+def test_the_brief_and_asking_share_one_job_at_a_time(tmp_path: Path) -> None:
+    """The window's people calls reach the people service, which takes the same slot as asking:
+    once the app is closing, a brief is refused like a question."""
+    app = build_app(AppPaths.under(tmp_path), debug=False)
+    assert app.api.write_brief("nobody") == {"ok": False, "reason": "unknown"}
+    assert app.api.person_page("nobody") is None
+    app.asker.shutdown()
+    assert app.api.write_brief("nobody") == {"ok": False, "reason": "busy"}

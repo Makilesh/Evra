@@ -23,6 +23,7 @@ from evra.bridge.events import EventBus
 from evra.capture.devices import MicList, list_mics
 from evra.config import LlmSettings, Settings, Theme
 from evra.llm.ollama import is_cloud_model_name
+from evra.services.people import people_list
 from evra.services.views import clean_title, meeting_detail, meeting_list
 from evra.store.db import connect, writing
 from evra.store.items import ItemStore
@@ -103,6 +104,12 @@ class Asker(Protocol):
     def prepare(self, meeting_id: object) -> dict[str, Any]: ...
 
 
+class Briefer(Protocol):
+    def person_page(self, person_id: object) -> dict[str, Any] | None: ...
+
+    def write_brief(self, person_id: object) -> dict[str, Any]: ...
+
+
 class BridgeApi:
     def __init__(
         self,
@@ -113,6 +120,7 @@ class BridgeApi:
         control: Control,
         db_path: Path,
         asker: Asker | None = None,
+        people: Briefer | None = None,
         mic_lister: Callable[[], MicList] = list_mics,
         folder_opener: Callable[[Path], None] = open_folder,
     ) -> None:
@@ -121,6 +129,7 @@ class BridgeApi:
         self._bus = bus
         self._control = control
         self._asker = asker
+        self._people = people
         self._db_path = db_path
         self._mic_lister = mic_lister
         self._open_folder = folder_opener
@@ -247,9 +256,24 @@ class BridgeApi:
         self._bus.emit("promises.changed", {})  # each promise names who its 1:1 was with
         return {"ok": True, "with": None if person is None else _person(person)}
 
-    def list_people(self) -> list[dict[str, str]]:
+    def list_people(self) -> list[dict[str, Any]]:
+        """Everyone the owner has named, by name, each with when their last 1:1 started
+        (`last_met`, epoch ms, or null)."""
         with self._db() as conn:
-            return [_person(p) for p in PersonStore(conn).list_people()]
+            return people_list(conn)
+
+    def person_page(self, person_id: str) -> dict[str, Any] | None:
+        """A person's page: their last 1:1's points for next time and open questions, their
+        brief and their 1:1s. Their open promises are the Promises page's (`list_promises`)."""
+        if self._people is None or not isinstance(person_id, str):
+            return None
+        return self._people.person_page(person_id)
+
+    def write_brief(self, person_id: str) -> dict[str, Any]:
+        """Start a person's prep brief; it arrives as `brief.updated`."""
+        if self._people is None or not isinstance(person_id, str):
+            return {"ok": False, "reason": "invalid"}
+        return self._people.write_brief(person_id)
 
     def rename_person(self, person_id: str, name: str) -> dict[str, Any]:
         """A person's new name, everywhere they show; "taken" when someone else has it."""

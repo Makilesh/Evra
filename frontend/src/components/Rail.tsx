@@ -1,13 +1,13 @@
 import { useEffect, useId, useState, type ReactNode, type Ref } from "react";
 import type { Levels, MicList, RecordingPhase, RecordingState } from "@/bridge";
 import { Banner } from "@/components/Banner";
-import { ChevronIcon, PromisesIcon, SettingsIcon } from "@/components/icons";
+import { ChevronIcon, PeopleIcon, PromisesIcon, SettingsIcon } from "@/components/icons";
 import { LevelMeter } from "@/components/LevelMeter";
 import { formatClock } from "@/format";
 import { strings } from "@/strings";
 import type { StartError } from "@/useEvra";
 
-/** What the pad shows. "people" waits for the People page, later in Plan C. */
+/** What the pad shows. "people" is the People page, or a person's page when one is chosen. */
 export type Page = "meeting" | "settings" | "promises" | "people";
 
 interface RailProps {
@@ -158,6 +158,15 @@ export function Rail({
               <span className="sr-only">{strings.openCount(promiseCount)}</span>
             </span>
           ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={() => onOpenPage("people")}
+          aria-current={page === "people" ? "page" : undefined}
+          className={RAIL_LINK}
+        >
+          <PeopleIcon />
+          {strings.people}
         </button>
       </div>
 

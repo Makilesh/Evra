@@ -59,6 +59,25 @@ it("marks Promises while it is the open page, and shows no count when nothing is
   expect(screen.getByRole("button", { name: "Promises" })).toHaveAttribute("aria-current", "page");
 });
 
+it("opens People, under Promises and above the meetings", async () => {
+  const props = rail({ state: "idle" }, { promiseCount: 2, children: <nav aria-label="Meetings" /> });
+  const people = screen.getByRole("button", { name: "People" });
+  const promises = screen.getByRole("button", { name: "Promises 2 open" });
+  expect(promises.compareDocumentPosition(people) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const meetings = screen.getByRole("navigation", { name: "Meetings" });
+  expect(people.compareDocumentPosition(meetings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(people).not.toHaveAttribute("aria-current");
+  expect(people.className).toBe(promises.className); // drawn as Promises and Settings are
+  await userEvent.click(people);
+  expect(props.onOpenPage).toHaveBeenCalledWith("people");
+});
+
+it("marks People while it is the open page, a person's page too", () => {
+  rail({ state: "idle" }, { page: "people" });
+  expect(screen.getByRole("button", { name: "People" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("button", { name: "Promises" })).not.toHaveAttribute("aria-current");
+});
+
 it("shows the app name and that everything stays on this PC", () => {
   rail({ state: "idle" });
   expect(screen.getByText("Evra")).toBeInTheDocument();
