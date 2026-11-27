@@ -53,23 +53,37 @@ def item_text(kind: str, owner: str | None, text: str, due: str | None) -> str:
     return shown
 
 
+def _sharing_most(text: str, lines: Sequence[NoteLine], at_least: int) -> NoteLine | None:
+    """The line sharing the most of the text's words (the word check's measure), the earlier on
+    a tie; None when no line shares `at_least` of them."""
+    best: NoteLine | None = None
+    most = at_least - 1
+    for line in lines:
+        shared = shared_words(text, line.text)
+        if shared > most:
+            best, most = line, shared
+    return best
+
+
 def user_quote(
     text: str, citations: Sequence[str], lines: Sequence[NoteLine]
 ) -> dict[str, str] | None:
-    """The owner's typed line a point that cites their notes rests on (RB40): one linked to a
-    line the point cites, else any line, the one sharing the most of its words (the word
-    check's measure) and the earlier on a tie. None when the point cites no notes, or when no
-    line is linked to it or shares a word with it (a point kept by its meaning alone)."""
+    """The owner's line a point that cites their notes rests on (RB40, RB61): a line linked to
+    one the point cites; else a typed line that shares its words, and only then a long paste
+    (context: it shares more words by its length, and usually sits first). Within each, the line
+    sharing the most of the point's words, the earlier on a tie. None when the point cites no
+    notes, or nothing is linked to it and no line shares a word (kept by its meaning alone)."""
     if "user" not in citations:
         return None
     cited = set(citations)
     linked = [line for line in lines if any(uid in cited for uid, _ in line.aligned)]
-    scored = [(shared_words(text, line.text), line) for line in linked or lines]
-    most = max((score for score, _ in scored), default=0)
-    if not linked and most == 0:
-        return None
-    best = next(line for score, line in scored if score == most)  # the earliest of the best
-    return {"id": best.id, "text": best.text}
+    typed = [line for line in lines if not line.is_context]
+    pasted = [line for line in lines if line.is_context]
+    for pool, at_least in ((linked, 0), (typed, 1), (pasted, 1)):  # a link needs no shared word
+        best = _sharing_most(text, pool, at_least)
+        if best is not None:
+            return {"id": best.id, "text": best.text}
+    return None
 
 
 def note_view(

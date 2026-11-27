@@ -530,7 +530,12 @@ One entry per decision. Format: context · evidence · decision · consequences.
 
 ## A point from your notes quotes your line (2026-11-27)
 - **Context:** a point the owner's notes support cites `[user]`, never one typed line (a label such as `n:3` is read as `user` too, and its number is not kept). The note sheet and `evra note` should still show which line it came from.
-- **Decision:** the view (`services/views.note_view`) picks the line for each point citing `[user]`: a typed line linked to one of the point's cited transcript lines, else any line; among them, the one sharing the most of the point's content words (the word check's measure, `validate.shared_words`), the earlier on a tie. A point that no line is linked to and that shares no word with any line (kept by its meaning alone) quotes nothing. The window shows the line in the point's quotes cell after its transcript lines, led by "From your notes"; `evra note` prints it under the point.
+- **Decision:** the view (`services/views.note_view`) picks the line for each point citing `[user]`, in this order:
+  1. a typed line linked to one of the point's cited transcript lines;
+  2. else a line the owner typed (not a long paste) that shares a word with the point;
+  3. else a long paste (context, never linked) that shares one.
+
+  Within each, the line sharing the most of the point's content words wins (the word check's measure, `validate.shared_words`), the earlier on a tie. A point that no line is linked to and that shares no word with any line (kept by its meaning alone) quotes nothing. The window shows the line in the point's quotes cell after its transcript lines, led by "From your notes"; `evra note` prints it under the point.
 - **Consequences:**
   - No prompt changes: the links and the words are evidence Evra already has. If the pick is wrong, the point shows a neighbouring note line; the owner still sees their own words.
-  - "Most words" favours long lines, so a long paste (context, never linked) that shares a point's words, such as an agenda at the top of the pad, can be quoted in place of the typed line the point came from.
+  - A paste shares more words by its length alone and usually sits at the top of the pad, so the typed lines come first (RB61): "From your notes" shows what the owner wrote. A point drawn from a pasted agenda therefore quotes a typed line that shares fewer of its words, whenever some typed line shares one.
