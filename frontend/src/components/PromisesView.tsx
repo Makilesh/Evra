@@ -179,7 +179,7 @@ export function PromiseRow({ promise, status, onStatus, onOpenMeeting, now = Dat
                     box.current?.focus(); // the keyboard stays on the row, whose Undo goes
                     onStatus(promise.id, "open");
                   }}
-                  className="rounded-sm font-semibold text-ink underline decoration-rule underline-offset-[3px] hover:decoration-2"
+                  className="ml-0.5 rounded-sm font-semibold text-ink underline decoration-rule underline-offset-[3px] hover:decoration-2"
                 >
                   {strings.undo}
                 </button>
@@ -193,7 +193,10 @@ export function PromiseRow({ promise, status, onStatus, onOpenMeeting, now = Dat
                     toUndo.current = true;
                     onStatus(promise.id, "dismissed");
                   }}
-                  className="rounded-sm underline decoration-transparent underline-offset-[3px] hover:text-ink hover:decoration-rule"
+                  className={cn(
+                    "rounded-sm underline decoration-transparent underline-offset-[3px] hover:text-ink hover:decoration-rule",
+                    due && "ml-0.5", // after "due · ", the focus ring clears the dot
+                  )}
                 >
                   {strings.notAPromise}
                 </button>
