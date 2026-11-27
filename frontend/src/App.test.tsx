@@ -161,6 +161,19 @@ it("opens Settings from the rail and with Ctrl+comma; Esc goes back to the meeti
   expect(await screen.findByText("Launch moves to October 14.")).toBeInTheDocument();
 });
 
+it("closes Settings back to the page it was opened from", async () => {
+  setApiForTests(makeFakeApi());
+  render(<App />);
+  await screen.findByText("Launch moves to October 14.");
+  await userEvent.click(screen.getByRole("button", { name: "Promises" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Open promises" })).toBeInTheDocument();
+  await userEvent.keyboard("{Control>},{/Control}");
+  expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByRole("heading", { level: 1, name: "Open promises" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Promises" })).toHaveAttribute("aria-current", "page");
+});
+
 it("turns dark at once and saves it", async () => {
   const api = makeFakeApi();
   setApiForTests(api);

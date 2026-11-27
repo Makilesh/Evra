@@ -1,8 +1,9 @@
 """Action items, decisions and open questions as records (BUILD.md §8.2, Plan B), each kept with
 the generation that found it. An action item also has a status the owner sets: open, done or
 dismissed. When the note is written again, a new action item that repeats one of the meeting's
-earlier ones keeps that one's status, so a Done tick survives a rewrite. Item text is content: it
-goes to the owner's window only, never to a log."""
+earlier ones keeps that one's status, so a Done tick survives a rewrite. An open action item that
+"You" or "Them" took on is a promise, listed across the 1:1s on the Promises page (Plan C). Item
+text is content: it goes to the owner's window only, never to a log."""
 
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from typing import Literal
 
 from evra.notes.extract import ALL_KINDS, CheckedItem, ItemKind, is_repeat
 from evra.store.meetings import new_id, now_ms
+from evra.store.people import Person
 from evra.store.speakers import OneOnOne, SpeakerStore
 
 ItemStatus = Literal["open", "done", "dismissed"]
@@ -35,6 +37,20 @@ class StoredItem:
     due: str | None
     citations: tuple[str, ...]  # utterance ids, and "user"
     status: str  # open | done | dismissed; a decision or a question is always open
+
+
+@dataclass(frozen=True)
+class Promise:
+    id: str
+    text: str
+    due: str | None
+    owner: Literal["You", "Them"]
+    meeting_id: str
+    meeting_title: str
+    started_at: int
+    person: Person | None
+    utterance_id: str | None
+    start_ms: int | None
 
 
 @dataclass(frozen=True)
@@ -139,6 +155,53 @@ class ItemStore:
             (status, now_ms(), item_id),
         )
         return cursor.rowcount == 1
+
+    def open_promises(self) -> list[Promise]:
+        """Every open task the owner ("You") or the other person ("Them") took on, from each
+        meeting's current note only (a rewritten note replaces its items), newest meeting first
+        and in the order found. Each has who the 1:1 was with and the first line of the
+        meeting's transcript it cites, so the window can open the meeting at that line."""
+        rows = self._conn.execute(
+            "SELECT a.id, a.text, a.due, a.citations_json, s.label AS owner, m.id AS meeting_id,"
+            " m.title, m.started_at FROM action_item a"
+            " JOIN generation g ON g.id = a.generation_id AND g.is_current = 1"
+            " JOIN speaker s ON s.id = a.owner_speaker_id"
+            " JOIN meeting m ON m.id = a.meeting_id"
+            " WHERE a.status = 'open' AND s.label IN ('You', 'Them')"
+            " ORDER BY m.started_at DESC, m.created_at DESC, a.rowid"
+        ).fetchall()
+        cited = {r["id"]: json.loads(r["citations_json"]) for r in rows}
+        starts = self._line_starts([c for ids in cited.values() for c in ids])
+        people = SpeakerStore(self._conn).people_by_meeting()
+        promises: list[Promise] = []
+        for r in rows:
+            line = next((c for c in cited[r["id"]] if c in starts), None)
+            promises.append(
+                Promise(
+                    id=r["id"],
+                    text=r["text"],
+                    due=r["due"],
+                    owner="You" if r["owner"] == "You" else "Them",
+                    meeting_id=r["meeting_id"],
+                    meeting_title=r["title"],
+                    started_at=r["started_at"],
+                    person=people.get(r["meeting_id"]),
+                    utterance_id=line,
+                    start_ms=None if line is None else starts[line],
+                )
+            )
+        return promises
+
+    def _line_starts(self, cited: Sequence[str]) -> dict[str, int]:
+        """When each cited line starts, for lines in their meeting's current transcript (a
+        citation of the owner's notes, "user", is no line)."""
+        rows = self._conn.execute(
+            "SELECT u.id, u.start_ms FROM utterance u"
+            " JOIN transcript_version v ON v.id = u.version_id AND v.is_current = 1"
+            " WHERE u.id IN (SELECT value FROM json_each(?))",
+            (json.dumps(sorted(set(cited))),),
+        ).fetchall()
+        return {r["id"]: r["start_ms"] for r in rows}
 
     def _earlier_actions(self, meeting_id: str, generation_id: str) -> list[_Earlier]:
         rows = self._conn.execute(

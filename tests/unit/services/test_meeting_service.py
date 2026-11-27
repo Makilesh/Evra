@@ -236,8 +236,9 @@ def test_a_full_run_streams_the_transcript_and_writes_the_note(tmp_path: Path) -
     assert events.states() == ["loading", "recording", "stopping", "processing", "idle"]
     finished = events.wait_for("recording.finished")
     assert finished["meeting_id"] == mid and finished["utterances"] >= 1
+    assert events.wait_for("promises.changed") == {}  # its action items were saved with it
     names = events.names()
-    assert names.index("note.stage") < names.index("note.ready")
+    assert names.index("note.stage") < names.index("note.ready") < names.index("promises.changed")
     meetings, notes, close = _db(paths)
     try:
         assert meetings.get_meeting(mid)["state"] == "ready"
@@ -320,6 +321,8 @@ def test_a_failed_note_keeps_the_transcript_and_says_why(tmp_path: Path) -> None
     service.stop()
     assert events.wait_for("note.failed") == {"meeting_id": mid, "reason": "ollama_down"}
     events.wait_for("recording.state", state="idle")
+    wait_for_note_jobs()
+    assert "promises.changed" not in events.names()  # nothing was saved
     meetings, notes, close = _db(paths)
     try:
         assert meetings.get_meeting(mid)["state"] == "ready"

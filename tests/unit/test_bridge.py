@@ -109,6 +109,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "list_mics",
         "list_note_models",
         "list_people",
+        "list_promises",
         "open_data_folder",
         "ping",
         "prepare_ask",

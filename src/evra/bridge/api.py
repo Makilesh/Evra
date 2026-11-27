@@ -13,6 +13,7 @@ import re
 import sqlite3
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol, TypedDict
 
@@ -195,11 +196,26 @@ class BridgeApi:
         return {"ok": True}
 
     def set_item_status(self, item_id: str, status: str) -> dict[str, Any]:
-        """Tick an action item done (or open it again, or dismiss it)."""
+        """Tick an action item done (or open it again, or dismiss it). A saved change changes
+        the open promises, so the window is told to read them again."""
         if not isinstance(item_id, str) or not isinstance(status, str):
             return {"ok": False}
         with self._db() as conn:
-            return {"ok": ItemStore(conn).set_status(item_id, status)}
+            saved = ItemStore(conn).set_status(item_id, status)
+        if saved:
+            self._bus.emit("promises.changed", {})
+        return {"ok": saved}
+
+    def list_promises(self) -> dict[str, list[dict[str, Any]]]:
+        """Every open promise across the 1:1s, newest meeting first: what the owner promised
+        ("you") and what the other person did ("them"). Each names who the 1:1 was with
+        ({"id", "name"}, or null) and the first transcript line it cites."""
+        with self._db() as conn:
+            promises = ItemStore(conn).open_promises()
+        return {
+            "you": [asdict(p) for p in promises if p.owner == "You"],
+            "them": [asdict(p) for p in promises if p.owner == "Them"],
+        }
 
     def rename_meeting(self, meeting_id: str, title: str) -> dict[str, Any]:
         cleaned = clean_title(title) if isinstance(title, str) else None
@@ -228,6 +244,7 @@ class BridgeApi:
         except KeyError:  # no such meeting
             return {"ok": False}
         log.info("meeting_person_set", meeting_id=meeting_id, named=person is not None)
+        self._bus.emit("promises.changed", {})  # each promise names who its 1:1 was with
         return {"ok": True, "with": None if person is None else _person(person)}
 
     def list_people(self) -> list[dict[str, str]]:

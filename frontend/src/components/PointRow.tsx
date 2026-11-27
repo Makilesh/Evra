@@ -1,8 +1,41 @@
+import type { Ref } from "react";
 import type { ItemStatus, NoteBlock, Utterance } from "@/bridge";
 import { CheckIcon } from "@/components/icons";
 import { formatClock } from "@/format";
 import { cn } from "@/lib/utils";
 import { strings } from "@/strings";
+
+interface DoneBoxProps {
+  checked: boolean;
+  /** "Done: " and the task. */
+  label: string;
+  onChange: (checked: boolean) => void;
+  ref?: Ref<HTMLInputElement>;
+}
+
+/** An action item's Done box, drawn like a time tab on its first line: ticked, it fills rule
+ *  green. The label is positioned so the sr-only input stays in the row: a tick or Tab then
+ *  scrolls the page's own scroller to the row, never the whole window (RB65). */
+export function DoneBox({ checked, label, onChange, ref }: DoneBoxProps) {
+  return (
+    <label className="group relative flex h-[23px] flex-none cursor-pointer items-center">
+      <input
+        ref={ref}
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span
+        aria-hidden="true"
+        className="inline-flex size-4 items-center justify-center rounded-sm border-[1.5px] border-rule/60 text-pad transition-colors group-hover:border-rule peer-checked:border-rule peer-checked:bg-rule peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-rule"
+      >
+        {checked && <CheckIcon width={12} height={12} strokeWidth={2} />}
+      </span>
+    </label>
+  );
+}
 
 interface PointRowProps {
   block: NoteBlock;
@@ -43,24 +76,7 @@ export function PointRow({ block, quotes, onCite, onItemStatus }: PointRowProps)
     <li className="sheet-row point-row">
       {tick ? (
         <div className="sheet-point flex items-start gap-2.5">
-          {/* The Done box, drawn like a time tab on the point's first line: ticked, it fills rule green.
-              The label is positioned so the sr-only input stays in the row: a tick or Tab then
-              scrolls the note to the row, never the whole window. */}
-          <label className="group relative flex h-[23px] flex-none cursor-pointer items-center">
-            <input
-              type="checkbox"
-              className="peer sr-only"
-              checked={done}
-              aria-label={strings.markDone(block.text)}
-              onChange={(event) => tick(event.target.checked)}
-            />
-            <span
-              aria-hidden="true"
-              className="inline-flex size-4 items-center justify-center rounded-sm border-[1.5px] border-rule/60 text-pad transition-colors group-hover:border-rule peer-checked:border-rule peer-checked:bg-rule peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-rule"
-            >
-              {done && <CheckIcon width={12} height={12} strokeWidth={2} />}
-            </span>
-          </label>
+          <DoneBox checked={done} label={strings.markDone(block.text)} onChange={tick} />
           <p className={cn("min-w-0", done && "text-muted line-through")}>{point}</p>
         </div>
       ) : (

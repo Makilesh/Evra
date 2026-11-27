@@ -37,6 +37,10 @@ interface MeetingViewProps {
   people: Person[];
   /** Say who the 1:1 was with ("" for no one): null once said, else why not. */
   onSetPerson: (name: string) => Promise<WithRefusal | null>;
+  /** A transcript line to open at (a promise's time tab), instead of the meeting's first tab. */
+  openAt?: string | null;
+  /** Opened from another page: the open tab takes the focus, so the keyboard lands here. */
+  focusTab?: boolean;
 }
 
 type Tab = "note" | "transcript" | "ask" | "notes";
@@ -59,12 +63,19 @@ export function MeetingView({
   onNotes,
   people,
   onSetPerson,
+  openAt = null,
+  focusTab = false,
 }: MeetingViewProps) {
-  // While live, the owner takes notes; a finished meeting opens on what was written from them.
-  const [tab, setTab] = useState<Tab>(isLive ? "notes" : "note");
+  const tabs = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusTab) tabs.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  }, [focusTab]);
+  // While live, the owner takes notes; a finished meeting opens on what was written from them,
+  // or, from a promise, on the line it came from.
+  const [tab, setTab] = useState<Tab>(openAt ? "transcript" : isLive ? "notes" : "note");
   // The tab was reached with the arrow keys: the focus stays on the tab strip.
   const [byKeys, setByKeys] = useState(false);
-  const [highlight, setHighlight] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(openAt);
   const stage = noteStatus?.stage;
   const [seenStage, setSeenStage] = useState(stage);
   if (stage !== seenStage) {
@@ -130,7 +141,7 @@ export function MeetingView({
           </div>
           {settled && <Stamp model={note.model} points={pointCount(note)} />}
         </header>
-        <div role="tablist" aria-label={strings.meetingTabs} onKeyDown={onTabKey} className="tabs mt-6">
+        <div ref={tabs} role="tablist" aria-label={strings.meetingTabs} onKeyDown={onTabKey} className="tabs mt-6">
           <TabButton selected={tab === "note"} onSelect={() => choose("note")}>
             {strings.noteTab}
           </TabButton>

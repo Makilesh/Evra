@@ -305,6 +305,7 @@ class MeetingService:
         self._emit(*event)
         self._announce(payload)
         if event[0] == "note.ready":
+            self._emit("promises.changed", {})  # its action items were saved with it
             self._name(meeting_id, llm)
 
     def _name(self, meeting_id: str, llm: LlmSettings) -> None:

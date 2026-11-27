@@ -76,6 +76,18 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+// A check-list: a ticked line over one still open, for the promises kept and still to keep.
+export function PromisesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.25 4.5l1.5 1.5 2.75-3" />
+      <path d="M9 4.75h4.75" />
+      <rect x="2.5" y="9.25" width="3.5" height="3.5" rx="0.75" />
+      <path d="M9 11h4.75" />
+    </Icon>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Icon {...props}>

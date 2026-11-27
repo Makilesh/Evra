@@ -1,11 +1,14 @@
 import { useEffect, useId, useState, type ReactNode, type Ref } from "react";
 import type { Levels, MicList, RecordingPhase, RecordingState } from "@/bridge";
 import { Banner } from "@/components/Banner";
-import { ChevronIcon, SettingsIcon } from "@/components/icons";
+import { ChevronIcon, PromisesIcon, SettingsIcon } from "@/components/icons";
 import { LevelMeter } from "@/components/LevelMeter";
 import { formatClock } from "@/format";
 import { strings } from "@/strings";
 import type { StartError } from "@/useEvra";
+
+/** What the pad shows. "people" waits for the People page, later in Plan C. */
+export type Page = "meeting" | "settings" | "promises" | "people";
 
 interface RailProps {
   appName: string;
@@ -17,13 +20,21 @@ interface RailProps {
   onStop: () => void;
   onDismissError: () => void;
   onRefreshMics: () => void;
-  settingsOpen: boolean;
-  onOpenSettings: () => void;
+  /** The rail's links keep the open page's fill. */
+  page: Page;
+  onOpenPage: (page: Exclude<Page, "meeting">) => void;
+  /** How many promises are open; null until Python has listed them. */
+  promiseCount: number | null;
   settingsButtonRef?: Ref<HTMLButtonElement>;
   now?: () => number;
   /** The meetings list, placed between the record block and the microphone. */
   children?: ReactNode;
 }
+
+// A page in the rail, as Windows apps place navigation: the icon and the word in chipboard ink;
+// hover fills chipboard-well, and the open page keeps that fill with ink text.
+const RAIL_LINK =
+  "-mx-1.5 flex h-9 w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-[10px] px-3 font-semibold text-chip-ink transition-colors hover:bg-chip-well hover:text-ink aria-[current=page]:bg-chip-well aria-[current=page]:text-ink short:h-8";
 
 function useElapsed(startedAt: number | null, now: () => number): number {
   const [, tick] = useState(0);
@@ -52,8 +63,9 @@ export function Rail({
   onStop,
   onDismissError,
   onRefreshMics,
-  settingsOpen,
-  onOpenSettings,
+  page,
+  onOpenPage,
+  promiseCount,
   settingsButtonRef,
   now = Date.now,
   children,
@@ -131,6 +143,24 @@ export function Rail({
         </div>
       )}
 
+      <div className="px-[18px] pt-3 short:pt-2">
+        <button
+          type="button"
+          onClick={() => onOpenPage("promises")}
+          aria-current={page === "promises" ? "page" : undefined}
+          className={RAIL_LINK}
+        >
+          <PromisesIcon />
+          {strings.promises}{" "}
+          {promiseCount ? (
+            <span className="ml-auto text-[13px] leading-[18px] font-medium tabular-nums">
+              <span aria-hidden="true">{promiseCount}</span>
+              <span className="sr-only">{strings.openCount(promiseCount)}</span>
+            </span>
+          ) : null}
+        </button>
+      </div>
+
       {children}
 
       <div className="px-[18px] pt-3 pb-4 shadow-[inset_0_1px_0_var(--chip-edge)] short:pt-2.5 short:pb-3">
@@ -160,9 +190,9 @@ export function Rail({
         <button
           ref={settingsButtonRef}
           type="button"
-          onClick={onOpenSettings}
-          aria-current={settingsOpen ? "page" : undefined}
-          className="mt-2.5 -mx-1.5 flex h-9 w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-[10px] px-3 font-semibold text-chip-ink transition-colors hover:bg-chip-well hover:text-ink aria-[current=page]:bg-chip-well aria-[current=page]:text-ink short:mt-1.5 short:h-8"
+          onClick={() => onOpenPage("settings")}
+          aria-current={page === "settings" ? "page" : undefined}
+          className={`mt-2.5 short:mt-1.5 ${RAIL_LINK}`}
         >
           <SettingsIcon />
           {strings.settings}

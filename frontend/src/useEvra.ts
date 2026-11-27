@@ -125,10 +125,10 @@ function noteItem(detail: MeetingDetail | null, id: string): NoteItem | undefine
   return undefined;
 }
 
-/** The meeting with one record's status changed. */
+/** The meeting with one record's status changed; as it was when the record is not in its note. */
 function withItemStatus(detail: MeetingDetail | null, id: string, status: ItemStatus): MeetingDetail | null {
   const note = detail?.note;
-  if (!detail || !note) return detail;
+  if (!detail || !note || !noteItem(detail, id)) return detail;
   const sections = note.sections.map((section) => ({
     ...section,
     blocks: section.blocks.map((block) =>
@@ -255,7 +255,8 @@ export function useEvra() {
     },
     [loadDetail],
   );
-  const people = usePeople(linked); // the people list, who a 1:1 was with, renaming
+  const people = usePeople(linked); // the people list, who a 1:1 was with, renaming, the promises
+  const { promiseStatus, showPromiseStatus, refreshPromises } = people;
 
   const select = useCallback(
     (id: string) => {
@@ -415,23 +416,26 @@ export function useEvra() {
       const reply = await (await getApi()).rename_meeting(id, title);
       if (reply.ok) {
         void refreshMeetings();
+        void refreshPromises(); // a promise names its meeting
         if (selected.current === id) void loadDetail(id);
       }
       return reply.ok;
     },
-    [refreshMeetings, loadDetail],
+    [refreshMeetings, refreshPromises, loadDetail],
   );
 
   // A tick (or untick) shows at once. One record's ticks are saved one after another, and once
   // the last is answered the box shows what Python last confirmed (RB41), so quick ticks leave
-  // the window and the database agreeing. True when this tick was saved.
+  // the window and the database agreeing. The record is the open meeting's, a promise on the
+  // Promises page, or both. True when this tick was saved.
   const setItemStatus = useCallback(async (id: string, status: ItemStatus): Promise<boolean> => {
-    const current = noteItem(shown.current, id)?.status;
+    const current = noteItem(shown.current, id)?.status ?? promiseStatus(id);
     if (current === undefined) return false;
     const tick = ticks.current.get(id) ?? { saves: Promise.resolve(), confirmed: current, waiting: 0 };
     ticks.current.set(id, tick);
     tick.waiting += 1;
     setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, status) }));
+    showPromiseStatus(id, status, false);
     let ok = false;
     tick.saves = tick.saves.then(async () => {
       try {
@@ -447,9 +451,10 @@ export function useEvra() {
       // the next run of ticks starts from the status shown then, which a reload may have changed
       ticks.current.delete(id);
       setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, tick.confirmed) }));
+      showPromiseStatus(id, tick.confirmed, true);
     }
     return ok;
-  }, []);
+  }, [promiseStatus, showPromiseStatus]);
 
   const refreshMics = useCallback(async () => {
     try {

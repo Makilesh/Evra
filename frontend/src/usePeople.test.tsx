@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { emit, setApiForTests, type MeetingDetail, type Person } from "@/bridge";
+import { emit, setApiForTests, type MeetingDetail, type OpenPromise, type Person, type PromiseLists } from "@/bridge";
 import { DETAIL, MEETING, makeFakeApi } from "@/test/fakeApi";
 import { useEvra } from "@/useEvra";
 import { spokenBy, withMeetingPerson } from "@/usePeople";
@@ -123,4 +123,77 @@ it("renames a person, and says when someone else has the name", async () => {
   expect(refused).toBeNull();
   expect(rename_person).toHaveBeenLastCalledWith("p1", "Priya Shah");
   await waitFor(() => expect(list_people).toHaveBeenCalledTimes(2)); // the list again, once renamed
+});
+
+/** A promise from another meeting than the one open (m1). */
+const ELSEWHERE: OpenPromise = {
+  id: "i9",
+  text: "Book the offsite",
+  due: null,
+  owner: "You",
+  meeting_id: "m7",
+  meeting_title: "Planning",
+  started_at: MEETING.started_at - 86_400_000,
+  person: null,
+  utterance_id: null,
+  start_ms: null,
+};
+
+function promiseStatus(lists: { you: { promise: OpenPromise; status: string }[] } | null, id: string) {
+  return lists?.you.find((row) => row.promise.id === id)?.status;
+}
+
+it("ticks a promise that is not in the open meeting, and puts it back when Python refuses", async () => {
+  const replies = [true, false];
+  const set_item_status = vi.fn(async () => ({ ok: replies.shift()! }));
+  const api = makeFakeApi({ list_promises: vi.fn(async () => ({ you: [ELSEWHERE], them: [] })), set_item_status });
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.promises?.you).toHaveLength(1));
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  let saved = false;
+  await act(async () => {
+    saved = await result.current.setItemStatus("i9", "done");
+  });
+  expect(saved).toBe(true);
+  expect(set_item_status).toHaveBeenCalledWith("i9", "done");
+  expect(promiseStatus(result.current.promises, "i9")).toBe("done");
+  expect(result.current.openPromises).toBe(0);
+  expect(result.current.state.detail).toEqual(DETAIL); // the open meeting is left as it was
+  await act(async () => {
+    saved = await result.current.setItemStatus("i9", "open"); // Undo, refused
+  });
+  expect(saved).toBe(false);
+  expect(promiseStatus(result.current.promises, "i9")).toBe("done"); // what Python has
+  await act(async () => {
+    saved = await result.current.setItemStatus("nope", "done"); // neither open nor listed
+  });
+  expect(saved).toBe(false);
+  expect(set_item_status).toHaveBeenCalledTimes(2);
+});
+
+it("keeps the newest list when two reads of the promises answer out of order", async () => {
+  const answers: ((lists: PromiseLists) => void)[] = [];
+  const list_promises = vi.fn(() => new Promise<PromiseLists>((resolve) => answers.push(resolve)));
+  setApiForTests(makeFakeApi({ list_promises }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(list_promises).toHaveBeenCalledTimes(1)); // on opening
+  act(() => emit("promises.changed", {}));
+  await waitFor(() => expect(list_promises).toHaveBeenCalledTimes(2));
+  await act(async () => answers[1]({ you: [ELSEWHERE], them: [] })); // the newer read answers first
+  await act(async () => answers[0]({ you: [], them: [] }));
+  expect(result.current.promises?.you.map((row) => row.promise.id)).toEqual(["i9"]);
+  expect(result.current.openPromises).toBe(1);
+});
+
+it("reads the promises again when a meeting is renamed, by Evra or by the owner", async () => {
+  const api = makeFakeApi();
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  await waitFor(() => expect(api.list_promises).toHaveBeenCalledTimes(1));
+  act(() => emit("meeting.renamed", { meeting_id: "m1", title: "Launch date" }));
+  await waitFor(() => expect(api.list_promises).toHaveBeenCalledTimes(2)); // a promise names its meeting
+  await act(() => result.current.rename("m1", "Sync with Priya"));
+  await waitFor(() => expect(api.list_promises).toHaveBeenCalledTimes(3));
 });

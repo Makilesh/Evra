@@ -11,6 +11,7 @@ from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
 from evra.store.notes import NoteStore
+from evra.store.people import PersonStore
 from evra.store.speakers import SpeakerStore
 
 NOTE = CheckedNote(
@@ -158,3 +159,106 @@ def test_set_status_only_known_values(conn: sqlite3.Connection) -> None:
     assert items.for_generation(generation)[0].status == "open"
     assert items.set_status("nope", "done") is False
     assert items.set_status(decision.id, "done") is False  # only action items are ticked
+
+
+def _call(
+    conn: sqlite3.Connection, title: str, started_at: int, starts: Sequence[int]
+) -> tuple[str, str, list[str]]:
+    """A 1:1 whose transcript has a line starting at each of `starts` (ms into the call)."""
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title=title,
+        mode="one_on_one",
+        situation="call_headphones",
+        template="one_on_one",
+        started_at_ms=started_at,
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    lines = [
+        store.add_utterance(
+            version_id=vid, meeting_id=mid, channel=1, start_ms=s, end_ms=s + 1_000, text="words"
+        ).id
+        for s in starts
+    ]
+    return mid, vid, lines
+
+
+def test_open_promises_by_direction(conn: sqlite3.Connection) -> None:
+    """Every open task the owner or the other person took on, newest meeting first, in the order
+    found, with the first transcript line it cites. A task with no owner is no one's promise, and
+    a decision is not a task."""
+    older, older_version, (a1, a2) = _call(conn, "Weekly 1:1", 1_000_000, [5_000, 9_000])
+    newer, newer_version, (b1,) = _call(conn, "Design sync", 2_000_000, [3_000])
+    first = _save(
+        conn,
+        older,
+        older_version,
+        [
+            action("Send the vendor quote", ["user", a2, a1]),  # the owner's notes are no line
+            CheckedItem("action_item", "Check the travel policy", (a1,), "Them", "next week", 0.9),
+            action("Book a room", [a1], owner=None),
+            CheckedItem("decision", "Go with the annual plan.", (a1,), "You", None, None),
+        ],
+    )
+    second = _save(
+        conn,
+        newer,
+        newer_version,
+        [
+            action("Tell marketing about October 14", ["gone"], owner="Them"),
+            action("Send it", [b1]),
+        ],
+    )
+    priya = PersonStore(conn).find_or_create("Priya")
+    SpeakerStore(conn).set_person(newer, priya.id)
+    items = ItemStore(conn)
+    marketing, deck = items.for_generation(second)
+    quote, travel, _, _ = items.for_generation(first)
+    promised = items.open_promises()
+    assert [(p.id, p.text, p.owner, p.due) for p in promised] == [
+        (marketing.id, "Tell marketing about October 14", "Them", None),
+        (deck.id, "Send it", "You", None),
+        (quote.id, "Send the vendor quote", "You", None),
+        (travel.id, "Check the travel policy", "Them", "next week"),
+    ]
+    assert [(p.meeting_id, p.meeting_title, p.started_at, p.person) for p in promised] == [
+        (newer, "Design sync", 2_000_000, priya),
+        (newer, "Design sync", 2_000_000, priya),
+        (older, "Weekly 1:1", 1_000_000, None),
+        (older, "Weekly 1:1", 1_000_000, None),
+    ]
+    assert [(p.utterance_id, p.start_ms) for p in promised] == [
+        (None, None),  # it cites no line the transcript has
+        (b1, 3_000),
+        (a2, 9_000),
+        (a1, 5_000),
+    ]
+
+
+def test_only_current_generation_items(conn: sqlite3.Connection) -> None:
+    """A rewritten note replaces its meeting's promises: none come twice from the older note."""
+    mid, vid, (u1, u2) = _call(conn, "Weekly 1:1", 1_000_000, [5_000, 9_000])
+    _save(conn, mid, vid, [action("Send the vendor quote", [u1]), action("Book the venue", [u2])])
+    rewrite = [action("Send the vendor quote", [u1]), action("Write the postmortem", [u2], "Them")]
+    second = _save(conn, mid, vid, rewrite)
+    current = ItemStore(conn).for_generation(second)
+    assert [(p.id, p.text) for p in ItemStore(conn).open_promises()] == [
+        (i.id, i.text) for i in current
+    ]
+
+
+def test_done_and_dismissed_are_left_out(conn: sqlite3.Connection) -> None:
+    """A promise ticked done, or found not to be one, leaves the list; opened again, it is back."""
+    mid, vid, (u1,) = _call(conn, "Weekly 1:1", 1_000_000, [5_000])
+    tasks = [
+        action("Send the quote", [u1]),
+        action("Book it", [u1]),
+        action("Fix it", [u1], "Them"),
+    ]
+    generation = _save(conn, mid, vid, tasks)
+    items = ItemStore(conn)
+    quote, venue, _ = items.for_generation(generation)
+    assert items.set_status(quote.id, "done") and items.set_status(venue.id, "dismissed")
+    assert [p.text for p in items.open_promises()] == ["Fix it"]
+    assert items.set_status(quote.id, "open")
+    assert [p.text for p in items.open_promises()] == ["Send the quote", "Fix it"]

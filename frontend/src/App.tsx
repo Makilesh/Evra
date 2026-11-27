@@ -2,18 +2,28 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import { Banner } from "@/components/Banner";
 import { MeetingList } from "@/components/MeetingList";
 import { MeetingView } from "@/components/MeetingView";
-import { Rail } from "@/components/Rail";
+import { PromisesView } from "@/components/PromisesView";
+import { Rail, type Page } from "@/components/Rail";
 import { SettingsView } from "@/components/SettingsView";
 import { padLines } from "@/notepad";
 import { strings } from "@/strings";
 import { useEvra } from "@/useEvra";
 
-// The main window: the chipboard rail on the left, the open meeting (or Settings) on the pad.
+/** The meeting a promise opened: on its note, or on its transcript at the line it came from. */
+interface Opened {
+  meetingId: string;
+  utteranceId: string | null;
+}
+
+// The main window: the chipboard rail on the left; on the pad, the open meeting, the Promises
+// page or Settings.
 export default function App() {
   const {
     state,
     people,
     setMeetingPerson,
+    promises,
+    openPromises,
     select,
     startRecording,
     stopRecording,
@@ -30,26 +40,47 @@ export default function App() {
     loadNoteModels,
     openDataFolder,
   } = useEvra();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [page, setPage] = useState<Page>("meeting");
+  const [opened, setOpened] = useState<Opened | null>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
+  const beforeSettings = useRef<Page>("meeting"); // the page closing Settings goes back to
+
+  const openPage = useCallback(
+    (next: Page) => {
+      if (next === "settings" && page !== "settings") beforeSettings.current = page;
+      setOpened(null); // a meeting opened from a promise opens as usual the next time
+      setPage(next);
+    },
+    [page],
+  );
 
   const closeSettings = useCallback(() => {
-    setSettingsOpen(false);
+    setPage(beforeSettings.current);
     settingsButton.current?.focus();
   }, []);
+
+  // A promise's meeting, on its note, or on its transcript at the line the promise came from.
+  const openMeeting = useCallback(
+    (meetingId: string, utteranceId?: string) => {
+      openPage("meeting");
+      setOpened({ meetingId, utteranceId: utteranceId ?? null });
+      select(meetingId);
+    },
+    [openPage, select],
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === ",") {
         event.preventDefault();
-        setSettingsOpen(true);
-      } else if (event.key === "Escape" && settingsOpen) {
+        openPage("settings");
+      } else if (event.key === "Escape" && page === "settings") {
         closeSettings();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [settingsOpen, closeSettings]);
+  }, [page, openPage, closeSettings]);
 
   if (state.bridgeError) {
     return (
@@ -74,29 +105,36 @@ export default function App() {
         mics={state.mics}
         startError={state.startError}
         onStart={(mic) => {
-          setSettingsOpen(false);
+          openPage("meeting");
           void startRecording(mic);
         }}
         onStop={() => void stopRecording()}
         onDismissError={dismissStartError}
         onRefreshMics={() => void refreshMics()}
-        settingsOpen={settingsOpen}
-        onOpenSettings={() => setSettingsOpen(true)}
+        page={page}
+        onOpenPage={openPage}
+        promiseCount={openPromises}
         settingsButtonRef={settingsButton}
       >
         <MeetingList
           meetings={state.meetings}
-          selectedId={settingsOpen ? null : state.selectedId}
+          selectedId={page === "meeting" ? state.selectedId : null}
           liveId={liveId}
           writingIds={writingIds}
           onSelect={(id) => {
-            setSettingsOpen(false);
+            openPage("meeting");
             select(id);
           }}
         />
       </Rail>
       <main className="min-h-0 min-w-0">
-        {settingsOpen && state.settings ? (
+        {page === "promises" ? (
+          <PromisesView
+            promises={promises}
+            onStatus={(itemId, status) => void setItemStatus(itemId, status)}
+            onOpenMeeting={openMeeting}
+          />
+        ) : page === "settings" && state.settings ? (
           <SettingsView
             appName={state.appName}
             settings={state.settings}
@@ -126,6 +164,8 @@ export default function App() {
             onNotes={(lines) => editNotes(detail.meeting.id, lines)}
             people={people}
             onSetPerson={(name) => setMeetingPerson(detail.meeting.id, name)}
+            openAt={opened?.meetingId === detail.meeting.id ? opened.utteranceId : null}
+            focusTab={opened?.meetingId === detail.meeting.id}
           />
         ) : state.ready && state.meetings.length === 0 ? (
           <Welcome />

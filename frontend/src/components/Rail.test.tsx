@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import type { MicList, RecordingState } from "@/bridge";
@@ -21,8 +21,9 @@ function rail(recording: RecordingState, extra: Partial<Parameters<typeof Rail>[
     onStop: vi.fn(),
     onDismissError: vi.fn(),
     onRefreshMics: vi.fn(),
-    settingsOpen: false,
-    onOpenSettings: vi.fn(),
+    page: "meeting" as const,
+    onOpenPage: vi.fn(),
+    promiseCount: null,
     ...extra,
   };
   render(<Rail {...props} />);
@@ -33,12 +34,29 @@ it("opens Settings from the foot of the rail", async () => {
   const props = rail({ state: "idle" });
   expect(screen.getByRole("button", { name: "Settings" })).not.toHaveAttribute("aria-current");
   await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-  expect(props.onOpenSettings).toHaveBeenCalled();
+  expect(props.onOpenPage).toHaveBeenCalledWith("settings");
 });
 
 it("marks Settings while it is the open page", () => {
-  rail({ state: "idle" }, { settingsOpen: true });
+  rail({ state: "idle" }, { page: "settings" });
   expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+});
+
+it("shows the open count", async () => {
+  const props = rail({ state: "idle" }, { promiseCount: 3, children: <nav aria-label="Meetings" /> });
+  const link = screen.getByRole("button", { name: "Promises 3 open" });
+  expect(within(link).getByText("3")).toHaveAttribute("aria-hidden", "true"); // read as "3 open"
+  expect(link).not.toHaveAttribute("aria-current");
+  // above the meetings
+  const meetings = screen.getByRole("navigation", { name: "Meetings" });
+  expect(link.compareDocumentPosition(meetings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await userEvent.click(link);
+  expect(props.onOpenPage).toHaveBeenCalledWith("promises");
+});
+
+it("marks Promises while it is the open page, and shows no count when nothing is open", () => {
+  rail({ state: "idle" }, { page: "promises", promiseCount: 0 });
+  expect(screen.getByRole("button", { name: "Promises" })).toHaveAttribute("aria-current", "page");
 });
 
 it("shows the app name and that everything stays on this PC", () => {

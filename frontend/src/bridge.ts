@@ -85,6 +85,29 @@ export interface NoteItem {
   due: string | null;
 }
 
+/** An open action item that "You" or "Them" took on, in a 1:1's current note (Plan C). */
+export interface OpenPromise {
+  id: string;
+  /** The task itself: the list it is in says who took it on. */
+  text: string;
+  due: string | null;
+  owner: "You" | "Them";
+  meeting_id: string;
+  meeting_title: string;
+  started_at: number;
+  /** Who the 1:1 was with, once the owner has said. */
+  person: Person | null;
+  /** The first line of the meeting's transcript it cites, and when that line starts. */
+  utterance_id: string | null;
+  start_ms: number | null;
+}
+
+/** Every open promise, newest meeting first: what you promised, and what they did. */
+export interface PromiseLists {
+  you: OpenPromise[];
+  them: OpenPromise[];
+}
+
 export interface NoteBlock {
   text: string;
   citations: Citation[];
@@ -246,7 +269,10 @@ export interface EvraApi {
   /** Reads the meeting into the model ahead of a question; the reply says nothing useful. */
   prepare_ask(meetingId: string): Promise<OkReply>;
   rename_meeting(meetingId: string, title: string): Promise<OkReply>;
+  /** Saved, it is followed by `promises.changed`. */
   set_item_status(itemId: string, status: ItemStatus): Promise<OkReply>;
+  /** Read again on `promises.changed`: a status, a new note or who a 1:1 was with changed. */
+  list_promises(): Promise<PromiseLists>;
   /** The meeting's whole pad, as it is now; Python refuses all of it if any line is bad. */
   save_notes(
     meetingId: string,
