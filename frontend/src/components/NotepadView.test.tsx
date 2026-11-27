@@ -60,6 +60,16 @@ it("leaves the focus where it is when the owner came along the tabs by keyboard"
   expect(field(1)).not.toHaveFocus();
 });
 
+it("keeps the line being typed clear of the fade while live", () => {
+  const typedLine = [line("a", "Budget approved")];
+  const { rerender } = render(<NotepadView {...props()} isLive lines={typedLine} />);
+  const pad = field(1).closest(".overflow-y-auto")!;
+  // the pad fades its last 28px while live: scrolling to a line, or to the caret, stops 32px short
+  expect(pad).toHaveClass("scroll-pb-8");
+  rerender(<NotepadView {...props()} lines={typedLine} />);
+  expect(pad).not.toHaveClass("scroll-pb-8");
+});
+
 it("keeps the focus ring every text field has", () => {
   render(<Pad initial={[line("a", "Budget approved")]} />);
   expect(field(1).className).not.toMatch(/outline-(hidden|none)/); // the global 2px rule-green ring

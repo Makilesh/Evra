@@ -192,7 +192,9 @@ it("says so when Python can't be reached", async () => {
 it("welcomes a first run with what Record does and the two shortcuts", async () => {
   setApiForTests(makeFakeApi({ list_meetings: async () => [] }));
   render(<App />);
-  expect(await screen.findByRole("heading", { name: "Press Record when the call starts." })).toBeInTheDocument();
+  const title = await screen.findByRole("heading", { name: "Press Record when the call starts." });
+  // the window never scrolls as a whole (index.css): the welcome scrolls in its own scroller
+  expect(title.closest(".overflow-y-auto")).not.toBeNull();
   const shortcuts = screen.getByRole("list", { name: "Shortcuts" });
   expect(shortcuts).toHaveTextContent("Ctrl K");
   expect(shortcuts).toHaveTextContent("Search your meetings");

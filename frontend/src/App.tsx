@@ -140,7 +140,7 @@ function Welcome() {
     { keys: strings.settingsShortcut, label: strings.settings },
   ];
   return (
-    <div className="enter px-[var(--gutter)] pt-[30px]">
+    <div className="enter h-full overflow-y-auto px-[var(--gutter)] pt-[30px]">
       <h1 className="max-w-[18ch] font-display text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[0.95] font-extrabold text-balance">
         {strings.welcomeTitle}
       </h1>

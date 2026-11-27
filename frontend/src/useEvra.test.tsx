@@ -361,6 +361,32 @@ it("saves quick ticks of one item in turn and ends where Python does", async () 
   expect(itemStatus(result.current.state.detail)).toBe("open"); // the box ends where Python is
 });
 
+it("forgets an item's ticks once answered, so a later failed tick shows what Python has then", async () => {
+  let stored: ItemStatus = "open"; // the database
+  const replies = [true, false];
+  const atStored = (): MeetingDetail => {
+    const [section] = WITH_ITEM.note!.sections;
+    const [block] = section.blocks;
+    const item = { ...block.item!, status: stored };
+    return { ...WITH_ITEM, note: { ...WITH_ITEM.note!, sections: [{ ...section, blocks: [{ ...block, item }] }] } };
+  };
+  const set_item_status = vi.fn(async (_id: string, status: ItemStatus) => {
+    const ok = replies.shift()!;
+    if (ok) stored = status;
+    return { ok };
+  });
+  setApiForTests(makeFakeApi({ get_meeting: async () => atStored(), set_item_status }));
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(itemStatus(result.current.state.detail)).toBe("open"));
+  await act(() => result.current.setItemStatus("i1", "done"));
+  expect(itemStatus(result.current.state.detail)).toBe("done");
+  stored = "open"; // opened again elsewhere (Plan C's Promises page ticks the same records)
+  act(() => emit("note.ready", { meeting_id: "m1" })); // the meeting is read again
+  await waitFor(() => expect(itemStatus(result.current.state.detail)).toBe("open"));
+  await act(() => result.current.setItemStatus("i1", "done")); // not saved
+  expect(itemStatus(result.current.state.detail)).toBe("open"); // Python's status, not the old "done"
+});
+
 const TYPED: NoteLine[] = [
   {
     id: "a",
@@ -540,6 +566,40 @@ it("sends again a save that fails while Stop waits for it, but never over a newe
     "save_notes Budget approved | Ask Priya",
     "stop_recording",
   ]);
+});
+
+it("sends each meeting's failed pad again, though another meeting's change waits", async () => {
+  const { api, calls, answers } = heldSaves();
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => {
+    result.current.editNotes("m1", TYPED);
+    void result.current.flushNotes(); // m1's pad on its way...
+  });
+  await waitFor(() => expect(answers).toHaveLength(1));
+  act(() => result.current.editNotes("m3", [ASK])); // ...the owner types in another meeting's pad...
+  await act(async () => answers[0](false)); // ...and m1's save fails
+  expect(result.current.state.notesSaveFailed).toEqual({ m1: true });
+  let stopped: Promise<void> = Promise.resolve();
+  act(() => {
+    stopped = result.current.stopRecording();
+  });
+  await waitFor(() => expect(answers).toHaveLength(2));
+  await act(async () => answers[1](true));
+  await waitFor(() => expect(answers).toHaveLength(3));
+  await act(async () => {
+    answers[2](true);
+    await stopped;
+  });
+  const sent = vi.mocked(api.save_notes).mock.calls.map(([meetingId, lines]) => [meetingId, lines.length]);
+  expect(sent).toEqual([
+    ["m1", 1],
+    ["m3", 1],
+    ["m1", 1], // m1's pad again, under m1, before Stop
+  ]);
+  expect(calls.at(-1)).toBe("stop_recording");
+  expect(result.current.state.notesSaveFailed).toEqual({});
 });
 
 it("saves a meeting's notes under it when another meeting opens", async () => {

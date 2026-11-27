@@ -147,12 +147,15 @@ export function NotepadView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* While live, the pad fades out over its last 28px above the transcript lines. */}
+      {/* While live, the pad fades out over its last 28px above the transcript lines; its
+          scroll padding stops scrolling to a line, or to the caret, clear of the fade. */}
       <div
         onClick={onPadClick}
         className={cn(
           "min-h-0 flex-1 overflow-y-auto px-[var(--gutter)]",
-          isLive ? "pb-8 [mask-image:linear-gradient(to_bottom,black_calc(100%-28px),transparent)]" : "pb-12",
+          isLive
+            ? "scroll-pb-8 pb-8 [mask-image:linear-gradient(to_bottom,black_calc(100%-28px),transparent)]"
+            : "pb-12",
         )}
       >
         <ol aria-label={strings.notesTab} className="sheet measure -mx-2.5 pt-3">

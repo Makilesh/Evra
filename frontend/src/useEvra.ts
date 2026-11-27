@@ -143,12 +143,6 @@ interface Ticks {
   waiting: number;
 }
 
-/** A meeting's whole pad, waiting to be saved. */
-interface PadChange {
-  meetingId: string;
-  lines: NoteLine[];
-}
-
 type Heard = Map<string, Map<string, Question>>;
 
 function hear(heard: Heard, meetingId: string, question: Question): void {
@@ -179,14 +173,13 @@ export function useEvra() {
     shown.current = state.detail;
   }, [state.detail]);
   const ticks = useRef(new Map<string, Ticks>());
-  // The pad's last change, until it is saved; saves go to Python one at a time, in order, so an
-  // older pad never lands after a newer one.
-  const unsaved = useRef<PadChange | null>(null);
+  // Each meeting's pad that waits to be saved: its last change, or a save that failed. Saves go
+  // to Python one at a time, in order, so an older pad never lands after a newer one.
+  const unsaved = useRef(new Map<string, NoteLine[]>());
   const saveTimer = useRef<number | undefined>(undefined);
   const saving = useRef<Promise<void>>(Promise.resolve());
 
-  const saveNotes = useCallback(async (change: PadChange) => {
-    const { meetingId, lines } = change;
+  const saveNotes = useCallback(async (meetingId: string, lines: NoteLine[]) => {
     let ok = false;
     try {
       const pad = lines.map(({ id, text, captured_at, pasted }) => ({ id, text, captured_at, pasted }));
@@ -195,23 +188,25 @@ export function useEvra() {
       // reported below
     }
     // A pad that wasn't saved waits again for the next flush (Stop, Write note, another
-    // meeting) or edit, unless a newer one is waiting; no timer tries again (RB62).
-    if (!ok) unsaved.current ??= change;
+    // meeting) or edit, unless that meeting's newer pad waits; no timer tries again (RB62).
+    if (!ok && !unsaved.current.has(meetingId)) unsaved.current.set(meetingId, lines);
     const rest = (s: EvraState) => without(s.notesSaveFailed, meetingId);
     setState((s) => ({ ...s, notesSaveFailed: ok ? rest(s) : { ...rest(s), [meetingId]: true } }));
   }, []);
 
-  // Save the pad's last change now. It resolves once Python has answered every save so far, and
+  // Save every waiting pad now. It resolves once Python has answered every save so far, and
   // never rejects: a failure shows in `notesSaveFailed`. With nothing of its own to send, it
   // sends, once, what waits after the save in flight: that pad if its save failed, or newer
   // typing. So Stop never leaves a pad behind.
   const flushNotes = useCallback(async (): Promise<void> => {
     window.clearTimeout(saveTimer.current);
     const send = (): boolean => {
-      const change = unsaved.current;
-      unsaved.current = null;
-      if (change) saving.current = saving.current.then(() => saveNotes(change));
-      return change !== null;
+      const waiting = [...unsaved.current];
+      unsaved.current.clear();
+      for (const [meetingId, lines] of waiting) {
+        saving.current = saving.current.then(() => saveNotes(meetingId, lines));
+      }
+      return waiting.length > 0;
     };
     const sent = send();
     await saving.current;
@@ -221,8 +216,7 @@ export function useEvra() {
   // The owner changed a meeting's pad: show it at once, save it 400 ms after the last change.
   const editNotes = useCallback(
     (meetingId: string, lines: NoteLine[]) => {
-      if (unsaved.current && unsaved.current.meetingId !== meetingId) void flushNotes();
-      unsaved.current = { meetingId, lines };
+      unsaved.current.set(meetingId, lines);
       setState((s) => ({ ...s, notes: { ...s.notes, [meetingId]: lines } }));
       window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => void flushNotes(), NOTES_SAVE_MS);
@@ -435,7 +429,11 @@ export function useEvra() {
     });
     await tick.saves;
     tick.waiting -= 1;
-    if (tick.waiting === 0) setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, tick.confirmed) }));
+    if (tick.waiting === 0) {
+      // the next run of ticks starts from the status shown then, which a reload may have changed
+      ticks.current.delete(id);
+      setState((s) => ({ ...s, detail: withItemStatus(s.detail, id, tick.confirmed) }));
+    }
     return ok;
   }, []);
 
