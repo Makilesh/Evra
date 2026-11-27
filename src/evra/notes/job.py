@@ -4,9 +4,10 @@ embedding batch, RB35), and then every call reads the meeting's one context, not
 writes the note's own sections, then A4-A6 list its action items, decisions and open questions;
 the checks' embedding batches come after every chat call, so Ollama never swaps models mid-way;
 the note and its items are saved in one transaction. A call longer than
-`llm.single_pass_minutes`, or too long for one prompt, is read in parts and combined instead
-(A2/A3, `evra.notes.mapreduce`). When A1's JSON fails even after its repair, the items make the
-note on their own (§9.1). An empty note is never saved, so it can never hide an earlier one."""
+`llm.single_pass_minutes`, too long for one prompt, or whose one-pass prompt Ollama cuts, is read
+in parts and combined instead (A2/A3, `evra.notes.mapreduce`). When A1's JSON fails even after
+its repair, the items make the note on their own (§9.1). An empty note is never saved, so it can
+never hide an earlier one."""
 
 from __future__ import annotations
 
@@ -121,8 +122,9 @@ def write_note_and_items(
     owner's linked `notes`. `context` is the meeting's shared A0 when the caller built it
     (`meeting_context`); otherwise it is built here, the same way. A call too long for one pass
     is read in parts (stages "part:i:n", then "combining"); otherwise A1 writes the note
-    ("writing"), then A4-A6 list the records ("items"). A1's NoteTooLong and NoteCutOff stop
-    here; its NoteInvalid only when nothing was listed either."""
+    ("writing"), then A4-A6 list the records ("items"). When Ollama cuts A1's prompt (its count
+    reaches the room although the estimate fit), the call is read in parts after all. A1's
+    NoteCutOff stops here; its NoteInvalid only when nothing was listed either."""
     if not utterances:
         raise NoTranscript("no transcript")
     if context is None:
@@ -156,6 +158,22 @@ def write_note_and_items(
         )
     except NoteInvalid as exc:  # the lists can still make a note (§9.1)
         invalid = exc
+    except NoteTooLong as exc:
+        # Ollama cut the one-pass prompt (its count reached the room; the estimate fit): read the
+        # call in parts instead of failing. A4-A6's prompts are smaller than A1's, so once A1
+        # fits, every one-pass call fits.
+        log.info("note_prompt_cut", tokens=exc.estimated, room=exc.limit)
+        return write_long_note(
+            provider,
+            model=model,
+            meeting=meeting,
+            utterances=utterances,
+            template=template,
+            settings=settings,
+            grounder=grounder,
+            notes=notes,
+            on_stage=on_stage,
+        )
     kinds = item_kinds(template)
     if kinds:
         on_stage("items")

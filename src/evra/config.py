@@ -28,8 +28,10 @@ class LlmSettings(BaseModel):
     model: str = "gemma4:12b"  # M3 bake-off, DECISIONS.md 2026-09-28
     ollama_url: str = "http://127.0.0.1:11434"
     num_ctx: int = Field(default=32768, ge=2048)  # never Ollama's 4k default: it truncates
-    # estimated prompt tokens per pass; just under num_ctx - max_output_tokens (28,672)
-    context_budget: int = Field(default=28000, ge=1000)
+    # estimated prompt tokens per pass, just under num_ctx - max_output_tokens (28,672); a pass
+    # whose prompt Ollama still cuts is read in parts (DECISIONS.md "Budget 28,400 with parts
+    # when Ollama cuts the prompt")
+    context_budget: int = Field(default=28400, ge=1000)
     max_output_tokens: int = Field(default=4096, ge=256)
     # a longer call is read in ~10-minute parts, then combined (A2/A3); so is one whose prompt
     # does not fit (DECISIONS.md "Long calls: single pass up to 60 minutes, then parts")
