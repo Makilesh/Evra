@@ -332,8 +332,9 @@
     color: var(--ink);
   }
 
-  /* My notes: the line being typed in fills band, its whole row. Hover fills nothing, so the
-     pointer resting on a line never reads as the line being typed in. */
+  /* My notes: the row of the line being typed in fills band, besides the field's own focus
+     ring. Hover fills nothing, so the pointer resting on a line never reads as the line being
+     typed in. */
   .pad-row:focus-within {
     background: var(--band);
   }

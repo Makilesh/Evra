@@ -454,6 +454,94 @@ it("still stops when the notes can't be saved, says so, and saves them on the ne
   expect(result.current.state.notesSaveFailed).toEqual({});
 });
 
+/** save_notes answering only when the test says so, and the order of the calls Stop makes. */
+function heldSaves() {
+  const calls: string[] = [];
+  const answers: ((ok: boolean) => void)[] = [];
+  const api = makeFakeApi({
+    save_notes: vi.fn((_meetingId: string, lines: { text: string }[]) => {
+      calls.push(`save_notes ${lines.map((l) => l.text).join(" | ")}`);
+      return new Promise<{ ok: boolean }>((resolve) => answers.push((ok) => resolve({ ok })));
+    }),
+    stop_recording: vi.fn(async () => {
+      calls.push("stop_recording");
+      return { ok: true };
+    }),
+  });
+  return { api, calls, answers };
+}
+
+it("sends a pad whose save failed again at Stop", async () => {
+  const { api, calls, answers } = heldSaves();
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  vi.useFakeTimers();
+  act(() => result.current.editNotes("m1", TYPED));
+  await act(() => vi.advanceTimersByTimeAsync(400)); // the debounced save goes...
+  vi.useRealTimers();
+  await waitFor(() => expect(answers).toHaveLength(1));
+  await act(async () => answers[0](false)); // ...and fails
+  expect(result.current.state.notesSaveFailed).toEqual({ m1: true });
+  let stopped: Promise<void> = Promise.resolve();
+  act(() => {
+    stopped = result.current.stopRecording(); // with no more typing
+  });
+  await waitFor(() => expect(answers).toHaveLength(2)); // the pad goes again...
+  await act(async () => {
+    answers[1](true);
+    await stopped;
+  });
+  expect(calls).toEqual(["save_notes Budget approved", "save_notes Budget approved", "stop_recording"]);
+  expect(result.current.state.notesSaveFailed).toEqual({}); // ...before the note job reads it
+});
+
+it("sends again a save that fails while Stop waits for it, but never over a newer change", async () => {
+  const { api, calls, answers } = heldSaves();
+  setApiForTests(api);
+  const { result } = renderHook(() => useEvra());
+  await waitFor(() => expect(result.current.state.detail).toEqual(DETAIL));
+  act(() => {
+    result.current.editNotes("m1", TYPED);
+    void result.current.flushNotes(); // a save on its way...
+  });
+  await waitFor(() => expect(answers).toHaveLength(1));
+  act(() => result.current.editNotes("m1", [...TYPED, ASK])); // ...the owner types on...
+  await act(async () => answers[0](false)); // ...and the older save fails: the newer pad waits
+  let stopped: Promise<void> = Promise.resolve();
+  act(() => {
+    stopped = result.current.stopRecording();
+  });
+  await waitFor(() => expect(answers).toHaveLength(2));
+  await act(async () => answers[1](false)); // Stop's own save fails: it still stops
+  await act(() => stopped);
+  expect(calls).toEqual([
+    "save_notes Budget approved",
+    "save_notes Budget approved | Ask Priya",
+    "stop_recording",
+  ]);
+
+  act(() => {
+    void result.current.flushNotes(); // the failed pad is waiting again...
+  });
+  await waitFor(() => expect(answers).toHaveLength(3));
+  let stoppedAgain: Promise<void> = Promise.resolve();
+  act(() => {
+    stoppedAgain = result.current.stopRecording(); // ...and Stop comes while its save is out
+  });
+  await act(async () => answers[2](false));
+  await waitFor(() => expect(answers).toHaveLength(4)); // so Stop sends it once more
+  await act(async () => {
+    answers[3](true);
+    await stoppedAgain;
+  });
+  expect(calls.slice(3)).toEqual([
+    "save_notes Budget approved | Ask Priya",
+    "save_notes Budget approved | Ask Priya",
+    "stop_recording",
+  ]);
+});
+
 it("saves a meeting's notes under it when another meeting opens", async () => {
   const other: MeetingSummary = { ...MEETING, id: "m3", title: "Design review" };
   const api = makeFakeApi({

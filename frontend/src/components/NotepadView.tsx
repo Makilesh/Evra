@@ -25,6 +25,8 @@ interface NotepadViewProps {
   onChange: (lines: NoteLine[]) => void;
   /** A typed time was pressed: open the transcript at that time (ms into the call). */
   onJump: (ms: number) => void;
+  /** An empty pad opens with its line focused; not when the owner came along the tabs by keyboard. */
+  focusOnOpen?: boolean;
 }
 
 /** Where the caret goes once the pad shows the change. */
@@ -38,21 +40,28 @@ interface Caret {
 // starts the next line, Backspace in an empty one goes back to the end of the one before, and
 // the arrow keys step between lines from a line's first or last row. While live, the last two
 // transcript lines run under the pad.
-export function NotepadView({ lines, meeting, utterances, isLive, noted, onChange, onJump }: NotepadViewProps) {
+export function NotepadView({
+  lines,
+  meeting,
+  utterances,
+  isLive,
+  noted,
+  onChange,
+  onJump,
+  focusOnOpen = true,
+}: NotepadViewProps) {
   const [draft] = useState(newLine);
   const rows = lines.length > 0 ? lines : [draft];
   const byId = useMemo(() => new Map(utterances.map((u) => [u.id, u])), [utterances]);
   const fields = useRef(new Map<string, HTMLTextAreaElement>());
   const [caret, setCaret] = useState<Caret | null>(null);
-  const opensEmpty = useRef(lines.length === 0);
+  const opensFocused = useRef(lines.length === 0 && focusOnOpen);
   // The line a long paste is going into: the change the paste makes marks it.
   const pasting = useRef<string | null>(null);
 
-  // An empty pad opens on its one line, unless the owner is going along the tabs by keyboard.
+  // An empty pad opens on its one line, ready to type.
   useEffect(() => {
-    if (opensEmpty.current && document.activeElement?.getAttribute("role") !== "tab") {
-      fields.current.get(draft.id)?.focus();
-    }
+    if (opensFocused.current) fields.current.get(draft.id)?.focus();
   }, [draft.id]);
 
   // A line just added, or the one before a line just removed, takes the caret once it is shown.
@@ -167,9 +176,11 @@ export function NotepadView({ lines, meeting, utterances, isLive, noted, onChang
                     aria-label={strings.noteLine(index + 1)}
                     placeholder={rows.length === 1 ? strings.notesPlaceholder : undefined}
                     onChange={(event) => type(index, event.target.value)}
+                    // the whole field and its focus ring in view, also at the pad's edge
+                    onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest" })}
                     onKeyDown={(event) => onKeyDown(event, index)}
                     onPaste={(event) => onPaste(event, index)}
-                    className="block w-full resize-none bg-transparent p-0 field-sizing-content placeholder:text-muted focus-visible:outline-hidden"
+                    className="block w-full scroll-my-1.5 resize-none rounded-sm bg-transparent p-0 field-sizing-content placeholder:text-muted"
                   />
                 </label>
                 <span className="sheet-mid on-rule">

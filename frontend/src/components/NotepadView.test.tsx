@@ -55,6 +55,16 @@ it("opens an empty pad on one empty line, ready to type", () => {
   expect(screen.getAllByRole("textbox")).toHaveLength(1);
 });
 
+it("leaves the focus where it is when the owner came along the tabs by keyboard", () => {
+  render(<Pad focusOnOpen={false} />);
+  expect(field(1)).not.toHaveFocus();
+});
+
+it("keeps the focus ring every text field has", () => {
+  render(<Pad initial={[line("a", "Budget approved")]} />);
+  expect(field(1).className).not.toMatch(/outline-(hidden|none)/); // the global 2px rule-green ring
+});
+
 it("adds a line on Enter", async () => {
   const seen = vi.fn();
   render(<Pad seen={seen} />);

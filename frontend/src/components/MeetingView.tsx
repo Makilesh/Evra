@@ -53,6 +53,8 @@ export function MeetingView({
 }: MeetingViewProps) {
   // While live, the owner takes notes; a finished meeting opens on what was written from them.
   const [tab, setTab] = useState<Tab>(isLive ? "notes" : "note");
+  // The tab was reached with the arrow keys: the focus stays on the tab strip.
+  const [byKeys, setByKeys] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const stage = noteStatus?.stage;
   const [seenStage, setSeenStage] = useState(stage);
@@ -73,8 +75,15 @@ export function MeetingView({
     event.preventDefault();
     const step = event.key === "ArrowRight" ? 1 : TABS.length - 1;
     const next = (TABS.indexOf(tab) + step) % TABS.length;
+    setByKeys(true);
     setTab(TABS[next]);
     event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+  }
+
+  // A tab clicked (or pressed with Enter or Space).
+  function choose(next: Tab) {
+    setByKeys(false);
+    setTab(next);
   }
 
   function cite(utteranceId: string) {
@@ -112,19 +121,19 @@ export function MeetingView({
           {settled && <Stamp model={note.model} points={pointCount(note)} />}
         </header>
         <div role="tablist" aria-label={strings.meetingTabs} onKeyDown={onTabKey} className="tabs mt-6">
-          <TabButton selected={tab === "note"} onSelect={() => setTab("note")}>
+          <TabButton selected={tab === "note"} onSelect={() => choose("note")}>
             {strings.noteTab}
           </TabButton>
-          <TabButton selected={tab === "transcript"} onSelect={() => setTab("transcript")}>
+          <TabButton selected={tab === "transcript"} onSelect={() => choose("transcript")}>
             {strings.transcriptTab}
             <span aria-hidden="true" className="ml-1.5 text-[13px] font-medium tabular-nums">
               {strings.lineCount(utterances.length)}
             </span>
           </TabButton>
-          <TabButton selected={tab === "ask"} onSelect={() => setTab("ask")}>
+          <TabButton selected={tab === "ask"} onSelect={() => choose("ask")}>
             {strings.askTab}
           </TabButton>
-          <TabButton selected={tab === "notes"} onSelect={() => setTab("notes")}>
+          <TabButton selected={tab === "notes"} onSelect={() => choose("notes")}>
             {strings.notesTab}
           </TabButton>
           <span className="flex-1" />
@@ -162,6 +171,7 @@ export function MeetingView({
             noted={note !== null}
             onChange={onNotes}
             onJump={jump}
+            focusOnOpen={!byKeys}
           />
         )}
       </div>

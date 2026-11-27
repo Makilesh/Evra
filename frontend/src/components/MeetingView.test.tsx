@@ -50,6 +50,12 @@ it("opens My notes while live", () => {
   expect(screen.getByRole("status")).toHaveTextContent("Linking your notes…");
 });
 
+it("opens an empty pad on its line when My notes is clicked", async () => {
+  view();
+  await userEvent.click(screen.getByRole("tab", { name: "My notes" }));
+  expect(screen.getByRole("textbox", { name: "Note line 1" })).toHaveFocus();
+});
+
 it("hands each change of the pad on, and the typed time opens the transcript there", async () => {
   const typed: NoteLine = { id: "a", text: "Proposal by Thursday", captured_at: MEETING.started_at + 112_000, pasted: false };
   const { props } = view({ notes: [typed] });

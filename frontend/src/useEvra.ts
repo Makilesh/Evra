@@ -185,26 +185,37 @@ export function useEvra() {
   const saveTimer = useRef<number | undefined>(undefined);
   const saving = useRef<Promise<void>>(Promise.resolve());
 
-  const saveNotes = useCallback(async ({ meetingId, lines }: PadChange) => {
+  const saveNotes = useCallback(async (change: PadChange) => {
+    const { meetingId, lines } = change;
     let ok = false;
     try {
       const pad = lines.map(({ id, text, captured_at, pasted }) => ({ id, text, captured_at, pasted }));
       ok = (await (await getApi()).save_notes(meetingId, pad)).ok;
     } catch {
-      // reported below; the lines stay in the window and go with the next save
+      // reported below
     }
+    // A pad that wasn't saved waits again for the next flush (Stop, Write note, another
+    // meeting) or edit, unless a newer one is waiting; no timer tries again (RB62).
+    if (!ok) unsaved.current ??= change;
     const rest = (s: EvraState) => without(s.notesSaveFailed, meetingId);
     setState((s) => ({ ...s, notesSaveFailed: ok ? rest(s) : { ...rest(s), [meetingId]: true } }));
   }, []);
 
   // Save the pad's last change now. It resolves once Python has answered every save so far, and
-  // never rejects: a failure shows in `notesSaveFailed`.
+  // never rejects: a failure shows in `notesSaveFailed`. With nothing of its own to send, it
+  // sends, once, what waits after the save in flight: that pad if its save failed, or newer
+  // typing. So Stop never leaves a pad behind.
   const flushNotes = useCallback(async (): Promise<void> => {
     window.clearTimeout(saveTimer.current);
-    const change = unsaved.current;
-    unsaved.current = null;
-    if (change) saving.current = saving.current.then(() => saveNotes(change));
+    const send = (): boolean => {
+      const change = unsaved.current;
+      unsaved.current = null;
+      if (change) saving.current = saving.current.then(() => saveNotes(change));
+      return change !== null;
+    };
+    const sent = send();
     await saving.current;
+    if (!sent && send()) await saving.current;
   }, [saveNotes]);
 
   // The owner changed a meeting's pad: show it at once, save it 400 ms after the last change.
