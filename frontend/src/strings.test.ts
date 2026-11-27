@@ -100,6 +100,11 @@ describe("people and briefs", () => {
     expect(strings.promisedCounts(0, 0)).toBe("");
   });
 
+  it("dates a brief, and waits for a recording", () => {
+    expect(strings.briefWritten("Tue 3 Nov")).toBe("Written Tue 3 Nov");
+    expect(strings.briefAfterRecording).toBe("You can write a brief once the recording ends.");
+  });
+
   it("explains a failed brief in brief words, sharing the Ollama texts with the note", () => {
     expect(briefFailureText("cut_off")).toBe("The model ran out of room while writing the brief.");
     expect(briefFailureText("invalid")).toBe("The model didn't return a valid brief.");

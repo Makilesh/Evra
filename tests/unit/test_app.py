@@ -203,3 +203,13 @@ def test_the_brief_and_asking_share_one_job_at_a_time(tmp_path: Path) -> None:
     assert app.api.person_page("nobody") is None
     app.asker.shutdown()
     assert app.api.write_brief("nobody") == {"ok": False, "reason": "busy"}
+
+
+def test_a_brief_waits_for_a_recording_as_a_question_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RC9: one recording rule for both: while a recording stops, both are refused."""
+    app = build_app(AppPaths.under(tmp_path), debug=False)
+    monkeypatch.setattr(app.service, "state", lambda: {"state": "stopping"})
+    assert app.api.write_brief("nobody") == {"ok": False, "reason": "recording"}
+    assert app.api.ask_meeting("m", "When?") == {"ok": False, "reason": "recording"}

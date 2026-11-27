@@ -2,207 +2,32 @@
 a daemon thread and announced with `brief.updated`, one job at a time with asking."""
 
 import json
-import sqlite3
-import threading
-import time
-from collections.abc import Mapping, Sequence
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import structlog
 
 from evra.config import LlmSettings
-from evra.llm.provider import ChatMessage, ChatResult, LlmProvider, LlmUnavailable
-from evra.notes.extract import CheckedItem, ItemKind
-from evra.notes.validate import CheckedBullet, CheckedNote, CheckedSection
-from evra.paths import AppPaths
-from evra.services.ask import AskService, JobSlot
-from evra.services.people import PeopleService, open_items
+from evra.llm.provider import ChatResult, LlmProvider, LlmUnavailable
+from evra.services.ask import JobSlot
+from evra.services.people import open_items
 from evra.store.db import connect
-from evra.store.items import Promise
+from evra.store.items import ItemStore, Promise
 from evra.store.meetings import MeetingStore
-from evra.store.migrate import migrate
 from evra.store.notes import NoteStore
 from evra.store.people import Person, PersonStore
-from evra.store.speakers import SpeakerStore
 from tests.unit.notes.fakes import FakeProvider
-
-OLDER = int(datetime(2026, 11, 17, 10, 0).timestamp() * 1000)
-LATEST = int(datetime(2026, 11, 24, 10, 0).timestamp() * 1000)
-UNNOTED = int(datetime(2026, 11, 26, 10, 0).timestamp() * 1000)
-SPOKEN = [
-    (1, 1_000, "Can you send me the vendor quote by Friday?"),
-    (0, 5_000, "Yes, I will."),
-    (1, 9_000, "Can we raise the limit to 500 requests?"),
-    (1, 30_000, "Let's pick up mentoring next time."),
-]
-NOT_FOUND = json.dumps({"found": False, "points": []})
-# A record of a note: its kind, text, the lines it cites (by their place), owner and due date.
-Item = tuple[ItemKind, str, tuple[int, ...], str | None, str | None]
-
-
-def reply(*points: tuple[str, list[str]]) -> str:
-    return json.dumps({"points": [{"text": t, "citations": c} for t, c in points]})
-
-
-GOOD = reply(
-    ("You will send the vendor quote by Friday.", ["m:1"]),
-    ("Twelve thousand dollars are left for contractors.", ["m:2"]),
+from tests.unit.services.people_harness import (
+    GOOD,
+    LATEST,
+    NOT_FOUND,
+    OLDER,
+    UNNOTED,
+    Blocking,
+    Folder,
+    reply,
+    wait_for,
 )
-
-
-class Folder:
-    """A data folder: Priya's three 1:1s (the newest has no note yet) and Sam's one."""
-
-    def __init__(self, tmp_path: Path) -> None:
-        self.paths = AppPaths.under(tmp_path)
-        self.paths.ensure()
-        self.lines: dict[str, list[str]] = {}  # each meeting's transcript line ids
-        conn = connect(self.paths.db_path)
-        migrate(conn)
-        people = PersonStore(conn)
-        self.priya, self.sam = people.find_or_create("Priya"), people.find_or_create("Sam")
-        self.older = self.meeting(conn, self.priya, "Budget check", OLDER)
-        self.note(conn, self.older, ["Twelve thousand dollars are left for contractors."])
-        self.latest = self.meeting(conn, self.priya, "Weekly 1:1", LATEST)
-        self.note(
-            conn,
-            self.latest,
-            ["You will send the vendor quote by Friday."],
-            next_time=["Mentoring a new hire."],
-            items=[
-                ("action_item", "Send the vendor quote", (0, 1), "You", "by Friday"),
-                ("action_item", "Tell marketing", (0,), "Them", None),
-                ("open_question", "Can the limit go to 500 requests?", (2,), None, None),
-            ],
-        )
-        self.unnoted = self.meeting(conn, self.priya, "Recording 2026-11-26 10:00", UNNOTED)
-        self.hiring = self.meeting(conn, self.sam, "Hiring sync", LATEST + 3_600_000)
-        self.note(
-            conn,
-            self.hiring,
-            ["Sam reviews the hiring loop."],
-            items=[("action_item", "Review the hiring loop", (0,), "Them", None)],
-        )
-        conn.close()
-        self.events: list[tuple[str, Mapping[str, Any]]] = []
-        self.got = threading.Event()
-
-    def meeting(self, conn: sqlite3.Connection, person: Person, title: str, started: int) -> str:
-        """A finished 1:1 with the person, four lines long."""
-        store = MeetingStore(conn)
-        mid = store.create_meeting(
-            title=title,
-            mode="one_on_one",
-            situation="call_headphones",
-            template="one_on_one",
-            started_at_ms=started,
-        )
-        vid = store.create_transcript_version(mid, kind="live", model="fake")
-        self.lines[mid] = [
-            store.add_utterance(
-                version_id=vid, meeting_id=mid, channel=ch, start_ms=s, end_ms=s + 2_000, text=t
-            ).id
-            for ch, s, t in SPOKEN
-        ]
-        SpeakerStore(conn).set_person(mid, person.id)
-        return mid
-
-    def note(
-        self,
-        conn: sqlite3.Connection,
-        mid: str,
-        summary: Sequence[str],
-        *,
-        next_time: Sequence[str] = (),
-        items: Sequence[Item] = (),
-    ) -> None:
-        """The meeting's note: its summary cites the first line, "for next time" the last."""
-        lines = self.lines[mid]
-        sections = (
-            CheckedSection(
-                "next_time",
-                "For next time",
-                tuple(CheckedBullet(t, (lines[3],)) for t in next_time),
-            ),
-        )
-        NoteStore(conn).save_generation(
-            meeting_id=mid,
-            transcript_version_id=MeetingStore(conn).current_transcript_version(mid) or "",
-            note=CheckedNote(
-                tuple(CheckedBullet(t, (lines[0],)) for t in summary), sections, 1, 0, {}
-            ),
-            provider="fake",
-            model="fake:1b",
-            prompt_version="a0-v1+a1-v4+a4-v2",
-            template="one_on_one",
-            tokens_in=1,
-            tokens_out=1,
-            items=[
-                CheckedItem(kind, text, tuple(lines[n] for n in cites), owner, due, 0.9)
-                for kind, text, cites, owner, due in items
-            ],
-        )
-
-    def emit(self, name: str, payload: Mapping[str, Any]) -> bool:
-        self.events.append((name, payload))
-        self.got.set()
-        return True
-
-    def service(self, provider: LlmProvider | None = None, **kw: Any) -> PeopleService:
-        args: dict[str, Any] = {
-            "paths": self.paths,
-            "llm": lambda: LlmSettings(model="fake:1b"),
-            "emit": self.emit,
-            "slot": JobSlot(),
-            "provider_factory": lambda _s: provider or FakeProvider([]),
-        }
-        args.update(kw)
-        return PeopleService(**args)
-
-    def asker(self, provider: LlmProvider, slot: JobSlot, heard: list[object]) -> AskService:
-        return AskService(
-            paths=self.paths,
-            llm=lambda: LlmSettings(model="fake:1b"),
-            emit=lambda _name, payload: heard.append(payload),
-            recording_busy=lambda: False,
-            provider_factory=lambda _s: provider,
-            slot=slot,
-        )
-
-    def wait_event(self) -> Mapping[str, Any]:
-        assert self.got.wait(10)
-        self.got.clear()
-        name, payload = self.events[-1]
-        assert name == "brief.updated"
-        return payload
-
-
-class Blocking(FakeProvider):
-    """Answers only once `release` is set."""
-
-    def __init__(self, replies: list[str]) -> None:
-        super().__init__(replies)
-        self.release = threading.Event()
-
-    def chat_json(
-        self,
-        model: str,
-        messages: Sequence[ChatMessage],
-        schema: Mapping[str, Any],
-        *,
-        max_output_tokens: int | None = None,
-    ) -> ChatResult:
-        assert self.release.wait(10)
-        return super().chat_json(model, messages, schema, max_output_tokens=max_output_tokens)
-
-
-def _wait_for(heard: list[object]) -> None:
-    deadline = time.monotonic() + 10
-    while not heard:
-        assert time.monotonic() < deadline
-        time.sleep(0.01)
 
 
 def test_person_page_shows_their_meetings_last_time_and_brief(tmp_path: Path) -> None:
@@ -275,7 +100,9 @@ def test_a_written_brief_is_saved_and_announced(tmp_path: Path) -> None:
     system, user = (m.content for m in provider.calls[0])
     assert (
         "<notes>\n[m:1] Weekly 1:1 · 2026-11-24\n"
-        "- You will send the vendor quote by Friday.\n- Mentoring a new hire.\n</notes>"
+        "- You will send the vendor quote by Friday.\n- Mentoring a new hire.\n"
+        "- You: Send the vendor quote (due by Friday)\n- Them: Tell marketing\n"
+        "- Open question: Can the limit go to 500 requests?\n</notes>"
     ) in system
     assert "[m:2] Budget check · 2026-11-17" in system and "[m:3]" not in system
     assert "hiring" not in system.lower()
@@ -291,6 +118,71 @@ def test_a_written_brief_is_saved_and_announced(tmp_path: Path) -> None:
     page = service.person_page(f.priya.id)
     assert page is not None
     assert page["brief"]["points"][1]["meetings"][0]["title"] == "Contractor budget"
+
+
+def test_the_brief_reads_each_note_with_its_open_records(tmp_path: Path) -> None:
+    """RC8: a source is the note's points, then its records still open (decisions, tasks led
+    once by who owes them, open questions), so a promise kept only as a record can be cited."""
+    f = Folder(tmp_path)
+    conn = connect(f.paths.db_path)
+    lee = PersonStore(conn).find_or_create("Lee")
+    mid = f.meeting(conn, lee, "Planning", LATEST)
+    f.note(
+        conn,
+        mid,
+        [],
+        discussion=["The hiring plan is on track."],
+        next_time=["Mentoring a new hire."],
+        items=[
+            ("decision", "Hire two contractors.", (0,), None, None),
+            ("action_item", "Send the vendor quote", (0, 1), "You", "Friday"),
+            ("action_item", "Ask finance about the laptops", (0,), "Them", None),
+            ("action_item", "Book the room", (0,), "You", None),  # done below
+            ("action_item", "Order the badges", (0,), "Them", None),  # set aside below
+            ("open_question", "Can the limit go to 500 requests?", (2,), None, None),
+        ],
+    )
+    items, note = ItemStore(conn), NoteStore(conn).current_note(mid)
+    assert note is not None
+    ids = {item.text: item.id for item in items.for_generation(note.generation_id)}
+    items.set_status(ids["Book the room"], "done")
+    items.set_status(ids["Order the badges"], "dismissed")
+    conn.close()
+    provider = FakeProvider([reply(("Lee will ask finance about the laptops.", ["m:1"]))])
+    f.service(provider).write_brief(lee.id)
+    payload = f.wait_event()
+    system = provider.calls[0][0].content
+    assert (
+        "<notes>\n[m:1] Planning · 2026-11-24\n"
+        "- The hiring plan is on track.\n- Mentoring a new hire.\n"
+        "- Decision: Hire two contractors.\n- You: Send the vendor quote (due Friday)\n"
+        "- Them: Ask finance about the laptops\n"
+        "- Open question: Can the limit go to 500 requests?\n</notes>"
+    ) in system
+    assert "Book the room" not in system and "Order the badges" not in system
+    # a point stating the promise kept only as a record passes the check against it
+    assert payload["state"] == "written"
+    texts = [p["text"] for p in payload["brief"]["points"]]
+    assert texts == ["Lee will ask finance about the laptops."]
+
+
+def test_a_brief_waits_for_the_recording(tmp_path: Path) -> None:
+    """RC9: while a recording loads, runs or stops, a brief is refused as a question is: after
+    a bad id, before the slot (busy or not) and with no model call; the slot stays free."""
+    f = Folder(tmp_path)
+    slot = JobSlot()
+    provider = FakeProvider([])
+    people = f.service(provider, slot=slot, recording_busy=lambda: True)
+    assert people.write_brief(5) == {"ok": False, "reason": "invalid"}
+    assert people.write_brief(f.priya.id) == {"ok": False, "reason": "recording"}
+    assert slot.take()  # a question being answered meanwhile: "recording" still, not "busy"
+    assert people.write_brief(f.priya.id) == {"ok": False, "reason": "recording"}
+    slot.release()
+    assert provider.calls == [] and f.events == []
+    heard: list[object] = []
+    asker = f.asker(FakeProvider([NOT_FOUND]), slot, heard)
+    assert asker.ask(f.latest, "What did I promise?")["ok"] is True  # the slot was left free
+    wait_for(heard)
 
 
 def test_unchecked_brief_is_not_shown(tmp_path: Path) -> None:
@@ -368,7 +260,7 @@ def test_a_brief_shares_the_busy_rule_with_asking(tmp_path: Path) -> None:
     assert asker.ask(f.latest, "What did I promise?")["ok"] is True
     assert people.write_brief(f.priya.id) == {"ok": False, "reason": "busy"}
     question.release.set()
-    _wait_for(heard)
+    wait_for(heard)
     # the app closing refuses both (AskService.shutdown closes the shared slot)
     asker.shutdown()
     assert people.write_brief(f.priya.id) == {"ok": False, "reason": "busy"}

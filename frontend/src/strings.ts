@@ -96,6 +96,10 @@ export const strings = {
   writingBrief: "Writing the brief…",
   briefNeedsNotes: "There's no note from a 1:1 with them yet.",
   briefUnchecked: "Evra couldn't check a brief against your notes, so none is shown.",
+  /** The new brief failed the check while an earlier one is on the page (RC10). */
+  briefUncheckedKept: "Evra couldn't check the new brief against your notes, so the earlier one is still shown.",
+  briefWritten: (day: string) => `Written ${day}`,
+  briefAfterRecording: "You can write a brief once the recording ends.",
   briefBusy: "Evra is busy answering a question or writing a brief. Try again when it's done.",
   forgetPerson: "Forget this person",
   forgetConfirm: (name: string) => `Forget ${name}? Their meetings say “Them” again, and their brief is deleted.`,

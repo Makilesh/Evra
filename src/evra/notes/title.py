@@ -62,8 +62,9 @@ def title_settings(llm: LlmSettings) -> LlmSettings:
     )
 
 
-def _lines(texts: Iterable[str], limit: int) -> str:
-    """Texts as "- " lines, whole lines only, at most `limit` characters."""
+def as_lines(texts: Iterable[str], limit: int) -> str:
+    """Texts as "- " lines, whole lines only, at most `limit` characters: how a note is read
+    into a prompt (the title here, a person's brief in `services.people`)."""
     lines: list[str] = []
     used = 0
     for text in texts:
@@ -77,13 +78,13 @@ def _lines(texts: Iterable[str], limit: int) -> str:
 
 def note_text(note: StoredNote, limit: int = NOTE_CHARS) -> str:
     """The note's points as lines, summary first (its stored order), whole points only."""
-    return _lines((block.text for block in note.blocks), limit)
+    return as_lines((block.text for block in note.blocks), limit)
 
 
 def items_text(items: Sequence[StoredItem], limit: int = NOTE_CHARS) -> str:
     """A note with no points of its own (its lists alone, when A1 failed): its action items,
     decisions and open questions as lines, a dismissed one left out."""
-    return _lines((item.text for item in items if item.status != "dismissed"), limit)
+    return as_lines((item.text for item in items if item.status != "dismissed"), limit)
 
 
 def title_messages(context: MeetingContext, text: str) -> tuple[list[ChatMessage], str]:

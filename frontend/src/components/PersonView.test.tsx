@@ -75,6 +75,10 @@ it("writes a brief", async () => {
   expect(within(catchUp).getByRole("button", { name: "Write a brief" })).toBeDisabled();
   act(() => emit("brief.updated", { person_id: "p1", state: "written", brief: BRIEF }));
   expect(within(catchUp).queryByRole("status")).toBeNull();
+  // when it was written, above its points (RC10): a brief is a snapshot
+  const written = within(catchUp).getByText(`Written ${dayLabel(BRIEF.created_at, Date.now())}`);
+  const first = screen.getByText("You still owe Priya the proposal, due Thursday.");
+  expect(written.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   // each point with the meetings it comes from
   const day = dayLabel(WEEKLY.started_at, Date.now());
   const budgetDay = dayLabel(BUDGET.started_at, Date.now());
@@ -95,19 +99,44 @@ it("writes a brief", async () => {
 });
 
 it("says why there is no brief to show", async () => {
-  const write_brief = vi.fn().mockResolvedValueOnce({ ok: false, reason: "busy" }).mockResolvedValue({ ok: true });
+  const write_brief = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: false, reason: "busy" })
+    .mockResolvedValueOnce({ ok: false, reason: "recording" })
+    .mockResolvedValue({ ok: true });
   await openPriya(peopleApi({ write_brief }));
   const catchUp = region("Catch me up");
   await userEvent.click(within(catchUp).getByRole("button", { name: "Write a brief" }));
   expect(catchUp).toHaveTextContent("Evra is busy answering a question or writing a brief. Try again when it's done.");
   expect(within(catchUp).queryByRole("status")).toBeNull();
+  // a recording first (RC9): said the same way, with the focus kept, and brought into view
+  const shown = vi.spyOn(Element.prototype, "scrollIntoView");
+  const write = within(catchUp).getByRole("button", { name: "Write a brief" });
+  write.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(catchUp).toHaveTextContent("You can write a brief once the recording ends.");
+  expect(catchUp).not.toHaveTextContent("Evra is busy");
+  expect(write).toHaveFocus();
+  expect(shown.mock.contexts.some((el) => catchUp.contains(el as Node))).toBe(true);
+  shown.mockRestore();
   await userEvent.click(within(catchUp).getByRole("button", { name: "Write a brief" }));
   act(() => emit("brief.updated", { person_id: "p1", state: "unchecked" }));
   expect(catchUp).toHaveTextContent("Evra couldn't check a brief against your notes, so none is shown.");
-  expect(catchUp).not.toHaveTextContent("Evra is busy");
+  expect(catchUp).not.toHaveTextContent("once the recording ends");
   await userEvent.click(within(catchUp).getByRole("button", { name: "Write again" }));
   act(() => emit("brief.updated", { person_id: "p1", state: "failed", reason: "ollama_down" }));
   expect(within(catchUp).getByRole("alert")).toHaveTextContent("Ollama isn't running");
+  // a new brief that can't be checked, over an earlier one: the earlier one stays, and it says so (RC10)
+  await userEvent.click(within(catchUp).getByRole("button", { name: "Write again" }));
+  act(() => emit("brief.updated", { person_id: "p1", state: "written", brief: BRIEF }));
+  await userEvent.click(within(catchUp).getByRole("button", { name: "Write again" }));
+  act(() => emit("brief.updated", { person_id: "p1", state: "unchecked" }));
+  expect(catchUp).toHaveTextContent(
+    "Evra couldn't check the new brief against your notes, so the earlier one is still shown.",
+  );
+  expect(catchUp).not.toHaveTextContent("so none is shown");
+  expect(within(catchUp).getByText("You still owe Priya the proposal, due Thursday.")).toBeInTheDocument();
+  expect(within(catchUp).getByText(`Written ${dayLabel(BRIEF.created_at, Date.now())}`)).toBeInTheDocument();
   // someone with no note from a 1:1 yet is told so, with nothing to press
   await userEvent.click(screen.getByRole("button", { name: "People" }));
   await userEvent.click(await screen.findByRole("button", { name: /^Sam Lee/ }));
@@ -115,7 +144,7 @@ it("says why there is no brief to show", async () => {
   const theirs = region("Catch me up");
   expect(theirs).toHaveTextContent("There's no note from a 1:1 with them yet.");
   expect(within(theirs).queryByRole("button")).toBeNull();
-  expect(write_brief).toHaveBeenCalledTimes(3);
+  expect(write_brief).toHaveBeenCalledTimes(6);
 });
 
 it("renames a person", async () => {

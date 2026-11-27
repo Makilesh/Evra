@@ -194,9 +194,10 @@ export interface PersonPage {
   meetings: MeetingSummary[];
 }
 
-/** Why Python did not start a brief: no such person, no note from a 1:1 with them yet, or a
- *  question or another brief is being written. Nothing was started. */
-export type BriefRefusal = "invalid" | "unknown" | "no_notes" | "busy";
+/** Why Python did not start a brief: no such person, no note from a 1:1 with them yet, a
+ *  question or another brief is being written, or a recording is (as for asking). Nothing was
+ *  started. */
+export type BriefRefusal = "invalid" | "unknown" | "no_notes" | "busy" | "recording";
 
 export interface BriefReply {
   ok: boolean;

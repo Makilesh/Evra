@@ -66,15 +66,26 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
     bus = EventBus()
     service = MeetingService(paths=paths, settings=settings, emit=bus.emit, kit=RecordingKit(paths))
     slot = JobSlot()  # one question or brief at a time (BUILD.md §8.3)
+
+    def recording_busy() -> bool:
+        """A recording loads, runs or stops: no question or brief calls the model meanwhile."""
+        return service.state()["state"] in ("loading", "recording", "stopping")
+
     asker = AskService(
         paths=paths,
         llm=lambda: service.settings.llm,
         emit=bus.emit,
-        recording_busy=lambda: service.state()["state"] in ("loading", "recording", "stopping"),
+        recording_busy=recording_busy,
         slot=slot,
     )
     asker.recover()
-    people = PeopleService(paths=paths, llm=lambda: service.settings.llm, emit=bus.emit, slot=slot)
+    people = PeopleService(
+        paths=paths,
+        llm=lambda: service.settings.llm,
+        emit=bus.emit,
+        recording_busy=recording_busy,
+        slot=slot,
+    )
     api = BridgeApi(
         app_name=APP_NAME,
         version=__version__,

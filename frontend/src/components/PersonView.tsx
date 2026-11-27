@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from "react";
-import type { ItemStatus, NoteBlock, Person, PersonPage } from "@/bridge";
+import type { BriefRefusal, ItemStatus, NoteBlock, Person, PersonPage } from "@/bridge";
 import { PencilIcon } from "@/components/icons";
 import { MAX_NAME } from "@/components/MeetingView";
 import { GroupHead, MeetingLink, PromiseSections, SectionHead as Head } from "@/components/PromiseSections";
@@ -167,6 +167,13 @@ function LastRow({ block, where, onOpen }: { block: NoteBlock; where: string; on
   );
 }
 
+/** What a refused brief says under its button; anything else reads as a brief not written. */
+const REFUSALS: Partial<Record<BriefRefusal | "failed", string>> = {
+  busy: strings.briefBusy,
+  recording: strings.briefAfterRecording,
+  no_notes: strings.briefNeedsNotes,
+};
+
 interface CatchMeUpProps {
   page: PersonPage;
   status: BriefStatus | undefined;
@@ -176,8 +183,9 @@ interface CatchMeUpProps {
 }
 
 // The brief: while it is written only its band row shows (it appears once, complete); a failure
-// or a brief none of whose points could be checked says so above the last brief; each point
-// links the meetings it cites. Write a brief, or Write again, under it, once a 1:1 has a note.
+// or a brief none of whose points could be checked says so above the last brief, which says
+// when it was written; each point links the meetings it cites. Write a brief, or Write again,
+// under it, once a 1:1 has a note.
 function CatchMeUp({ page, status, onWrite, onOpen, day }: CatchMeUpProps) {
   const button = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
@@ -190,10 +198,19 @@ function CatchMeUp({ page, status, onWrite, onOpen, day }: CatchMeUpProps) {
     const active = document.activeElement;
     if (!active || active === document.body) button.current?.focus();
   }, [writing]);
+  // How it went (a brief, a failure, a refusal) shows in this section, part above the button and
+  // part under it: bring the section into view as far as that takes, as Ask does with an answer.
+  const box = useRef<HTMLDivElement>(null);
+  const before = useRef(status);
+  useEffect(() => {
+    const ended = before.current?.state === "writing" && status?.state !== "writing";
+    before.current = status;
+    if (ended) box.current?.scrollIntoView({ block: "nearest" });
+  }, [status]);
   const tried = status?.state === "failed" || status?.state === "unchecked";
   const points = page.brief?.points ?? [];
   return (
-    <>
+    <div ref={box}>
       {writing ? (
         <div role="status" className="sheet-row bg-band">
           <p className="sheet-point caps py-3.5 text-[15px] leading-[18px] text-rule-ink">{strings.writingBrief}</p>
@@ -211,7 +228,17 @@ function CatchMeUp({ page, status, onWrite, onOpen, day }: CatchMeUpProps) {
           )}
           {status?.state === "unchecked" && (
             <div className="sheet-row bg-band">
-              <p className="sheet-point py-3.5">{strings.briefUnchecked}</p>
+              <p className="sheet-point py-3.5">
+                {points.length > 0 ? strings.briefUncheckedKept : strings.briefUnchecked}
+              </p>
+              <span className="sheet-mid on-rule" />
+            </div>
+          )}
+          {page.brief && points.length > 0 && (
+            <div className="sheet-row">
+              <p className="sheet-point text-[13px] leading-5 text-muted tabular-nums">
+                {strings.briefWritten(day(page.brief.created_at))}
+              </p>
               <span className="sheet-mid on-rule" />
             </div>
           )}
@@ -255,11 +282,7 @@ function CatchMeUp({ page, status, onWrite, onOpen, day }: CatchMeUpProps) {
               <div aria-live="polite">
                 {status?.state === "refused" && (
                   <p className="mt-2 text-[13px] leading-5 text-muted">
-                    {status.reason === "busy"
-                      ? strings.briefBusy
-                      : status.reason === "no_notes"
-                        ? strings.briefNeedsNotes
-                        : briefFailureText(undefined)}
+                    {REFUSALS[status.reason] ?? briefFailureText(undefined)}
                   </p>
                 )}
               </div>
@@ -270,7 +293,7 @@ function CatchMeUp({ page, status, onWrite, onOpen, day }: CatchMeUpProps) {
         </div>
         <span className="sheet-mid on-rule" />
       </div>
-    </>
+    </div>
   );
 }
 

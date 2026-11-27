@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -23,15 +23,17 @@ from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import LlmError, LlmProvider
 from evra.notes.brief import BRIEF_MEETINGS, BriefSource, brief_settings, write_brief
 from evra.notes.errors import NoteError
+from evra.notes.extract import ALL_KINDS, ITEM_SECTIONS, ItemKind
 from evra.notes.job import failure_reason
-from evra.notes.title import items_text, note_text
+from evra.notes.templates import load_template
+from evra.notes.title import NOTE_CHARS, as_lines, note_text
 from evra.paths import AppPaths
 from evra.services.ask import JobSlot
 from evra.services.meetings import Emit
 from evra.services.views import meeting_summary, note_view
 from evra.store.briefs import BriefStore, StoredBrief
 from evra.store.db import connect
-from evra.store.items import ItemStore, Promise
+from evra.store.items import ItemStore, Promise, StoredItem
 from evra.store.meetings import MeetingStore
 from evra.store.notes import NoteStore
 from evra.store.people import OWNER_NAME, Person, PersonStore
@@ -40,6 +42,8 @@ from evra.store.speakers import THEM, SpeakerStore, names_for
 log = structlog.get_logger(__name__)
 
 BriefRefusal = Literal["unknown", "no_notes"]
+# how a decision and a question read among a note's lines for a brief (RC8)
+_RECORD_LEADS: dict[ItemKind, str] = {"decision": "Decision", "open_question": "Open question"}
 
 
 @dataclass(frozen=True)
@@ -143,20 +147,64 @@ def person_view(conn: sqlite3.Connection, person_id: str) -> dict[str, Any] | No
     }
 
 
+def owed(text: str, owner: str | None, due: str | None, *, names: Iterable[str] = ()) -> str:
+    """A task as one line: led once by who owes it ("You: …", "Them: …" or a name), in place of
+    a "You:", "Them:" or `names` lead the text already has, then its due date when the text
+    doesn't already say it. A task no one took on has no lead."""
+    line = text
+    if owner:
+        labels = sorted({OWNER_NAME, THEM, owner, *names}, key=len, reverse=True)
+        lead = re.compile(rf"^(?:{'|'.join(re.escape(n) for n in labels)})\s*:\s*", re.IGNORECASE)
+        line = f"{owner}: {lead.sub('', text)}"
+    if due and due.casefold() not in text.casefold():
+        line = f"{line} (due {due})"
+    return line
+
+
+def _record_kinds(template_id: str) -> list[ItemKind]:
+    """The kinds of record in the order the note's template shows their sections."""
+    try:
+        sections = [section.id for section in load_template(template_id).sections]
+    except KeyError:  # a template since removed: the kinds' own order
+        sections = []
+
+    def place(kind: ItemKind) -> int:
+        section = ITEM_SECTIONS[kind]
+        return sections.index(section) if section in sections else len(sections)
+
+    return sorted(ALL_KINDS, key=place)
+
+
+def open_records_text(items: Sequence[StoredItem], template_id: str) -> str:
+    """A note's records still open (RC8), as lines in the order the note shows them: "Decision:
+    …", a task led by its stored owner ("You: …" or "Them: …", the notes' own words) with its due
+    date, "Open question: …". A task done or set aside is left out. They get their own room
+    (whole lines, NOTE_CHARS), so the note's points are never cut for them."""
+    lines: list[str] = []
+    for kind in _record_kinds(template_id):
+        for item in items:
+            if item.kind != kind or item.status != "open":
+                continue
+            if kind == "action_item":
+                lines.append(owed(item.text, item.owner, item.due))
+            else:
+                lines.append(f"{_RECORD_LEADS[kind]}: {item.text}")
+    return as_lines(lines, NOTE_CHARS)
+
+
 def brief_sources(
     conn: sqlite3.Connection, person: Person, limit: int = BRIEF_MEETINGS
 ) -> list[BriefSource]:
-    """The notes of the person's newest 1:1s that have one, m:1 the latest, each read as the
-    title reads a note: its points, or its lists when it has none of its own."""
+    """The notes of the person's newest 1:1s that have one, m:1 the latest. Each is read as the
+    title reads a note (its points), then its records still open: what a brief asks about."""
     notes, items = NoteStore(conn), ItemStore(conn)
     sources: list[BriefSource] = []
     for row in _meetings_with(conn, person):
         note = notes.current_note(row["id"]) if row["has_note"] else None
         if note is None:
             continue
-        text = (
-            note_text(note) if note.blocks else items_text(items.for_generation(note.generation_id))
-        )
+        records = open_records_text(items.for_generation(note.generation_id), note.template)
+        text = "\n".join(part for part in (note_text(note), records) if part)
         if not text:
             continue
         alias = f"m:{len(sources) + 1}"
@@ -169,21 +217,19 @@ def brief_sources(
 
 
 def open_items(promises: Sequence[Promise], person: Person) -> list[str]:
-    """The person's open promises both ways, each led by who owes it, once ("You: …" or
-    "{name}: …", in place of a "Them:" or name the text already starts with), with its due date
-    when the text doesn't already say it."""
-    names = sorted({OWNER_NAME, THEM, person.name, *person.name.split()}, key=len, reverse=True)
-    label = re.compile(rf"^(?:{'|'.join(re.escape(n) for n in names)})\s*:\s*", re.IGNORECASE)
-    found: list[str] = []
-    for promise in promises:
-        if promise.person is None or promise.person.id != person.id:
-            continue
-        owner = OWNER_NAME if promise.owner == "You" else person.name
-        text = f"{owner}: {label.sub('', promise.text)}"
-        if promise.due and promise.due.casefold() not in promise.text.casefold():
-            text = f"{text} (due {promise.due})"
-        found.append(text)
-    return found
+    """The person's open promises both ways, each as `owed` leads it: by "You" or their name (in
+    place of a "Them:" or name the text already starts with), with its due date."""
+    names = (person.name, *person.name.split())
+    return [
+        owed(
+            promise.text,
+            OWNER_NAME if promise.owner == "You" else person.name,
+            promise.due,
+            names=names,
+        )
+        for promise in promises
+        if promise.person is not None and promise.person.id == person.id
+    ]
 
 
 class PeopleService:
@@ -193,12 +239,14 @@ class PeopleService:
         paths: AppPaths,
         llm: Callable[[], LlmSettings],
         emit: Emit,
+        recording_busy: Callable[[], bool],
         slot: JobSlot,
         provider_factory: Callable[[LlmSettings], LlmProvider] = OllamaProvider,
     ) -> None:
         self._paths = paths
         self._llm = llm
         self._emit = emit
+        self._recording_busy = recording_busy  # asking's rule too (app.py)
         self._slot = slot  # asking's: one question or brief at a time
         self._provider_factory = provider_factory
 
@@ -213,10 +261,13 @@ class PeopleService:
 
     def write_brief(self, person_id: object) -> dict[str, Any]:
         """Start the person's brief: {"ok": True} at once, the brief later as `brief.updated`.
-        Refused while a question or another brief is being written, or the app closes ("busy"),
-        for someone with no note from a 1:1 yet ("no_notes"), or no such person ("unknown")."""
+        Refused, in asking's order: while a recording loads, runs or stops ("recording", RC9);
+        while a question or another brief is being written, or the app closes ("busy"); for no
+        such person ("unknown"), or someone with no note from a 1:1 yet ("no_notes")."""
         if not isinstance(person_id, str):
             return {"ok": False, "reason": "invalid"}
+        if self._recording_busy():
+            return {"ok": False, "reason": "recording"}
         if not self._slot.take():
             return {"ok": False, "reason": "busy"}
         try:
