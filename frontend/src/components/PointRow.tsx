@@ -43,8 +43,10 @@ export function PointRow({ block, quotes, onCite, onItemStatus }: PointRowProps)
     <li className="sheet-row point-row">
       {tick ? (
         <div className="sheet-point flex items-start gap-2.5">
-          {/* The Done box, drawn like a time tab on the point's first line: ticked, it fills rule green. */}
-          <label className="group flex h-[23px] flex-none cursor-pointer items-center">
+          {/* The Done box, drawn like a time tab on the point's first line: ticked, it fills rule green.
+              The label is positioned so the sr-only input stays in the row: a tick or Tab then
+              scrolls the note to the row, never the whole window. */}
+          <label className="group relative flex h-[23px] flex-none cursor-pointer items-center">
             <input
               type="checkbox"
               className="peer sr-only"

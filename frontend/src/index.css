@@ -107,6 +107,22 @@
     height: 100%;
   }
 
+  /* The window never scrolls as a whole: every page scrolls inside its own scroller, so a
+     time-tab jump (scrollIntoView) moves only the transcript, never the title and the rail. */
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  /* overflow: hidden stops the wheel, not scrollIntoView. An sr-only element (absolute) with no
+     positioned ancestor stretches the page far past the window (the transcript's repeated
+     speaker names), so #root holds and clips every such element: the page has nothing to
+     scroll, and clip, unlike hidden, gives scrollIntoView no scroller to move. */
+  #root {
+    position: relative;
+    overflow: clip;
+  }
+
   body {
     background: var(--pad);
     color: var(--ink);

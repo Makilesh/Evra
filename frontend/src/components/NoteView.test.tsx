@@ -68,6 +68,15 @@ it("ticks an action item done", async () => {
   expect(props.onItemStatus).toHaveBeenLastCalledWith("i1", "open");
 });
 
+it("keeps the Done box's hidden checkbox inside its row", () => {
+  sheet({ note: withItems("open") });
+  const box = screen.getByRole("checkbox", { name: "Done: You: Send the proposal (by Thursday)" });
+  expect(box).toHaveClass("sr-only");
+  // sr-only is position: absolute; a positioned label keeps it in the note's scroller, so a tick
+  // or Tab scrolls only to the row, never the whole window (jsdom loads no CSS: the class pins it)
+  expect(box.closest("label")).toHaveClass("relative");
+});
+
 it("shows sections with time tabs that jump to the transcript", async () => {
   const props = sheet();
   expect(screen.getByRole("heading", { name: "Action items" })).toBeInTheDocument();

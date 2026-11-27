@@ -125,8 +125,6 @@ Things we decided not to do yet. Move an item into `BUILD.md` when it is schedul
 - Record button: show `Ctrl Alt R` once the global hotkey exists (M6); `Ctrl K` grows into the palette (M6).
 - Frontend end-to-end checks (BUILD.md §9.2): the fake bridge used to look at the redesign (`window.pywebview` injected before load, synthetic fixture) can become a Playwright suite in `frontend/e2e/`.
 - Jumping from a time tab to the transcript leaves keyboard focus on the page body (it did before the redesign too); move focus to the highlighted line.
-- A jump to the transcript scrolls the whole window: pressing a time tab, in the note or in My notes, opens the Transcript with the right line highlighted, but the page itself also scrolls up about 85 CSS px. The title and the top of the rail are cut off, and a blank strip shows under the rail until another tab is chosen (seen in the real window, 2026-11-27). `TranscriptView` centres the line with `scrollIntoView({block: "center"})` (M3c), which scrolls the document too, and `html`, `body` and `#root` are `height: 100%` without `overflow: hidden`, so the document scrolls whenever anything overflows it.
-
 ## Settings, later (2026-11-10)
 
 Each one arrives with its feature, never before it (DECISIONS: Settings, first set).
