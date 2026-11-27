@@ -24,7 +24,8 @@ export type WithRefusal = "reserved" | "invalid" | "failed";
 /** Why a person kept their name. */
 export type RenameRefusal = NameRefusal | "failed";
 
-/** A ticked promise shows Done, with Undo, this long before it leaves the page. */
+/** A promise ticked done, or set aside as not one, shows so with Undo this long before it leaves
+ *  the page. */
 const UNDO_MS = 5_000;
 
 export type Direction = keyof PromiseLists;
@@ -38,7 +39,7 @@ export interface ShownPromise {
 export type ShownPromises = Record<Direction, ShownPromise[]>;
 
 /** A promise the window changed lately. It keeps its place on the page, by id, until Python's list
- *  has been read since its last save, and a Done one until its Undo time ends as well. */
+ *  has been read since its last save, and one done or set aside until its Undo time ends too. */
 interface Held {
   promise: OpenPromise;
   direction: Direction;
@@ -47,7 +48,7 @@ interface Held {
   status: ItemStatus;
   /** The read of Python's list that decides for it once shown; none while a save runs. */
   read: number;
-  /** When a Done one's Undo time ends (epoch ms). */
+  /** When the Undo time of one done or set aside ends (epoch ms). */
   undoEnds: number;
 }
 
@@ -71,12 +72,12 @@ function located(listed: PromiseLists | null, id: string): Held | undefined {
 
 /** The state without the held promises Python's list now decides for. */
 function released(s: PromiseState, now: number): PromiseState {
-  const kept = Object.entries(s.held).filter(([, h]) => s.read < h.read || (h.status === "done" && now < h.undoEnds));
+  const kept = Object.entries(s.held).filter(([, h]) => s.read < h.read || (h.status !== "open" && now < h.undoEnds));
   return kept.length === Object.keys(s.held).length ? s : { ...s, held: Object.fromEntries(kept) };
 }
 
 /** Python's lists with the window's changes laid over them: a held promise keeps its place even
- *  once Python no longer lists it, and one dismissed leaves. */
+ *  once Python no longer lists it (ticked done, or set aside). */
 function shownPromises(listed: PromiseLists, held: Record<string, Held>): ShownPromises {
   const shown = (direction: Direction): ShownPromise[] => {
     const rows = listed[direction].map((promise) => ({ promise, status: held[promise.id]?.status ?? "open" }));
@@ -84,7 +85,7 @@ function shownPromises(listed: PromiseLists, held: Record<string, Held>): ShownP
       .filter((h) => h.direction === direction && !listed[direction].some((p) => p.id === h.promise.id))
       .sort((a, b) => a.index - b.index);
     for (const h of unlisted) rows.splice(Math.min(h.index, rows.length), 0, { promise: h.promise, status: h.status });
-    return rows.filter((row) => row.status !== "dismissed");
+    return rows;
   };
   return { you: shown("you"), them: shown("them") };
 }
@@ -206,11 +207,11 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
     return () => offs.forEach((off) => off());
   }, [refreshPromises]);
 
-  // When a Done row's Undo time ends, Python's list decides for it.
+  // When the Undo time of a row done or set aside ends, Python's list decides for it.
   useEffect(() => {
     const now = Date.now();
     const ends = Object.values(promised.held)
-      .filter((h) => h.status === "done" && h.undoEnds > now)
+      .filter((h) => h.status !== "open" && h.undoEnds > now)
       .map((h) => h.undoEnds);
     if (ends.length === 0) return;
     const timer = window.setTimeout(() => setPromised((s) => released(s, Date.now())), Math.min(...ends) - now);
@@ -223,9 +224,10 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
     return held[id]?.status ?? located(listed, id)?.status;
   }, []);
 
-  // A tick on a promise, from useEvra's one tick queue: shown at once (`saved` false), then with
-  // the status Python last confirmed once its saves are answered (`saved` true). It keeps its
-  // place until Python's list has been read again after that, and ticked done, for UNDO_MS.
+  // A promise's status, from useEvra's one tick queue: shown at once (`saved` false), then as
+  // Python last confirmed it once its saves are answered (`saved` true). It keeps its place until
+  // Python's list has been read again after that; done or set aside, also for UNDO_MS from when it
+  // first showed so.
   const showPromiseStatus = useCallback(
     (id: string, status: ItemStatus, saved: boolean) => {
       if (promiseStatus(id) === undefined) return; // a record of the open meeting alone
@@ -234,7 +236,7 @@ export function usePeople(onLinked: (meetingId: string, person: Person | null) =
       setPromised((s) => {
         const known = s.held[id] ?? located(s.listed, id);
         if (!known) return s;
-        const undoEnds = status !== "done" ? 0 : known.status === "done" ? known.undoEnds : now + UNDO_MS;
+        const undoEnds = status === "open" ? 0 : known.status === status ? known.undoEnds : now + UNDO_MS;
         return released({ ...s, held: { ...s.held, [id]: { ...known, status, read, undoEnds } } }, now);
       });
       if (saved) void refreshPromises();

@@ -188,16 +188,47 @@ it("opens the meeting at the line", async () => {
 });
 
 it("dismisses with not a promise", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   const api = promisesApi();
   setApiForTests(api);
   render(<App />);
   await openPromises();
   await userEvent.click(within(row("Send the proposal")).getByRole("button", { name: "Not a promise" }));
   expect(api.set_item_status).toHaveBeenCalledWith("i1", "dismissed");
-  expect(screen.queryByText("Send the proposal")).toBeNull();
-  expect(screen.getByRole("button", { name: "Promises 2 open" })).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Done: Share the deck" })).toHaveFocus(); // the next row
+  const send = row("Send the proposal");
+  expect(send).toHaveTextContent("Set aside");
+  expect(screen.getByText("Send the proposal")).not.toHaveClass("line-through"); // set aside, not done
+  expect(within(send).getByRole("checkbox")).not.toBeChecked();
+  expect(within(send).getByRole("button", { name: "Undo" })).toHaveFocus(); // where "Not a promise" was
+  expect(screen.getByRole("button", { name: "Promises 2 open" })).toBeInTheDocument(); // at once
+  // Python no longer lists it: the row keeps its place, with Undo, for its 5 seconds
   await changed(api, { you: [DECK], them: [MARKETING] });
-  expect(screen.queryByText("Send the proposal")).toBeNull();
-  expect(boxes("You promised")).toEqual(["Done: Share the deck"]);
+  expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]);
+  await act(() => vi.advanceTimersByTimeAsync(4_000));
+  expect(within(row("Send the proposal")).getByRole("button", { name: "Undo" })).toHaveFocus();
+  await act(() => vi.advanceTimersByTimeAsync(1_100));
+  expect(screen.queryByText("Send the proposal")).toBeNull(); // then it leaves
+  expect(screen.getByRole("checkbox", { name: "Done: Share the deck" })).toHaveFocus(); // the next row
+  expect(screen.getByRole("button", { name: "Promises 2 open" })).toBeInTheDocument();
+});
+
+it("undo puts a set-aside promise back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const api = promisesApi();
+  setApiForTests(api);
+  render(<App />);
+  await openPromises();
+  await userEvent.click(within(row("Send the proposal")).getByRole("button", { name: "Not a promise" }));
+  await changed(api, { you: [DECK], them: [MARKETING] }); // the refresh no longer lists it
+  await userEvent.keyboard("{Enter}"); // on Undo, which has the focus
+  expect(api.set_item_status).toHaveBeenLastCalledWith("i1", "open");
+  const box = screen.getByRole("checkbox", { name: "Done: Send the proposal" });
+  expect(box).not.toBeChecked();
+  expect(box).toHaveFocus(); // the keyboard stays on the row
+  expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]); // in place
+  expect(screen.getByRole("button", { name: "Promises 3 open" })).toBeInTheDocument();
+  await changed(api, { you: [SEND, DECK], them: [MARKETING] });
+  await act(() => vi.advanceTimersByTimeAsync(6_000)); // its 5 seconds no longer run
+  expect(boxes("You promised")).toEqual(["Done: Send the proposal", "Done: Share the deck"]);
+  expect(within(row("Send the proposal")).getByRole("button", { name: "Not a promise" })).toBeInTheDocument();
 });

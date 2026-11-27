@@ -75,6 +75,7 @@ export const strings = {
   theyPromised: "They promised",
   done: "Done",
   notAPromise: "Not a promise",
+  setAside: "Set aside",
   undo: "Undo",
   noPromises: "No open promises. Action items from your 1:1s show up here until you tick them done.",
   fromYourNotes: "From your notes",

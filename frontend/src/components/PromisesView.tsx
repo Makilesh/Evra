@@ -35,24 +35,33 @@ export function PromisesView({ promises, onStatus, onOpenMeeting, now = Date.now
   const sheet = useRef<HTMLDivElement>(null);
   const focused = useRef<Focused | null>(null);
 
-  // A row that leaves with the focus in it (its 5 seconds of Undo are up, or it was not a promise)
-  // hands the focus to the Done box of the row now in its place, else to the title, so the
-  // keyboard keeps its place on the page.
+  /** The control and where its row is; null outside the rows. */
+  function locate(control: Element): Focused | null {
+    const row = control.closest<HTMLElement>("[data-promise-id]");
+    const direction = row?.closest<HTMLElement>("[data-direction]")?.dataset.direction as Direction | undefined;
+    const index = direction ? (promises?.[direction].findIndex((r) => r.promise.id === row?.dataset.promiseId) ?? -1) : -1;
+    return direction && index >= 0 ? { control, direction, index } : null;
+  }
+
+  // A row that leaves with the focus in it (its 5 seconds of Undo are up) hands the focus to the
+  // Done box of the row now in its place, else to the title, so the keyboard keeps its place on
+  // the page. A control that goes while its row stays has passed the focus on itself (Undo).
   useLayoutEffect(() => {
     const last = focused.current;
     if (!last || last.control.isConnected) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) {
+      focused.current = sheet.current?.contains(active) ? locate(active) : null; // it went elsewhere
+      return;
+    }
     focused.current = null;
-    if (document.activeElement && document.activeElement !== document.body) return; // it went elsewhere
     const section = sheet.current?.querySelector(`[data-direction="${last.direction}"]`);
     const boxes = Array.from(section?.querySelectorAll<HTMLElement>('input[type="checkbox"]') ?? []);
     (boxes[Math.min(last.index, boxes.length - 1)] ?? heading.current)?.focus();
   });
 
   function track(event: FocusEvent<HTMLDivElement>) {
-    const row = event.target.closest<HTMLElement>("[data-promise-id]");
-    const direction = row?.closest<HTMLElement>("[data-direction]")?.dataset.direction as Direction | undefined;
-    const index = direction ? (promises?.[direction].findIndex((r) => r.promise.id === row?.dataset.promiseId) ?? -1) : -1;
-    focused.current = direction && index >= 0 ? { control: event.target, direction, index } : null;
+    focused.current = locate(event.target);
   }
 
   // The focus left the rows (Tab, a click elsewhere): forget it. A control that leaves with its
@@ -118,7 +127,7 @@ export function PromisesView({ promises, onStatus, onOpenMeeting, now = Date.now
 
 interface PromiseRowProps {
   promise: OpenPromise;
-  /** As the window shows it: ticked done, the row says so and offers Undo. */
+  /** As the window shows it: done or set aside, the row says so and offers Undo. */
   status: ItemStatus;
   onStatus: (id: string, status: ItemStatus) => void;
   onOpenMeeting: (meetingId: string, utteranceId?: string) => void;
@@ -127,10 +136,18 @@ interface PromiseRowProps {
 
 /** One promise on the sheet: its Done box, the task and when it is due | the time tab of the line
  *  it came from, on the rule | who, which meeting and when, opening that meeting. Ticked, it says
- *  Done with Undo; "Not a promise" sets it aside. A person's page shows the same rows. */
+ *  Done with Undo; "Not a promise" sets it aside, with Undo too. A person's page shows the same
+ *  rows. */
 export function PromiseRow({ promise, status, onStatus, onOpenMeeting, now = Date.now }: PromiseRowProps) {
   const box = useRef<HTMLInputElement>(null);
+  const undo = useRef<HTMLButtonElement>(null);
+  const toUndo = useRef(false); // "Not a promise" was pressed: its Undo takes the focus
+  useLayoutEffect(() => {
+    if (toUndo.current && status === "dismissed") undo.current?.focus();
+    toUndo.current = false;
+  }, [status]);
   const done = status === "done";
+  const aside = status === "dismissed";
   // its due date once: a task that says it already needs no second (as the note shows it)
   const due = promise.due && !promise.text.toLowerCase().includes(promise.due.toLowerCase()) ? promise.due : null;
   const who = promise.person?.name ?? strings.them;
@@ -146,13 +163,17 @@ export function PromiseRow({ promise, status, onStatus, onOpenMeeting, now = Dat
           onChange={(checked) => onStatus(promise.id, checked ? "done" : "open")}
         />
         <div className="min-w-0">
-          <p className={cn(done && "text-muted line-through")}>{promise.text}</p>
+          {/* set aside, it goes muted, but is not struck through: it wasn't done */}
+          <p className={cn((done || aside) && "text-muted", done && "line-through")}>{promise.text}</p>
           <p className="text-[13px] leading-5 text-muted tabular-nums">
-            {done ? (
+            {done || aside ? (
               <>
-                <span className="font-semibold text-rule-ink">{strings.done}</span>
+                <span className={cn("font-semibold", done && "text-rule-ink")}>
+                  {done ? strings.done : strings.setAside}
+                </span>
                 {" · "}
                 <button
+                  ref={undo}
                   type="button"
                   onClick={() => {
                     box.current?.focus(); // the keyboard stays on the row, whose Undo goes
@@ -168,7 +189,10 @@ export function PromiseRow({ promise, status, onStatus, onOpenMeeting, now = Dat
                 {due && `${due} · `}
                 <button
                   type="button"
-                  onClick={() => onStatus(promise.id, "dismissed")}
+                  onClick={() => {
+                    toUndo.current = true;
+                    onStatus(promise.id, "dismissed");
+                  }}
                   className="rounded-sm underline decoration-transparent underline-offset-[3px] hover:text-ink hover:decoration-rule"
                 >
                   {strings.notAPromise}
