@@ -15,9 +15,11 @@ from evra.llm.provider import (
     LlmUnavailable,
 )
 from evra.notes.context import build_context
+from evra.notes.user_notes import meeting_context
 from evra.services.ask import PREPARE_EVERY_S
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
+from evra.store.notepad import LineIn, NotepadStore
 from evra.store.questions import QuestionStore
 from tests.unit.notes.fakes import FakeProvider
 from tests.unit.services.ask_harness import ANSWER, NOT_FOUND, Harness
@@ -160,6 +162,29 @@ def test_prepare_once_per_window(tmp_path: Path) -> None:
     meeting = MeetingStore(conn).get_meeting(h.meeting_id)
     conn.close()
     assert provider.calls[0][0].content == build_context(meeting=meeting, utterances=h.lines).system
+
+
+def test_questions_see_the_notes_through_the_shared_context(tmp_path: Path) -> None:
+    """RB1: the pre-read and the question send the meeting's one context, notes included, and a
+    point from the notes passes the check."""
+    h = Harness(tmp_path)
+    conn = connect(h.paths.db_path)
+    started = int(MeetingStore(conn).get_meeting(h.meeting_id)["started_at"])
+    NotepadStore(conn).replace(h.meeting_id, [LineIn("n1", "Quote due Friday", started, False)])
+    expected = meeting_context(conn, h.meeting_id)[0].system
+    conn.close()
+    from_notes = {"text": "The quote is due Friday.", "citations": ["user"]}
+    provider = FakeProvider(
+        ['{"ready": true}', json.dumps({"found": True, "points": [from_notes]})]
+    )
+    service = h.service(provider)
+    assert service.prepare(h.meeting_id) == {"ok": True}
+    _wait_calls(provider, 1)
+    service.ask(h.meeting_id, "When is the quote due?")
+    question = h.wait_event()["question"]
+    assert "<user_notes>\n[n:1] (00:00) Quote due Friday\n</user_notes>" in expected
+    assert [call[0].content for call in provider.calls] == [expected, expected]
+    assert (question["state"], question["points"][0]["text"]) == ("answered", from_notes["text"])
 
 
 def test_prepare_refuses_unknown_recording_and_non_strings(tmp_path: Path) -> None:

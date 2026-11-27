@@ -1,0 +1,19 @@
+{
+  "synthetic": true,
+  "transcript": "one_on_one_60min_synthetic.json",
+  "about": "Twelve lines the owner might type during the 60-minute synthetic call, one per planted fact (all but the last), each started 6 to 45 seconds after the lines it notes end. captured_ms is when the line got its first character, from the call's start; about lists the transcript's utterances (0-based indices) the line was written about.",
+  "lines": [
+    {"id": "n01", "captured_ms": 358000, "text": "Beta: 38 signups so far, under goal but good feedback", "about": [89, 91]},
+    {"id": "n02", "captured_ms": 562000, "text": "Atlas beta moved to March 3 (locked)", "about": [139, 140]},
+    {"id": "n03", "captured_ms": 966000, "text": "2 contractors approved for the pipeline", "about": [225]},
+    {"id": "n04", "captured_ms": 1101000, "text": "Dana starts 14th - plan her first week", "about": [257, 258]},
+    {"id": "n05", "captured_ms": 1566000, "text": "Sat outage 47 min, alert to fix", "about": [363, 364]},
+    {"id": "n06", "captured_ms": 1749000, "text": "me: postmortem by Fri", "about": [409, 410]},
+    {"id": "n07", "captured_ms": 2150000, "text": "18k for load testing tool!", "about": [495]},
+    {"id": "n08", "captured_ms": 2343000, "text": "standup -> 10:30 from next week", "about": [537, 538]},
+    {"id": "n09", "captured_ms": 2787000, "text": "Lisbon conf in May - approved", "about": [636]},
+    {"id": "n10", "captured_ms": 2992000, "text": "promo packet by end of quarter: wins + stepping-up examples", "about": [680, 684]},
+    {"id": "n11", "captured_ms": 3300000, "text": "they ask finance re laptops this week", "about": [753]},
+    {"id": "n12", "captured_ms": 3404000, "text": "still open: sunset the legacy API? team stuck on tech debt", "about": [775, 776, 779]}
+  ]
+}

@@ -31,10 +31,11 @@ from evra.notes.ask import (
     embed_parts,
     whole_meeting_fits,
 )
-from evra.notes.context import build_context, estimate_tokens
+from evra.notes.context import estimate_tokens
 from evra.notes.errors import NoteError
 from evra.notes.job import failure_reason
 from evra.notes.semantic import Embedder
+from evra.notes.user_notes import meeting_context
 from evra.paths import AppPaths
 from evra.services.meetings import Emit
 from evra.services.views import question_view
@@ -167,7 +168,7 @@ class AskService:
             version_id = meetings.current_transcript_version(meeting_id)
             assert version_id is not None
             utterances = meetings.utterances(version_id)
-            context = build_context(meeting=meetings.get_meeting(meeting_id), utterances=utterances)
+            context, _ = meeting_context(conn, meeting_id)  # what a question sends (RB1)
         finally:
             conn.close()
         user = build_ask_messages(context, "x" * MAX_QUESTION_CHARS, ())[0][1].content
@@ -242,6 +243,8 @@ class AskService:
             meetings, questions = MeetingStore(conn), QuestionStore(conn)
             version_id = meetings.current_transcript_version(asked.meeting_id)
             utterances = meetings.utterances(version_id) if version_id else []
+            # the meeting's shared context, its notes included (RB1); NoTranscript without lines
+            context, notes = meeting_context(conn, asked.meeting_id)
             provider = self._provider_factory(settings)
             result = ask_meeting(
                 provider,
@@ -251,6 +254,8 @@ class AskService:
                 question=asked.text,
                 settings=settings,
                 history=questions.history(asked.meeting_id),
+                notes=notes,
+                context=context,
                 # the same Ollama: a long call's parts and the answer's points by meaning too,
                 # on the meeting's embedder, so its parts are embedded once a session
                 embedder=self._embedder(asked.meeting_id, provider, llm.embedding_model),

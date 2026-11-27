@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import structlog
 
 from evra.bridge.api import BridgeApi
 from evra.bridge.events import EventBus, build_emit_script
@@ -113,6 +114,7 @@ def test_api_surface_is_only_the_intended_methods(tmp_path: Path) -> None:
         "recording_state",
         "rename_meeting",
         "request_hello",
+        "save_notes",
         "set_item_status",
         "set_note_model",
         "set_theme",
@@ -231,6 +233,61 @@ def test_an_item_is_ticked_and_bad_input_is_refused(tmp_path: Path) -> None:
         assert ItemStore(conn).for_generation(generation)[0].status == "done"
     finally:
         conn.close()
+
+
+NOTE_LINE = {
+    "id": "l1",
+    "text": "Budget approved",
+    "captured_at": 1_790_600_005_000,
+    "pasted": False,
+}
+
+
+def test_save_notes_refuses_bad_shapes(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    mid = _meeting(db)
+    refused_lists: list[Any] = [None, "l1", {"lines": [NOTE_LINE]}, (NOTE_LINE,)]
+    refused_entries: list[Any] = [
+        "Budget approved",
+        5,
+        None,
+        NOTE_LINE | {"id": 5},
+        NOTE_LINE | {"text": None},
+        NOTE_LINE | {"captured_at": "now"},
+        NOTE_LINE | {"captured_at": 1.5},
+        NOTE_LINE | {"captured_at": True},
+        NOTE_LINE | {"pasted": "yes"},
+        NOTE_LINE | {"pasted": 1},
+        {k: v for k, v in NOTE_LINE.items() if k != "pasted"},
+        NOTE_LINE | {"id": "has space"},  # the store's own rules
+        NOTE_LINE | {"text": "x" * 4_001},
+    ]
+    with structlog.testing.capture_logs() as logs:
+        for lines in refused_lists:
+            assert api.save_notes(mid, lines) == {"ok": False}
+        for entry in refused_entries:
+            assert api.save_notes(mid, [entry]) == {"ok": False}
+        assert api.save_notes(5, [NOTE_LINE]) == {"ok": False}  # type: ignore[arg-type]
+        assert api.save_notes("nope", [NOTE_LINE]) == {"ok": False}
+    assert "budget" not in json.dumps(logs).lower()  # a note line is content (RB37)
+    detail = api.get_meeting(mid)
+    assert detail is not None and detail["notes"] == []  # nothing refused was saved
+
+
+def test_notes_are_saved_and_come_back_with_the_meeting(tmp_path: Path) -> None:
+    api, db = _api(tmp_path)
+    mid = _meeting(db)
+    untimed = NOTE_LINE | {"id": "l2", "text": "Ask about Dana", "captured_at": None}
+    assert api.save_notes(mid, [NOTE_LINE, untimed]) == {"ok": True}
+    detail = api.get_meeting(mid)
+    assert detail is not None
+    assert [(n["id"], n["text"], n["pasted"]) for n in detail["notes"]] == [
+        ("l1", "Budget approved", False),
+        ("l2", "Ask about Dana", False),
+    ]
+    assert api.save_notes(mid, []) == {"ok": True}  # every line deleted
+    again = api.get_meeting(mid)
+    assert again is not None and again["notes"] == []
 
 
 def test_recording_calls_go_to_the_service_and_bad_input_is_refused(tmp_path: Path) -> None:

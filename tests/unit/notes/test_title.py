@@ -20,11 +20,13 @@ from evra.notes.title import (
     placeholder_title,
     title_settings,
 )
+from evra.notes.user_notes import meeting_context
 from evra.notes.validate import CheckedNote
 from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.store.notepad import LineIn, NotepadStore
 from evra.store.notes import NoteStore, OutputBlock, StoredNote
 from tests.unit.notes.fakes import FakeProvider, saved_meeting, title_reply
 
@@ -133,6 +135,53 @@ def test_a_call_too_long_for_one_prompt_is_named_from_its_note_alone(
     whole = FakeProvider([title_reply("Launch date")])  # with the default room: the whole call
     name_meeting(conn, mid, provider=whole, model="fake:1b", settings=title_settings(LlmSettings()))
     assert whole.calls[0][0].content == expected
+
+
+def _type_note(conn: sqlite3.Connection, mid: str, text: str, *, pasted: bool = False) -> None:
+    started = int(MeetingStore(conn).get_meeting(mid)["started_at"])
+    NotepadStore(conn).replace(mid, [LineIn("n1", text, started + 3_000, pasted)])
+
+
+def test_a_long_calls_title_sees_its_notes_but_none_of_its_lines(
+    conn: sqlite3.Connection,
+) -> None:
+    """RB46 with notes: the context with none of the call's lines still holds the user's notes,
+    built as every other call builds it (meeting_context)."""
+    mid = saved_meeting(conn, PLACEHOLDER)
+    store = MeetingStore(conn)
+    version = store.current_transcript_version(mid)
+    assert version is not None
+    for k in range(120):  # about 2,000 tokens of transcript
+        store.add_utterance(
+            version_id=version,
+            meeting_id=mid,
+            channel=k % 2,
+            start_ms=20_000 + k * 5_000,
+            end_ms=24_000 + k * 5_000,
+            text=f"We went over item {k} of the long agenda in some detail.",
+        )
+    _type_note(conn, mid, "Launch date agreed")
+    settings = title_settings(LlmSettings(context_budget=1_000))
+    provider = FakeProvider([title_reply("Launch date")])
+    assert name_meeting(conn, mid, provider=provider, model="fake:1b", settings=settings)
+    system = provider.calls[0][0].content
+    lines = system.split("<transcript>\n", 1)[1].split("\n</transcript>", 1)[0]
+    assert lines == LONG_CALL_NOTE + ELLIPSIS
+    assert "<user_notes>\n[n:1] (00:03) Launch date agreed\n</user_notes>" in system
+    MeetingStore(conn).rename_meeting(mid, PLACEHOLDER)
+    expected = meeting_context(conn, mid, only=(), note=LONG_CALL_NOTE)[0].system
+    assert system == expected
+
+
+def test_a_title_too_long_even_without_lines_is_not_asked(conn: sqlite3.Connection) -> None:
+    """RB46's promise, never a prompt past the limit, holds when the notes alone are too long."""
+    mid = saved_meeting(conn, PLACEHOLDER)
+    _type_note(conn, mid, "Pasted agenda " * 280, pasted=True)  # about 1,450 tokens
+    settings = title_settings(LlmSettings(context_budget=1_000))
+    provider = FakeProvider([])
+    assert name_meeting(conn, mid, provider=provider, model="fake:1b", settings=settings) is None
+    assert provider.calls == []
+    assert _title(conn, mid) == PLACEHOLDER
 
 
 def test_title_shares_the_meeting_context(conn: sqlite3.Connection) -> None:

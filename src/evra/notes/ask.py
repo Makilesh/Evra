@@ -18,10 +18,11 @@ from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, ChatResult, LlmError, LlmProvider
 from evra.llm.schemas import MeetingAnswer
 from evra.notes.bm25 import Bm25, tokenize
-from evra.notes.context import NONE, MeetingContext, as_data, build_context, estimate_tokens
+from evra.notes.context import NONE, MeetingContext, as_data, estimate_tokens
 from evra.notes.errors import NoteTooLong, NoTranscript
 from evra.notes.semantic import Embedder, SemanticCheck, as_query, cosine
 from evra.notes.structured import chat_structured
+from evra.notes.user_notes import NO_NOTES, NotesInput, notes_context
 from evra.notes.validate import KEPT_BY_MEANING, CheckedBullet, Grounder
 from evra.store.meetings import Utterance
 
@@ -197,18 +198,18 @@ def _parts_prompt(
     meeting: Mapping[str, Any],
     utterances: Sequence[Utterance],
     gaps: Sequence[Mapping[str, Any]],
-    user_notes: str,
+    notes: NotesInput,
     settings: LlmSettings,
     embedder: Embedder | None,
 ) -> _Prompt | None:
-    """The prompt with only the parts of the call that best match the question. While it does
-    not fit, the oldest exchanges go first; NoteTooLong when even none leaves no room, None when
-    no part matches the question."""
+    """The prompt with only the parts of the call that best match the question (and all of the
+    owner's notes). While it does not fit, the oldest exchanges go first; NoteTooLong when even
+    none leaves no room, None when no part matches the question."""
     limit = min(settings.context_budget, settings.num_ctx - output_tokens(settings))
 
     def context_of(only: set[str]) -> MeetingContext:
-        return build_context(
-            meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes, only=only
+        return notes_context(
+            meeting=meeting, utterances=utterances, notes=notes, gaps=gaps, only=only
         )
 
     skeleton = context_of(set())
@@ -241,17 +242,19 @@ def ask_meeting(
     settings: LlmSettings,
     history: Sequence[Exchange] = (),
     gaps: Sequence[Mapping[str, Any]] = (),
-    user_notes: str = NONE,
+    notes: NotesInput = NO_NOTES,
+    context: MeetingContext | None = None,
     embedder: Embedder | None = None,
 ) -> AskResult:
-    """With an embedder, a long call's parts are chosen by meaning as well as words, and the
-    answer's points are checked by meaning too. That check's one batch runs after the answer;
-    choosing the parts needs its batch before it."""
+    """Asked on the meeting's shared context with the owner's `notes`: `context` when the caller
+    built it (`meeting_context`), otherwise built here the same way. With an embedder, a long
+    call's parts are chosen by meaning as well as words, and the answer's points are checked by
+    meaning too. That check's one batch runs after the answer; choosing the parts needs its
+    batch before it."""
     if not utterances:
         raise NoTranscript("no transcript")
-    context = build_context(
-        meeting=meeting, utterances=utterances, gaps=gaps, user_notes=user_notes
-    )
+    if context is None:
+        context = notes_context(meeting=meeting, utterances=utterances, notes=notes, gaps=gaps)
     # Whole versus parts is decided on the meeting alone: when the history is what tips it over,
     # the oldest exchanges go first.
     recent = list(history)[-HISTORY_TURNS:]
@@ -269,7 +272,7 @@ def ask_meeting(
             meeting=meeting,
             utterances=utterances,
             gaps=gaps,
-            user_notes=user_notes,
+            notes=notes,
             settings=settings,
             embedder=embedder,
         )
@@ -312,7 +315,7 @@ def ask_meeting(
         grounder = Grounder(
             aliases=context.aliases,
             utterance_text=context.utterance_text,
-            user_notes="" if user_notes == NONE else user_notes,
+            user_notes=notes.user_notes,
             semantic=None if embedder is None else SemanticCheck(embedder),
         )
         for checked, how in grounder.check_all(answer.points):

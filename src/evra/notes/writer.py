@@ -174,14 +174,17 @@ def check_drafted(
     context: MeetingContext,
     template: Template,
     semantic: SemanticCheck | None = None,
+    user_notes: str = "",
 ) -> NoteResult:
-    """The check (its one embedding batch, when a meaning check is given) and the result."""
+    """The check (its one embedding batch, when a meaning check is given) and the result.
+    `user_notes` is what a [user] citation is checked against (`user_notes.notes_text`)."""
     draft, set_aside = synthesis_only(drafted.draft, template)
     note = check_note(
         draft,
         aliases=context.aliases,
         utterance_text=context.utterance_text,
         template=template,
+        user_notes=user_notes,
         semantic=semantic,
     )
     log.info(

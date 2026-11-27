@@ -26,6 +26,7 @@ from evra.services.views import clean_title, meeting_detail, meeting_summary
 from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
+from evra.store.notepad import LineIn, NotepadStore
 
 log = structlog.get_logger(__name__)
 
@@ -39,6 +40,23 @@ def open_folder(path: Path) -> None:
     if sys.platform != "win32":
         raise OSError("folders open only on Windows")
     os.startfile(path)
+
+
+def _typed_lines(raw: object) -> list[LineIn] | None:
+    """The window's notepad lines, or None when anything has the wrong shape or type."""
+    if not isinstance(raw, list):
+        return None
+    lines: list[LineIn] = []
+    for entry in raw:
+        if not isinstance(entry, dict) or "captured_at" not in entry:
+            return None
+        line_id, text, at, pasted = (entry.get(k) for k in ("id", "text", "captured_at", "pasted"))
+        if not (isinstance(line_id, str) and isinstance(text, str) and isinstance(pasted, bool)):
+            return None
+        if at is not None and (not isinstance(at, int) or isinstance(at, bool)):
+            return None
+        lines.append(LineIn(line_id, text, at, pasted))
+    return lines
 
 
 class PingReply(TypedDict):
@@ -150,6 +168,25 @@ class BridgeApi:
         if self._asker is None or not isinstance(meeting_id, str):
             return {"ok": False}
         return self._asker.prepare(meeting_id)
+
+    def save_notes(self, meeting_id: str, lines: list[Any]) -> dict[str, Any]:
+        """The meeting's notepad as it is now (BUILD.md §7.1), saved whole. Every entry must be
+        {"id": str, "text": str, "captured_at": epoch ms or null, "pasted": bool}, or nothing
+        is saved. The lines are content: logs get the meeting and a count."""
+        typed = _typed_lines(lines) if isinstance(meeting_id, str) else None
+        if typed is None:
+            return {"ok": False}
+        try:
+            with self._db() as conn:
+                NotepadStore(conn).replace(meeting_id, typed)
+        except (KeyError, ValueError) as exc:  # no such meeting, or past the pad's limits
+            reason = type(exc).__name__
+            log.info("notes_refused", meeting_id=meeting_id, lines=len(typed), reason=reason)
+            return {"ok": False}
+        except sqlite3.Error as exc:  # e.g. busy: the window saves again on the next change
+            log.warning("notes_not_saved", meeting_id=meeting_id, error=type(exc).__name__)
+            return {"ok": False}
+        return {"ok": True}
 
     def set_item_status(self, item_id: str, status: str) -> dict[str, Any]:
         """Tick an action item done (or open it again, or dismiss it)."""

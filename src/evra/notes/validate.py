@@ -4,7 +4,8 @@ supported by them: it shares at least 20% of its content words with them (5-lett
 embedding is close enough to theirs (`SemanticCheck`, one batch for all such bullets). Every
 number and name in it must still appear in what it cites ("twelve thousand" counts for 12,000,
 and so does "12k"). Conversation carries context across turns, so a name or number said up to
-three lines from a cited line gets that line added as a citation."""
+three lines from a cited line gets that line added as a citation. A typed note cited by its label
+(n:3, or user.3 as gemma4 writes it) cites the owner's notes, as [user] does."""
 
 from __future__ import annotations
 
@@ -28,7 +29,12 @@ NEARBY = 3  # a name or number said up to 3 lines away is cited from there
 _THOUSANDS = re.compile(r"(\d+(?:\.\d+)?)\s?[kK]\b")
 _RSQUO = chr(0x2019)  # typographic apostrophe
 CITATION_RE = re.compile(r"^(u:[\w-]+|user|n:[\w-]+|m:\d+|d:\d+|w:\d+|g)$")
-_INLINE = re.compile(r"\s*\[((?:u:[\w-]+|user)(?:\s*,\s*(?:u:[\w-]+|user))*)\]")
+# One of the owner's notes by its label: A0 shows them as [n:3], and gemma4 also writes user.3.
+# Either cites the notes, as "user" does.
+_NOTE_LABEL = r"(?:n|user)[.:]\d+"
+_NOTE_CITATION = re.compile(rf"^{_NOTE_LABEL}$")
+_CITED = rf"(?:u:[\w-]+|{_NOTE_LABEL}|user)"
+_INLINE = re.compile(rf"\s*\[({_CITED}(?:\s*,\s*{_CITED})*)\]")
 _WORD = re.compile(rf"[A-Za-z0-9]+(?:['{_RSQUO}][A-Za-z]+)?")
 _NUMBER = re.compile(r"\d+(?:[.,:]\d+)*")
 _CAPITALISED = re.compile(r"\b[A-Z][A-Za-z]+\b")
@@ -210,6 +216,8 @@ def _claim(
     text, raw = _citations(bullet)
     cited: list[str] = []
     for citation in raw:
+        if _NOTE_CITATION.match(citation):
+            citation = "user"
         if not CITATION_RE.match(citation):
             continue
         if citation == "user":

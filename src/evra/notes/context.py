@@ -51,6 +51,15 @@ def estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / CHARS_PER_TOKEN)
 
 
+def _in_time_order(utterances: Sequence[Utterance]) -> list[Utterance]:
+    return sorted(utterances, key=lambda u: (u.start_ms, u.seq))
+
+
+def line_aliases(utterances: Sequence[Utterance]) -> dict[str, str]:
+    """u:1..u:N -> utterance id, numbered as `transcript_lines` numbers them."""
+    return {f"u:{n}": u.id for n, u in enumerate(_in_time_order(utterances), start=1)}
+
+
 def transcript_lines(
     utterances: Sequence[Utterance], only: Collection[str] | None = None
 ) -> tuple[str, dict[str, str]]:
@@ -59,8 +68,7 @@ def transcript_lines(
     lines: list[str] = []
     aliases: dict[str, str] = {}
     skipped = False
-    ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
-    for n, u in enumerate(ordered, start=1):
+    for n, u in enumerate(_in_time_order(utterances), start=1):
         alias = f"u:{n}"
         aliases[alias] = u.id
         if only is not None and u.id not in only:

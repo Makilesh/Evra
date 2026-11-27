@@ -8,6 +8,7 @@ parts, A2, then combined, A3).
     uv run python tools/bakeoff_notes.py gemma4:12b --meeting-id <id> --show   # a real meeting
     uv run python tools/bakeoff_notes.py gemma4:12b --minutes 15,30,45,60 --path windows
     uv run python tools/bakeoff_notes.py gemma4:12b --hours 2   # the 60-minute call twice over
+    uv run python tools/bakeoff_notes.py gemma4:12b --notes     # with the owner's typed notes
 
 Real-meeting output stays on this console; never commit it (BUILD.md §9.3).
 Columns: path = how the note was written (`--path` forces it: auto, single or windows);
@@ -22,6 +23,8 @@ commitments = planted tasks found in one action item (its owner, text and due da
 on GPU = share of the loaded model in VRAM (from Ollama's /api/ps). After each run come the
 points the check dropped, with their reasons and the lines they cite. `--minutes` cuts the
 60-minute call after its first minutes and counts only the facts planted before each cut.
+`--notes` gives the 60-minute call the typed lines of `tools/notes_fixture.py`, linked first as
+the job links them, and counts the [user] points written and kept.
 """
 
 from __future__ import annotations
@@ -47,12 +50,14 @@ from evra.notes.job import write_note_and_items
 from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.structured import parse_reply
 from evra.notes.templates import Template, load_template
+from evra.notes.user_notes import notes_text
 from evra.notes.validate import CheckedNote, Grounder
 from evra.notes.writer import NoteError, NoteResult, synthesis_only
 from evra.paths import resolve_paths
 from evra.services.views import item_text
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore, Utterance
+from evra.store.notepad import NoteLine
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
 
@@ -64,6 +69,7 @@ from tools.bakeoff_parts import (
     path_settings,
     taken_path,
 )
+from tools.notes_fixture import NOTES_SUFFIX, linked_notes, user_points, with_notes
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "notes"
 
@@ -82,6 +88,7 @@ class Case:
     meeting: dict[str, Any]
     utterances: list[Utterance]
     expected: tuple[Expected, ...]
+    notes: tuple[NoteLine, ...] = ()  # typed during the call, not yet linked (`--notes`)
 
 
 @dataclass(frozen=True)
@@ -118,6 +125,7 @@ class Row:
     combine_tokens: int | None = None  # A3's reply, in tokens
     removed: tuple[int, int] = (0, 0)  # A3 removed: repeats, questions answered later
     duplicates: int = 0  # facts found in two items of one kind
+    user_points: tuple[int, int, int] | None = None  # with notes: [user] written, kept, items
 
     @property
     def validity(self) -> float:
@@ -191,6 +199,12 @@ def load_case(path: Path) -> Case:
     return Case(path.stem, meeting, utterances, expected)
 
 
+def fixture_cases() -> list[Case]:
+    """Every synthetic call in the fixtures folder (a file of typed notes is not a call)."""
+    paths = sorted(FIXTURES.glob("*.json"))
+    return [load_case(p) for p in paths if not p.stem.endswith(NOTES_SUFFIX)]
+
+
 HOUR_MS = 3_600_000
 
 
@@ -258,7 +272,7 @@ def dropped_points(
     reply: str, case: Case, template: Template, semantic: SemanticCheck | None
 ) -> tuple[Dropped, ...]:
     """The note's own points the check dropped, why, and what they cite: the same check again on
-    A1's reply (its embeddings are cached, so no new request)."""
+    A1's reply (its embeddings are cached, so no new request), the case's typed notes included."""
     draft, _ = parse_reply(NoteDraft, reply)
     if draft is None:
         return ()
@@ -266,7 +280,10 @@ def dropped_points(
     bullets: list[NoteBullet] = [*own.summary, *(b for s in own.sections for b in s.bullets)]
     context = build_context(meeting=case.meeting, utterances=case.utterances)
     grounder = Grounder(
-        aliases=context.aliases, utterance_text=context.utterance_text, semantic=semantic
+        aliases=context.aliases,
+        utterance_text=context.utterance_text,
+        user_notes=notes_text(case.notes),
+        semantic=semantic,
     )
     drops: list[Dropped] = []
     for bullet, (checked, reason) in zip(bullets, grounder.check_all(bullets), strict=True):
@@ -310,12 +327,14 @@ def _show(model: str, case: Case, result: NoteResult, extraction: Extraction) ->
 def run_case(
     provider: LlmProvider, model: str, case: Case, settings: LlmSettings, *, show: bool = False
 ) -> Row:
-    """The note as the window writes it, with the meaning check, scored."""
+    """The note as the window writes it, with the meaning check (and the case's typed notes,
+    linked first), scored."""
     template = load_template(str(case.meeting["template"]))
     recorder = Recorder(provider)
     semantic = SemanticCheck(Embedder(recorder, settings.embedding_model))
     started = time.monotonic()
     try:
+        notes = linked_notes(case, semantic.embedder)
         result, extraction = write_note_and_items(
             recorder,
             model=model,
@@ -324,6 +343,7 @@ def run_case(
             template=template,
             settings=settings,
             semantic=semantic,
+            notes=notes,
         )
     except (LlmError, NoteError) as exc:
         return Row(model, case.name, 0.0, 0, 0, False, 0, 0, None, None, type(exc).__name__)
@@ -331,9 +351,12 @@ def run_case(
     note = result.note
     path = taken_path(result, extraction)
     drops: tuple[Dropped, ...] = ()
+    from_notes: tuple[int, int, int] | None = None
     if not result.items_only:  # the reply the note came from (A1's or A3's), after any repair
         reply = recorder.replies[-1 if path == "windows" else int(result.repaired)]
         drops = dropped_points(reply, case, template, semantic)
+        if case.notes:
+            from_notes = user_points(reply, result, extraction)
     parts = part_calls(recorder.calls)
     if show:
         _show(model, case, result, extraction)
@@ -373,6 +396,7 @@ def run_case(
         combine_tokens=parts.combine_tokens,
         removed=(extraction.repeats_removed, extraction.answered_removed),
         duplicates=surviving_duplicates(extraction.items, facts),
+        user_points=from_notes,
     )
 
 
@@ -413,6 +437,9 @@ def format_drops(row: Row) -> list[str]:
         lines.append(f"    - [{drop.reason}] {drop.text}")
         lines += [f"        {line}" for line in drop.cited]
     lines.append(f"  decisions that repeated an action item: {row.tasks_as_decisions}")
+    if row.user_points is not None:
+        written, kept, items = row.user_points
+        lines.append(f"  [user] points: {written} written, {kept} kept; {items} items cite them")
     return lines
 
 
@@ -427,6 +454,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--path", choices=PATHS, default="auto", help="one pass, or in parts")
     parser.add_argument("--minutes", default="", help="cuts of the 60-minute call: 15,30,45,60")
     parser.add_argument("--hours", type=int, default=1, help="the 60-minute call said N times")
+    parser.add_argument("--notes", action="store_true", help="the 60-minute call's typed notes")
     args = parser.parse_args(argv)
     if args.meeting_id:
         cases = [meeting_case(args.meeting_id)]
@@ -435,7 +463,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.hours > 1:  # as the asking bake-off's --hours builds it
         cases = [repeat_case(load_case(FIXTURES / LONG_FIXTURE), args.hours)]
     else:
-        cases = [load_case(p) for p in sorted(FIXTURES.glob("*.json"))]
+        cases = fixture_cases()
+    if args.notes:
+        cases = [with_notes(case) for case in cases]
     settings = path_settings(LlmSettings(think=args.think, keep_alive="5m"), args.path)
     provider = OllamaProvider(settings)
     rows: list[Row] = []

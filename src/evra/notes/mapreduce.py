@@ -4,8 +4,9 @@ every part's digest (A3). The digests' decisions, commitments and questions beco
 records through the same steps as A4-A6's items (`evra.notes.extract`), merged across parts.
 
 Order (§8.3, RB30): every A2 call, then A3, then one check of every item (one embedding batch),
-A3's pruning, then the note's own check. A part whose reply fails is left out (RB28). Nothing
-here logs or raises with transcript, digest, note or item text."""
+A3's pruning, then the note's own check. A part whose reply fails is left out (RB28). A part sees
+the owner's notes about it, A3 all of them (RB36). Nothing here logs or raises with transcript,
+digest, note or item text."""
 
 from __future__ import annotations
 
@@ -22,14 +23,7 @@ from evra.config import LlmSettings
 from evra.llm.prompt_files import PromptPart, load_part
 from evra.llm.provider import ChatMessage, LlmProvider
 from evra.llm.schemas import CombinedNote, WindowDigest, WindowPoint
-from evra.notes.context import (
-    ELLIPSIS,
-    EN_DASH,
-    MeetingContext,
-    as_data,
-    build_context,
-    estimate_tokens,
-)
+from evra.notes.context import ELLIPSIS, EN_DASH, MeetingContext, as_data, estimate_tokens
 from evra.notes.errors import NoteCutOff, NoteError, NoteInvalid, NoteTooLong
 from evra.notes.extract import (
     ALL_KINDS,
@@ -45,6 +39,7 @@ from evra.notes.extract import (
 from evra.notes.prompt_input import combine_prompt
 from evra.notes.structured import Structured, chat_structured
 from evra.notes.templates import Template
+from evra.notes.user_notes import NotesInput, notes_context
 from evra.notes.validate import Grounder
 from evra.notes.windows import Window, split_windows
 from evra.notes.writer import (
@@ -56,6 +51,7 @@ from evra.notes.writer import (
     prompt_limit,
 )
 from evra.store.meetings import Utterance
+from evra.store.notepad import NoteLine
 from evra.transcribe.cli import format_ms
 
 log = structlog.get_logger(__name__)
@@ -85,6 +81,29 @@ def part_note(window: Window, parts: int) -> str:
         f"This is part {window.index} of {parts} of the meeting ({when});"
         f" {ELLIPSIS} marks lines left out.\n"
     )
+
+
+def notes_by_part(
+    lines: Sequence[NoteLine], windows: Sequence[Window]
+) -> dict[int, frozenset[str]]:
+    """The notes each part shows, by id, for each part's number (RB36). A note typed during the
+    call goes to the parts that hold one of its linked lines; with none, to the first part whose
+    span holds its time, else to the last part. Before, after and context notes go to every
+    part, so a part's A2 treats its annotated stretches in detail and no other part's."""
+    held = {window.index: frozenset(window.ids) for window in windows}
+    shown: dict[int, set[str]] = {window.index: set() for window in windows}
+    for line in lines:
+        targets = list(windows)
+        if line.phase == "during" and not line.is_context:
+            linked = {uid for uid, _ in line.aligned}
+            targets = [w for w in windows if linked & held[w.index]]
+            if not targets:
+                at = line.captured_at_ms
+                spans = [w for w in windows if at is not None and w.start_ms <= at <= w.end_ms]
+                targets = spans[:1] or list(windows[-1:])
+        for window in targets:
+            shown[window.index].add(line.id)
+    return {index: frozenset(ids) for index, ids in shown.items()}
 
 
 def _fits(prompt_tokens: int, settings: LlmSettings, *, reply: int | None = None) -> None:
@@ -203,23 +222,26 @@ def _read_parts(
     meeting: Mapping[str, Any],
     utterances: Sequence[Utterance],
     settings: LlmSettings,
-    user_notes: str,
+    notes: NotesInput,
     on_stage: Callable[[str], None],
 ) -> list[_Part]:
-    """A2 on every window, back to back. A part that fails is left out (a retry at temperature 0
-    repeats it); when every part fails, the first error is raised."""
+    """A2 on every window, back to back, each with the notes about it. A part that fails is left
+    out (a retry at temperature 0 repeats it); when every part fails, the first error is
+    raised."""
     windows = split_windows(utterances)
+    shown = notes_by_part(notes.lines, windows)
     task = load_part("a2_digest")
     parts: list[_Part] = []
     first_error: NoteError | None = None
     for window in windows:
         on_stage(f"part:{window.index}:{len(windows)}")
-        context = build_context(
+        context = notes_context(
             meeting=meeting,
             utterances=utterances,
-            user_notes=user_notes,
+            notes=notes,
             only=frozenset(window.ids),
             note=part_note(window, len(windows)),
+            shown_notes=shown[window.index],
         )
         try:
             reply = _read_part(
@@ -304,15 +326,15 @@ def write_long_note(
     template: Template,
     settings: LlmSettings,
     grounder: Grounder,
-    user_notes: str,
+    notes: NotesInput,
     on_stage: Callable[[str], None],
     names: Mapping[str, str] | None = None,
 ) -> tuple[NoteResult, Extraction]:
     """The note's own sections (A3) and its records (from the digests), checked, not yet saved.
-    Every part and the combining call see all of `user_notes` (A0's text). A3's reply has twice
-    the usual room, inside the same context (RB45). When A3's JSON fails even after its repair,
-    the records alone make the note (RB16); A3's NoteCutOff and NoteTooLong are raised, and so
-    is every LlmError.
+    Each part sees the owner's notes about it and the combining call all of them, numbered alike
+    (RB36). A3's reply has twice the usual room, inside the same context (RB45). When A3's JSON
+    fails even after its repair, the records alone make the note (RB16); A3's NoteCutOff and
+    NoteTooLong are raised, and so is every LlmError.
 
     The note's version is a0-v1+a2-v1+a3-v2 ("+a9-v1" after a part's or A3's repair) and its
     tokens and seconds are every call's; a note of the records alone has the A0 version, and
@@ -323,13 +345,13 @@ def write_long_note(
         meeting=meeting,
         utterances=utterances,
         settings=settings,
-        user_notes=user_notes,
+        notes=notes,
         on_stage=on_stage,
     )
     digests, numbered = digests_text(parts)
     on_stage("combining")
-    context = build_context(
-        meeting=meeting, utterances=utterances, user_notes=user_notes, only=(), note=COMBINE_NOTE
+    context = notes_context(
+        meeting=meeting, utterances=utterances, notes=notes, only=(), note=COMBINE_NOTE
     )
     prompt = combine_prompt(
         context, template=template, schema=CombinedNote.model_json_schema(), digests=digests
@@ -379,5 +401,11 @@ def write_long_note(
         seconds=sum(c.seconds for c in calls),
         repaired=any(c.repaired for c in calls),
     )
-    result = check_drafted(drafted, context=context, template=template, semantic=grounder.semantic)
+    result = check_drafted(
+        drafted,
+        context=context,
+        template=template,
+        semantic=grounder.semantic,
+        user_notes=notes.user_notes,
+    )
     return result, extraction

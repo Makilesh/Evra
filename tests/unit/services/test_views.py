@@ -11,6 +11,7 @@ from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.store.notepad import LineIn, NotepadStore
 from evra.store.notes import NoteStore
 
 
@@ -242,6 +243,77 @@ def test_a_meeting_without_note_or_transcript(conn: sqlite3.Connection) -> None:
 
 def test_an_unknown_meeting_has_no_detail(conn: sqlite3.Connection) -> None:
     assert meeting_detail(conn, "nope") is None
+
+
+def test_detail_lists_the_typed_notes_with_their_linked_lines(conn: sqlite3.Connection) -> None:
+    """RB2: what Task 7's My notes tab reads, as JSON."""
+    started = 1_790_600_000_000
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="Weekly 1:1",
+        mode="one_on_one",
+        situation="call_headphones",
+        template="one_on_one",
+        started_at_ms=started,
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    first, second = (
+        store.add_utterance(
+            version_id=vid, meeting_id=mid, channel=1, start_ms=at, end_ms=at + 4_000, text=text
+        )
+        for at, text in [(60_000, "Finance approved it."), (70_000, "Great news.")]
+    )
+    notepad = NotepadStore(conn)
+    pasted = "Pasted agenda " * 40
+    notepad.replace(
+        mid,
+        [
+            LineIn("a", "Budget approved", started + 75_000, False),
+            LineIn("b", pasted, started + 1_000, True),
+            LineIn("c", "Untimed", None, False),
+        ],
+    )
+    notepad.set_alignment(mid, {"a": [(second.id, 0.8), (first.id, 0.5), ("gone", 0.4)]})
+    detail = meeting_detail(conn, mid)
+    assert detail is not None
+    assert detail["notes"] == [
+        {
+            "id": "a",
+            "text": "Budget approved",
+            "captured_at": started + 75_000,
+            "pasted": False,
+            "captured_ms": 75_000,
+            "phase": "during",
+            "aligned": [  # in the call's order; a line no longer in the transcript is left out
+                {"utterance_id": first.id, "start_ms": 60_000},
+                {"utterance_id": second.id, "start_ms": 70_000},
+            ],
+        },
+        {
+            "id": "b",
+            "text": pasted,
+            "captured_at": started + 1_000,
+            "pasted": True,
+            "captured_ms": 1_000,
+            "phase": "during",
+            "aligned": [],
+        },
+        {
+            "id": "c",
+            "text": "Untimed",
+            "captured_at": None,
+            "pasted": False,
+            "captured_ms": None,
+            "phase": "after",
+            "aligned": [],
+        },
+    ]
+    json.dumps(detail)
+    empty = store.create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    nothing_typed = meeting_detail(conn, empty)
+    assert nothing_typed is not None and nothing_typed["notes"] == []
 
 
 def test_summary_duration_only_once_finished() -> None:

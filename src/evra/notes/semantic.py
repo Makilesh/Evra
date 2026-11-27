@@ -52,6 +52,11 @@ class SemanticCheck:
         self._embedder = embedder
         self.threshold = threshold
 
+    @property
+    def embedder(self) -> Embedder:
+        """Its embedder, for a step of the same job that embeds first (linking typed notes)."""
+        return self._embedder
+
     def similarities(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
         """For each (claim, source): the cosine of the claim as a query and the source. Claims
         and sources go in one batch, so a few pairs are one embedding request."""

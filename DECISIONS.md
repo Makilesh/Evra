@@ -453,3 +453,41 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - A longer call is read in parts instead of failing `too_long`: the 2-hour call took about 10 minutes and found 11 of its 13 facts with the records.
   - Its note is long (45–68 points) because A3 does not keep to its length; the records still list every item (BACKLOG "A3's note runs long").
   - A part that fails leaves about 10 minutes out of the note, and only the log says so; a call whose digests together pass the budget (over about four hours) fails `too_long` (BACKLOG has both).
+
+## Notepad alignment weights (2026-11-27)
+- **Context:** the note job links each line the owner typed during a call to the transcript lines it was written about (BUILD.md §7.2, `notes/align.py`), so A1 can expand those topics and a long call's parts get the notes about them. §7.2 gives the starting weights (time 0.4, words 0.3, meaning 0.3), the candidates (utterances ending from 90 s before the line was typed to 30 s after, the time weight peaking 15 s after a line ends, spread 30 s), a cut-off of 0.35 and at most 5 lines a note, and asks to tune them on the owner's labelled lines against: precision ≥ 0.80 at recall ≥ 0.60, and a 60-minute meeting with 50 note lines linked in under 5 s. Without meaning (no embedder, or the batch fails) the score is (0.4 · time + 0.3 · words) / 0.7. The owner has labelled no lines yet; Plan B measures a synthetic set.
+- **Evidence:** `tools/eval_alignment.py` with and without `--no-embed` (Ollama 0.34.4, RTX 5070 Ti Laptop, `qwen3-embedding:0.6b`). The set (`tests/fixtures/notes/one_on_one_60min_notes.json`): 12 terse lines typed during the 60-minute synthetic 1:1, one after each planted fact but the last, each started 6–29 s after the last line it notes ended (6–45 s after the first), labelled with the 1–3 lines it is about (21 in all). "Right" is a linked line that is labelled.
+
+  | | linked | right | precision | recall | the 12 lines | 50 lines over the hour |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | with meaning | 60 | 20 | 33% | 95% | 5.19 s (the embedding model loaded first), 3.31 s warm | 8.36–8.64 s |
+  | time and words alone | 60 | 20 | 33% | 95% | under 0.01 s | 0.02 s |
+
+  - Every note links 5 lines. With meaning, each note's best line is one it is about (0.69–0.97), and its other labelled lines score 0.53–0.89. Its neighbours come next: a line heard 0–30 s before the note scores 0.31–0.40 on time alone, and qwen3 puts two lines of one conversation at a cosine of 0.2–0.5, so the neighbours score 0.42–0.62 and pass 0.35. Without meaning the reweighting lifts time alone to 0.45–0.57, and shared words alone to 0.43, so the cut-off passes them too. The one labelled line missed is "Right, we don't have an answer on that yet." (the legacy API, n12), sixth on its note.
+  - Other cut-offs on the same set (score at least, most per note: precision / recall): with meaning 0.60, 5: 95% / 86%; 0.65, 5: 100% / 76%; 0.55, 3: 83% / 90%; 0.50, 2: 83% / 90%. Time and words alone 0.65, 5: 85% / 81%; 0.70, 5: 100% / 76%; 0.60, 2: 83% / 90%. At most one line per note gives 100% / 57% in both.
+  - Time: Ollama embeds 93–99 short lines a second whatever the request size (a spike: 64, 128 and 256 lines a request; 512 answered HTTP 400). The 12 notes' candidate windows hold 331 transcript lines; 50 lines spread over the hour hold 836, every line of the call, so their one batch takes 8.4–8.6 s, the same with gemma4:12b loaded too. Loading the embedding model first adds about 1.9 s.
+- **Decision:** the values stay §7.2's (the plan's): `W_TIME, W_LEX, W_SEM, MIN_SCORE, MAX_PER_LINE = 0.4, 0.3, 0.3, 0.35, 5`, `BEFORE_S, AFTER_S, PEAK_S, SPREAD_S = 90, 30, 15, 30`, and the query instruction `ALIGN_TASK`. On this set they miss §7.2's precision (33% at 95% recall), and with meaning its time for 50 lines (8.4–8.6 s). The cut-off is not tuned here: 12 lines labelled by the builder are not the owner's labelled lines §7.2 asks for, and the cut-offs that meet it (0.60 with meaning, 0.65–0.70 without) are read off those 12 alone (BACKLOG "Notepad links on the owner's lines").
+- **Consequences:**
+  - A typed line's `|| aligned:` lists about 5 lines: the 1–2 it is about and their neighbours, a stretch of about a minute. A1 reads the stretch; a long call's part gets every note whose stretch it holds (RB36); the My notes tab will show the neighbours too.
+  - Linking is the note job's one embedding batch before its chats (RB35). With 12 notes it adds about 3.3 s to the note (5.2 s when the embedding model has to load); with 50 over an hour, 8.4–8.6 s (BACKLOG "Linking many notes").
+  - The batch embeds the transcript lines the note's check may cite, so a point citing one of them is checked without embedding it again.
+
+## Typed notes in the note, and a note cited by its label (2026-11-27)
+- **Context:** the owner's typed lines now reach every prompt about a meeting, in A0's `<user_notes>`: `[n:k] (mm:ss | before | after) text || aligned: u:…`, or `[n:k] (context) text`, numbered over the whole meeting. The note job, the title and asking build that context in one place (`user_notes.meeting_context`, RB1). A long call's part shows the notes about its stretch, and A3 shows them all (RB36). A0 asks for the notes to be cited as `user`, and the check accepted only `user` (or `[user]` in a point's text).
+- **Evidence:** `tools/bakeoff_notes.py gemma4:12b --runs 1 --minutes 60 [--notes]` (the whole 60-minute synthetic 1:1, auto path), and the same call with its notes in one pass, its budget raised to 28,400 (a scratch run; Ollama counted 28,460 prompt tokens, under the 28,672 that `num_ctx` leaves after the reply's room). "Own" coverage counts the note's own points; "with items" adds the action items, decisions and open questions.
+
+  | run | path, in all | kept / dropped | validity | coverage own / with items | items a/d/q | commitments | points citing the notes: written / kept, items |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | no notes | one pass, 111.2 s | 16 / 1 | 94% | 46% / 77% | 19/7/3 | 2/3 | - |
+  | notes, before the label fix | 7 parts, 280.2 s | 18 / 10 | 64% | 8% / 46% | 22/10/0 | 3/3 | 9 / 0, 0 |
+  | notes | 7 parts, 274.3 s | 27 / 1 | 96% | 54% / 77% | 22/10/0 | 3/3 | 9 / 9, 1 |
+  | notes, one pass, before the label fix | one pass, 107.9 s | 18 / 1 | 95% | 92% / 92% | 9/6/3 | 3/3 | 12 (counted later) / 0, 0 |
+  | notes, one pass | one pass, 107.6 s | 19 / 0 | 100% | 92% / 92% | 9/6/3 | 3/3 | 12 / 12, 3 |
+
+  - The 12 notes add about 440 tokens: the call's A1 estimate goes from 27,738 to 28,175, over the 28,000 budget, so with its notes the call is read in parts (274–280 s instead of about 110 s).
+  - A3 wrote one point for each of 9 notes, each ending in a citation list such as "[u:140, u:138, u:139, u:140, u:141, u:142, user.2]": `user` and the note's number. The check read only `u:…` and `user` in brackets, so the bracket stayed in the claim, its numbers were not in the cited lines, and all 9 were dropped as `number_not_cited`. In one pass, A1 cited the notes by their label too, in its citation lists; those points were kept for their transcript lines, but not as citing the notes.
+- **Decision:** the check reads a note's label, `n:3`, and gemma4's `user.3` (or `user:3`), in a citation list or in brackets in a point's text, as a citation of the user's notes, the same as `user` (`notes/validate.py`). Appendix B's citation pattern already names `n:<id>`. Such a point is still checked against all of the notes' text, as `user` is. The prompts are unchanged (A0 stays `a0-v1`).
+- **Consequences:**
+  - In one pass, the notes took the 60-minute call's own coverage from 46% to 92%: 12 of 13 facts, the 13th (38 customers) being in the note as "38 sign-ups", which the score's keywords don't match. It found 3 of 3 commitments, and kept every point written from a note.
+  - A call close to the budget is read in parts once its notes are added. That is 2.5 times slower here (274–280 s; §9.5 asks for 90 s, and one pass took 108–111 s), and its coverage gain is smaller (54% own, 77% with items).
+  - A point that cites a note by its label is checked against every note, so a name from another note can support it. One point ("The Atlas beta currently has 38 sign-ups…") was kept that way, and it is true.

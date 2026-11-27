@@ -16,6 +16,7 @@ from evra.notes.cli import FALLBACK_MODEL, cite_marks
 from evra.notes.errors import NoteError
 from evra.notes.job import failure_reason
 from evra.notes.semantic import Embedder
+from evra.notes.user_notes import meeting_context
 from evra.paths import AppPaths
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
@@ -98,6 +99,7 @@ def _run(
             _err(f"No model chosen yet. Pick one, e.g.: evra ask --model {example} ...")
             return 2
         stored = questions.add(meeting_id, question)
+        context, notes = meeting_context(conn, meeting_id)  # as the window asks: notes too
         result = ask_meeting(
             llm_provider,
             model=model,
@@ -106,6 +108,8 @@ def _run(
             question=question,
             settings=settings,
             history=questions.history(meeting_id),
+            notes=notes,
+            context=context,
             embedder=Embedder(llm_provider, llm.embedding_model),  # as the window asks
         )
         questions.answer(stored.id, result, transcript_version_id=version_id)

@@ -11,6 +11,7 @@ from evra.services.meetings import MeetingService
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.store.notepad import LineIn, NotepadStore
 from tests.unit.notes.fakes import FakeProvider, title_reply
 from tests.unit.notes.test_mapreduce import PART1, PART2, SAID, combined
 from tests.unit.services.test_meeting_service import (
@@ -46,6 +47,46 @@ def test_the_note_shows_each_stage_and_checks_meaning_with_the_embedding_model(
     ready_at = next(i for i, (n, _) in enumerate(items) if n == "note.ready")
     assert stages[-1][0] < ready_at  # D16: every stage ends before the note appears
     assert embedded_with and set(embedded_with) == {"qwen3-embedding:0.6b"}
+
+
+def test_notes_are_linked_first_when_there_are_notes(tmp_path: Path) -> None:
+    """The window says "linking" before the note's chats when the owner typed notes, and the
+    note is written from them."""
+    paths = AppPaths.under(tmp_path)
+    paths.ensure()
+    conn = connect(paths.db_path)
+    migrate(conn)
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="Weekly 1:1", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    store.add_utterance(
+        version_id=vid, meeting_id=mid, channel=1, start_ms=0, end_ms=4_000, text="Some words."
+    )
+    started = int(store.get_meeting(mid)["started_at"])
+    NotepadStore(conn).replace(mid, [LineIn("n1", "Words noted", started + 10_000, False)])
+    store.finish_meeting(mid)
+    conn.close()
+    events = Events()
+    writer = FakeProvider(list(NOTE))
+    service = MeetingService(
+        paths=paths,
+        settings=Settings(),
+        emit=events,
+        kit=FakeKit(paths),
+        provider_factory=lambda s: writer,
+        level_interval_s=0.02,
+    )
+    try:
+        assert service.write_note(mid) == {"ok": True}
+        events.wait_for("note.ready", meeting_id=mid)
+        wait_for_note_jobs()
+        stages = [p["stage"] for n, p in events.items if n == "note.stage"]
+        assert stages == ["writing", "linking", "writing", "items"]
+        assert "[n:1] (00:10) Words noted || aligned: u:1" in writer.calls[0][0].content
+    finally:
+        service.shutdown()
 
 
 def test_a_long_call_shows_each_part_then_combining(tmp_path: Path) -> None:

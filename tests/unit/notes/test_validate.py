@@ -86,6 +86,28 @@ def test_user_citations_need_user_notes() -> None:
     assert note.drop_reasons == {"no_valid_citation": 1}
 
 
+def test_a_note_cited_by_its_label_is_a_user_citation() -> None:
+    """A0 labels each typed note [n:k]: gemma4 cites one as n:3, or inline as user.3, both meaning
+    the user's notes. In the 60-minute bake-off every point A3 wrote from a note read "... March 3
+    [u:140, u:141, user.2]." and was dropped for the bracket's numbers."""
+    notes = "Atlas beta moved to March 3"
+    grounder = Grounder(aliases=ALIASES, utterance_text=UTTERANCES, user_notes=notes)
+    for bullet in [
+        NoteBullet(text="The Atlas beta moved to March 3 [u:1, user.2].", citations=["u:1"]),
+        NoteBullet(text="The Atlas beta moved to March 3.", citations=["n:2"]),
+        NoteBullet(text="The Atlas beta moved to March 3 [n:2].", citations=["user:2"]),
+    ]:
+        checked, reason = grounder.check(bullet)
+        assert reason == "" and checked is not None, bullet
+        assert checked.text == "The Atlas beta moved to March 3."
+        assert "user" in checked.citations
+    no_notes = Grounder(aliases=ALIASES, utterance_text=UTTERANCES)
+    assert no_notes.check(b("The Atlas beta moved to March 3.", "n:2")) == (
+        None,
+        "no_valid_citation",
+    )
+
+
 def test_summary_bullets_are_checked_too() -> None:
     note = check(
         b("You finished the search migration.", "u:1"),

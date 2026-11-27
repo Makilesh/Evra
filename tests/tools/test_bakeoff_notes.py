@@ -2,8 +2,10 @@ import json
 from dataclasses import replace
 
 from evra.config import LlmSettings
-from evra.notes.extract import CheckedItem
+from evra.notes.extract import CheckedItem, Extraction
 from evra.notes.validate import CheckedBullet, CheckedNote, CheckedSection
+from evra.notes.writer import NoteResult
+from evra.store.notepad import NoteLine
 from tests.unit.notes.fakes import FakeProvider
 from tools.bakeoff_notes import (
     FIXTURES,
@@ -11,6 +13,7 @@ from tools.bakeoff_notes import (
     Expected,
     Row,
     covered,
+    fixture_cases,
     format_drops,
     format_table,
     in_items,
@@ -19,6 +22,7 @@ from tools.bakeoff_notes import (
     surviving_duplicates,
 )
 from tools.bakeoff_parts import cut_case, path_settings
+from tools.notes_fixture import user_points
 
 FIXTURE = FIXTURES / "one_on_one_synthetic.json"
 LONG = FIXTURES / "one_on_one_60min_synthetic.json"
@@ -94,6 +98,54 @@ def test_run_case_scores_a_fake_model_as_the_window_writes_the_note() -> None:
         ),
     )
     assert provider.embed_calls  # checked by meaning too, as the window does
+
+
+def test_the_notes_fixture_is_not_a_case_of_its_own() -> None:
+    assert [case.name for case in fixture_cases()] == [
+        "one_on_one_60min_synthetic",
+        "one_on_one_synthetic",
+    ]
+
+
+def test_run_case_writes_from_the_typed_notes_and_counts_their_points() -> None:
+    """With `--notes`, the note is written as the window writes it from typed notes: linked
+    first, then in the prompt; the run says how many [user] points the model wrote and kept."""
+    typed = NoteLine("n1", 0, "Launch moves to October 14", 80_000, "during", False, ())
+    case = replace(load_case(FIXTURE), notes=(typed,))
+    reply = json.dumps(
+        {
+            "summary": [
+                {"text": "The launch moves to October 14.", "citations": ["user"]},
+                {"text": "The launch moves to Lisbon.", "citations": ["user"]},  # not noted
+            ],
+            "sections": [],
+        }
+    )
+    provider = FakeProvider([reply, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    row = run_case(provider, "fake:1b", case, LlmSettings())
+    assert "[n:1] (01:20) Launch moves to October 14 || aligned: u:" in provider.calls[0][0].content
+    assert (row.kept, row.dropped, row.user_points) == (1, 1, (2, 1, 0))
+    assert format_drops(row)[-1] == "  [user] points: 2 written, 1 kept; 0 items cite them"
+    assert row.drops == (Dropped("The launch moves to Lisbon.", "name_not_cited", ()),)
+
+
+def test_points_from_the_notes_are_counted_however_the_model_cites_them() -> None:
+    reply = json.dumps(
+        {
+            "summary": [
+                {"text": "The launch moves [user].", "citations": ["u:1"]},
+                {"text": "The beta is set [u:2, user.3].", "citations": ["u:2"]},  # gemma4's
+                {"text": "Dana starts soon.", "citations": ["n:4"]},
+                {"text": "The user asked about it.", "citations": ["u:6"]},  # not a citation
+            ],
+            "sections": [],
+        }
+    )
+    note = CheckedNote((CheckedBullet("The launch moves.", ("a", "user")),), (), 1, 0, {})
+    result = NoteResult(note, "m", "a0-v1+a1-v4", "one_on_one", 0, 0, 0.0, False)
+    item = CheckedItem("action_item", "Send the deck", ("user",), None, None, None)
+    extraction = Extraction((item,), 0, {}, (), 0, 0, 0, 0.0, ())
+    assert user_points(reply, result, extraction) == (3, 1, 1)
 
 
 def test_run_case_reports_errors_instead_of_raising() -> None:

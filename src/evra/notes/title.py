@@ -18,7 +18,9 @@ from evra.config import LlmSettings
 from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, LlmProvider
 from evra.llm.schemas import MeetingTitle
-from evra.notes.context import MeetingContext, as_data, build_context, estimate_tokens
+from evra.notes.context import MeetingContext, as_data, estimate_tokens
+from evra.notes.errors import NoTranscript
+from evra.notes.user_notes import meeting_context
 from evra.notes.writer import prompt_limit
 from evra.store.items import ItemStore, StoredItem
 from evra.store.meetings import MeetingStore
@@ -119,7 +121,7 @@ def name_meeting(
     title, or None when the title stays (named already, no note, or no usable reply).
     `settings` are the title call's (`title_settings`; the defaults' when not given): a call
     whose whole transcript and the task would not fit them is named on a context with none of
-    its lines.
+    its lines (its notes stay), and one that would not fit even then keeps its placeholder.
 
     LLM errors reach the caller. A rename the user makes while the model thinks wins: the
     title is replaced only if it is still the placeholder that was read."""
@@ -135,22 +137,22 @@ def name_meeting(
         text = items_text(ItemStore(conn).for_generation(note.generation_id))
     if not text:
         return None
-    version_id = store.current_transcript_version(meeting_id)
-    utterances = store.utterances(version_id) if version_id else []
-    if not utterances:
+    # The same system message the note was written with (the meeting's shared context, its
+    # notes included), so Ollama keeps the meeting's processed prompt for the first question
+    # (BUILD.md 7.4). A call too long for one prompt is named from its note alone: the whole
+    # call would not fit (RB46), and when even that does not, it is not named.
+    try:
+        context, _ = meeting_context(conn, meeting_id)
+    except NoTranscript:
         return None
-    # The same system message the note was written with, so Ollama keeps the meeting's
-    # processed prompt for the first question (BUILD.md 7.4). A call too long for one prompt
-    # is named from its note alone: the whole call would not fit (RB46).
-    meeting = store.get_meeting(meeting_id)
-    context = build_context(meeting=meeting, utterances=utterances)
     messages, version = title_messages(context, text)
     limit = prompt_limit(settings or title_settings(LlmSettings()))
     if estimate_tokens(context.system + messages[1].content) > limit:
-        context = build_context(
-            meeting=meeting, utterances=utterances, only=(), note=LONG_CALL_NOTE
-        )
+        context, _ = meeting_context(conn, meeting_id, only=(), note=LONG_CALL_NOTE)
         messages, version = title_messages(context, text)
+        if estimate_tokens(context.system + messages[1].content) > limit:
+            log.info("meeting_not_named", reason="too_long")
+            return None
     reply = provider.chat_json(model, messages, MeetingTitle.model_json_schema())
     if reply.truncated:
         log.info("meeting_not_named", reason="cut_off")

@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -9,16 +10,18 @@ import structlog
 
 from evra.config import LlmSettings
 from evra.llm.provider import ChatMessage, ChatResult
-from evra.notes.context import ELLIPSIS, EN_DASH, NONE, build_context
+from evra.notes.context import ELLIPSIS, EN_DASH, build_context
 from evra.notes.errors import NoteCutOff, NoteInvalid, NoteTooLong
 from evra.notes.extract import Extraction
 from evra.notes.job import generation_version
 from evra.notes.mapreduce import COMBINE_NOTE, write_long_note
 from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template
+from evra.notes.user_notes import NO_NOTES, NotesInput, notes_input
 from evra.notes.validate import Grounder
 from evra.notes.writer import NoteResult
 from evra.store.meetings import Utterance
+from evra.store.notepad import NoteLine, Phase
 from tests.unit.notes.fakes import FakeProvider, utt
 
 MEETING = {
@@ -130,13 +133,16 @@ def run(
     *,
     settings: LlmSettings | None = None,
     semantic: SemanticCheck | None = None,
-    user_notes: str = NONE,
+    notes: NotesInput = NO_NOTES,
     names: Mapping[str, str] | None = None,
     stages: list[str] | None = None,
 ) -> tuple[NoteResult, Extraction]:
     context = build_context(meeting=MEETING, utterances=LINES)
     grounder = Grounder(
-        aliases=context.aliases, utterance_text=context.utterance_text, semantic=semantic
+        aliases=context.aliases,
+        utterance_text=context.utterance_text,
+        user_notes=notes.user_notes,
+        semantic=semantic,
     )
     seen: list[str] = [] if stages is None else stages
     return write_long_note(
@@ -147,7 +153,7 @@ def run(
         template=TEMPLATE,
         settings=settings or LlmSettings(),
         grounder=grounder,
-        user_notes=user_notes,
+        notes=notes,
         on_stage=seen.append,
         names=names,
     )
@@ -359,12 +365,44 @@ def test_every_chat_comes_before_any_embedding() -> None:
     assert provider.order[3:] and set(provider.order[3:]) == {"embed"}
 
 
-def test_parts_carry_the_users_notes() -> None:
-    """RB32: every part, and the combining call, sees all of the user's notes."""
-    provider = Scripted([PART1, PART2, combined()])
-    notes = "[n:1] (01:00) Atlas beta date"
-    run(provider, user_notes=notes)
-    assert all(f"<user_notes>\n{notes}\n</user_notes>" in c[0].content for c in provider.calls)
+def _typed(
+    line_id: str, at_ms: int, *, linked: str = "", phase: Phase = "during", context: bool = False
+) -> NoteLine:
+    aligned = ((linked, 0.8),) if linked else ()
+    return NoteLine(line_id, 0, f"Note {line_id}", at_ms, phase, context, aligned)
+
+
+def notes_shown(call: list[ChatMessage]) -> list[str]:
+    block = call[0].content.split("<user_notes>\n", 1)[1].split("\n</user_notes>", 1)[0]
+    return [row.split("]", 1)[0].removeprefix("[") for row in block.splitlines()]
+
+
+def test_each_part_sees_the_notes_about_it() -> None:
+    """RB36: a during note goes to the parts that hold its linked lines; with none, to the part
+    whose span holds its time (the first, where two overlap), else the last part. Before, after
+    and context notes go to every part, A3 sees them all, and every prompt numbers them alike.
+    Part 1 is 00:00-10:00 (k0-k59), part 2 09:00-15:00 (k54-k89)."""
+    typed = [
+        _typed("beta", 60_000, linked="k4"),  # n:1, part 1
+        _typed("legacy", 810_000, linked="k79"),  # n:2, part 2
+        _typed("deck", 580_000, linked="k56"),  # n:3, a line in both parts
+        _typed("quiet", 700_000),  # n:4, no linked line: part 2's span
+        _typed("overlap", 570_000),  # n:5, in both spans: the first
+        _typed("late", 990_000),  # n:6, past every part: the last
+        _typed("agenda", -30_000, phase="before"),  # n:7
+        _typed("recap", 1_000_000, phase="after"),  # n:8
+        _typed("spec", 30_000, context=True),  # n:9
+    ]
+    notes = notes_input([replace(line, position=k) for k, line in enumerate(typed)])
+    from_notes = {"text": "Note beta.", "citations": ["user"]}  # a point from the notes
+    reply = combined(summary=[from_notes])
+    provider = Scripted([PART1, PART2, reply])
+    result, _ = run(provider, notes=notes)
+    first, second, combine = (notes_shown(call) for call in provider.calls)
+    assert first == ["n:1", "n:3", "n:5", "n:7", "n:8", "n:9"]
+    assert second == ["n:2", "n:3", "n:4", "n:6", "n:7", "n:8", "n:9"]
+    assert combine == [f"n:{k}" for k in range(1, 10)]
+    assert [(b.text, b.citations) for b in result.note.summary] == [("Note beta.", ("user",))]
 
 
 def test_nothing_is_logged_with_content() -> None:

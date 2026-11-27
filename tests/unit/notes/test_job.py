@@ -19,16 +19,18 @@ from evra.llm.provider import (
     LlmUnavailable,
 )
 from evra.llm.schemas import NoteDraft
+from evra.notes.align import ALIGN_TASK, align
 from evra.notes.context import build_context
 from evra.notes.job import NothingSupported, SavedNote, failure_reason, write_and_save
 from evra.notes.prompt_input import note_prompt
-from evra.notes.semantic import Embedder, SemanticCheck
+from evra.notes.semantic import Embedder, SemanticCheck, as_query
 from evra.notes.templates import load_template
 from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong, NoTranscript
 from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
+from evra.store.notepad import LineIn, NotepadStore
 from evra.store.notes import NoteStore
 from tests.unit.notes.fakes import FakeProvider
 from tests.unit.notes.test_mapreduce import PART1, PART2, SAID, combined
@@ -358,6 +360,97 @@ def test_nothing_is_logged_with_content(conn: sqlite3.Connection) -> None:
         _write(conn, FakeProvider([GOOD, ACTIONS, DECISIONS, NO_ITEMS]))
     text = json.dumps(logs, default=str)
     assert "migration" not in text and "designer" not in text and "annual" not in text
+
+
+def _typed(conn: sqlite3.Connection, *lines: tuple[str, str, int, bool]) -> str:
+    """The meeting with the owner's lines: (id, text, ms into the call, pasted)."""
+    mid = _meeting(conn)
+    started = int(MeetingStore(conn).get_meeting(mid)["started_at"])
+    typed = [LineIn(i, text, started + at, pasted) for i, text, at, pasted in lines]
+    NotepadStore(conn).replace(mid, typed)
+    return mid
+
+
+FROM_NOTES = json.dumps(
+    {
+        "summary": [
+            {"text": "You finished the search migration on Tuesday.", "citations": ["u:1"]},
+            {"text": "The search migration is done.", "citations": ["user"]},
+        ],
+        "sections": [],
+    }
+)
+
+
+def test_job_aligns_then_writes_with_notes(conn: sqlite3.Connection) -> None:
+    mid = _typed(conn, ("n1", "Search migration done, Tuesday", 14_000, False))
+    provider = FakeProvider([FROM_NOTES, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    stages: list[str] = []
+    _write(conn, provider, on_stage=stages.append)
+    assert stages == ["linking", "writing", "items"]
+    store = MeetingStore(conn)
+    version = store.current_transcript_version(mid)
+    assert version is not None
+    first = store.utterances(version)[0]
+    [line] = NotepadStore(conn).lines(mid)
+    assert line.aligned[0][0] == first.id  # the line heard just before it, with its words
+    notes = "[n:1] (00:14) Search migration done, Tuesday || aligned: u:1, u:2, u:3"
+    assert all(f"<user_notes>\n{notes}\n</user_notes>" in c[0].content for c in provider.calls)
+    stored = NoteStore(conn).current_note(mid)
+    assert stored is not None
+    assert [(b.text, b.citations) for b in stored.blocks] == [
+        ("You finished the search migration on Tuesday.", (first.id,)),
+        ("The search migration is done.", ("user",)),  # a [user] point survives the check
+    ]
+
+
+def test_linking_embeds_before_the_chats_and_the_check_reuses_its_lines(
+    conn: sqlite3.Connection,
+) -> None:
+    """RB35: linking's one batch is the only embedding before the chats; the check's batch
+    follows every chat and reuses the transcript lines linking embedded."""
+    _typed(conn, ("n1", "Search migration done", 14_000, False))
+    provider = Ordered([WITH_A_PARAPHRASE, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    _write(conn, provider, semantic=SemanticCheck(Embedder(provider, "embed")))
+    assert provider.order == ["embed", "chat", "chat", "chat", "chat", "embed"]
+    linked, checked = provider.embed_calls
+    assert linked[0] == as_query("Search migration done", ALIGN_TASK)
+    assert LINES[0][2] in linked  # the line the cake point cites
+    assert checked == [as_query("Everyone loved the cake.")]  # that line came from the cache
+
+
+def test_notes_are_linked_without_meaning_when_embedding_fails(conn: sqlite3.Connection) -> None:
+    mid = _typed(conn, ("n1", "Search migration done", 14_000, False))
+    provider = NoEmbeddings([GOOD, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    with structlog.testing.capture_logs() as logs:
+        _write(conn, provider, semantic=SemanticCheck(Embedder(provider, "embed")))
+    assert NoteStore(conn).current_note(mid) is not None  # the note goes on
+    store = MeetingStore(conn)
+    version = store.current_transcript_version(mid)
+    assert version is not None
+    [line] = NotepadStore(conn).lines(mid)
+    by_time_and_words = align([line], store.utterances(version))["n1"]
+    assert list(line.aligned) == by_time_and_words
+    skipped = [e for e in logs if e["event"] == "semantic_check_skipped"]
+    assert skipped == [
+        {"event": "semantic_check_skipped", "error": "LlmModelMissing", "log_level": "info"}
+    ]
+
+
+def test_note_lines_never_reach_the_log(conn: sqlite3.Connection) -> None:
+    """RB37: counts only (lines, linked, context)."""
+    _typed(
+        conn,
+        ("n1", "Zebra quokka tuesday", 14_000, False),
+        ("n2", "Ocelot spec " * 50, 20_000, True),
+    )
+    provider = Ordered([GOOD, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    with structlog.testing.capture_logs() as logs:
+        _write(conn, provider, semantic=SemanticCheck(Embedder(provider, "embed")))
+    text = json.dumps(logs, default=str).lower()
+    assert "zebra" not in text and "quokka" not in text and "ocelot" not in text
+    linked = next(e for e in logs if e["event"] == "notes_linked")
+    assert (linked["lines"], linked["aligned"], linked["context"]) == (2, 1, 1)
 
 
 @pytest.mark.parametrize(

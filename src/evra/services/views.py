@@ -11,6 +11,7 @@ from evra.notes.extract import ITEM_SECTIONS
 from evra.notes.templates import load_template
 from evra.store.items import ItemStore, StoredItem
 from evra.store.meetings import MeetingStore, Utterance
+from evra.store.notepad import NoteLine, NotepadStore
 from evra.store.notes import SUMMARY, NoteStore, StoredNote
 from evra.store.questions import QuestionStore, StoredQuestion
 from evra.transcribe.labels import speaker_label
@@ -126,6 +127,23 @@ def question_view(question: StoredQuestion, starts: Mapping[str, int]) -> dict[s
     return view
 
 
+def note_line_view(line: NoteLine, started_at: int, starts: Mapping[str, int]) -> dict[str, Any]:
+    """A typed line as the My notes tab reads it (RB2): when it was typed (epoch ms, and ms into
+    the call), whether it was a long paste, and the transcript lines it is linked to, in the
+    call's order (a line the transcript no longer has is left out)."""
+    linked = sorted((starts[uid], uid) for uid, _ in line.aligned if uid in starts)
+    at_ms = line.captured_at_ms
+    return {
+        "id": line.id,
+        "text": line.text,
+        "captured_at": None if at_ms is None else started_at + at_ms,
+        "pasted": line.is_context,
+        "captured_ms": at_ms,
+        "phase": line.phase,
+        "aligned": [{"utterance_id": uid, "start_ms": start} for start, uid in linked],
+    }
+
+
 def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] | None:
     store = MeetingStore(conn)
     try:
@@ -137,12 +155,17 @@ def meeting_detail(conn: sqlite3.Connection, meeting_id: str) -> dict[str, Any] 
     note = NoteStore(conn).current_note(meeting_id)
     starts = {u.id: u.start_ms for u in utterances}
     items = ItemStore(conn).for_generation(note.generation_id) if note is not None else []
+    started_at = int(meeting["started_at"])
     return {
         "meeting": meeting_summary({**meeting, "has_note": note is not None}),
         "utterances": [utterance_view(u) for u in utterances],
         "note": note_view(note, utterances, items) if note is not None else None,
         "questions": [
             question_view(q, starts) for q in QuestionStore(conn).for_meeting(meeting_id)
+        ],
+        "notes": [
+            note_line_view(line, started_at, starts)
+            for line in NotepadStore(conn).lines(meeting_id)
         ],
     }
 
