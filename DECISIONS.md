@@ -398,6 +398,43 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - The first embedding after this change reloads the model once at the new size.
   - 1024 would save more (0.93 GiB) but is under 4× the longest point query.
 
+## Extraction sorts, synthesis writes (2026-11-27)
+- **Context:** A1 v2 and v3 sorted a call's points into decisions, action items, open questions and next time on their own. On gemma4:12b that sorting stayed unreliable: a "maybe" filed as a decision, a promise left in Discussion, a topic for later dropped ("Note prompt A1 v2"). Those lists were also only note points, so nothing could be ticked done or kept when the note was written again. Spec §3.6 gives the sorting to focused calls (A4–A6) and keeps their items as records (BUILD.md §8.2).
+- **Evidence:** `tools/bakeoff_notes.py gemma4:12b --runs 2`, both synthetic 1:1s, the meaning check on. "Own" coverage is the facts found in the note's own points; "with the records" adds the action items, decisions and open questions; commitments are the planted tasks found in one action item.
+
+  | prompts | case | own coverage | with the records | items a/d/q | commitments | in all, s |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | A1 v3, no records (Plan A) | 60 min | 46%, 54% | - | - | - | 77.7, 56.4 (A1 alone) |
+  | A1 v4 + A4–A6 v1 | 60 min | 46%, 54% | 69%, 85% | 18/9/0, 12/10/0 | 3/3, 3/3 | 106.0 (cold), 65.5 |
+  | A1 v4 + A4–A6 v2 (shipped; re-run 2026-11-27) | 60 min | 46%, 46% | 77%, 62% | 19/7/3, 19/7/3 | 2/3, 2/3 | 115.4 (cold), 78.9 |
+  | A1 v3, no records | short | 100%, 100% | - | - | - | about 22 |
+  | A1 v4 + A4–A6 v2 | short | 80%, 80% | 100%, 100% | 5/1/2, 5/1/2 | 3/3, 3/3 | 29.8, 30.2 |
+
+  - A1 v4 writes about half of v3's output (1,163–1,237 tokens against 2,408–2,517), so it takes 29–48 s on the hour against 56–78 s. The three lists and the checks then take about 50 s (68 s in the cold run).
+  - The short call's own coverage falls from 100% to 80% by design: the two facts its note lacks are Them's commitments, which A1 v4 leaves to the action items, and both are there.
+  - v1 listed no open question on the hour; a6-v2 lists three, each said in the call to be still undecided, the legacy API among them. a5-v2's rule 3, and the code rule that a decision repeating a kept task is left to the task, keep a promise from showing twice.
+  - On the hour, the third commitment is listed but missed by the score: a4-v2 wrote the laptop task without "finance". a4-v2 also files two agreed dates as tasks (the Atlas beta date, the standup time), so their decision copies are left out. A v3 wording that keeps names and numbers fixed both, and the short call's "500 requests per minute", but lost the hour's open questions and, in one run, the postmortem task, so v2 stayed (BACKLOG).
+- **Decision:**
+  - A1 (`a1-v4`) writes only the template's synthesis sections, and is shown only those.
+  - A4, A5 and A6 (`v2`) are three focused calls on the same A0, back to back after A1, each re-reading only its task. Their items are checked like the note's points (with a due phrase in an action item's claim), owners are set to You, Them or unassigned, repeats in a kind are kept once, and a decision that repeats a kept task is left to the task.
+  - The items are saved as records with the note, in one transaction (`0003_items.sql`), and shown in their template sections. An action item has a Done box, and its status survives a rewrite.
+  - A long call's records come from its parts' digests through the same steps ("Long calls…" below). When A1's JSON fails even after its repair, the note is its records alone.
+- **Consequences:**
+  - Three more calls per note: with the checks, about 14 s on a 4-minute call and 50–68 s on an hour. The records list what the note's own points leave out: with them the hour finds 62–77% of its facts, against 46% in the note's own points (A4–A6 v2, 2026-11-27).
+  - The note's sorting no longer depends on A1. Some items lose a name or number, and two agreed dates per long call show as tasks (BACKLOG).
+  - Topics and key moments (A7) are still to come (BACKLOG).
+
+## Fuzzy matching with difflib (2026-11-27)
+- **Context:** BUILD.md §7.4 named rapidfuzz (ratio ≥ 90, and overlapping citations) to merge a long call's items across windows. Plan B needs the same judgement in three places: an item listed twice in one list, the same item read in two overlapping parts, and the new action item that should keep an old one's Done tick when a note is written again. Plan B adds no dependency, and rapidfuzz is not one.
+- **Evidence:** `difflib.SequenceMatcher` is in Python's standard library. A shared line alone is not enough: one line often holds two tasks ("I'll update the deck and send it to Priya"), and parts overlap by about a minute, so the same lines are read twice (RB11, RB24). Tests: `test_repeated_items_kept_once`, `test_digest_items_merge_across_windows`, and `test_status_survives_a_rewrite` (two tasks on one line keep their own status).
+- **Decision:** one rule, `extract.is_repeat`: two items of one kind repeat each other when their lowercased texts have a `SequenceMatcher` ratio of at least 0.9, or at least 0.6 and they cite a common line. It is used for:
+  - repeats within a list, kept once: the earliest, citing its repeats' lines too;
+  - the merge across a long call's parts (the departure from spec §3.6's "or overlapping citations" is in "Long calls…" below);
+  - a decision that repeats a kept task;
+  - the kept copies of a question that A3 lists as answered later;
+  - `ItemStore`'s status carry-over, newest note first.
+- **Consequences:** no new dependency, and `difflib` is fast enough for a note's tens of items. A reworded repeat shows twice (ratio under 0.6, or under 0.9 without a common line). A Done item reworded that far opens again after a rewrite, and the owner ticks it again.
+
 ## Long calls: single pass up to 60 minutes, then parts (A2/A3) (2026-11-27)
 - **Context:** a call whose note prompt (A1) did not fit the context budget failed `too_long`, and a single-pass note keeps fewer of a call's facts as the call grows (spec §1). Plan B reads long calls in parts of about 10 minutes (A2), combines the parts (A3), and sets the length where one pass stops from a measurement (spec §3.5, §4.6).
 - **How a long call is written** (`notes/windows.py`, `notes/mapreduce.py`):
@@ -406,7 +443,7 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - A3 (`a3-v2`) is A1 v4 with its first line replaced, a rule for the note's length ("at most 25 points in all, the summary included", merging repeats across parts), two rules for `repeats` and `answered`, and the parts' digests as inert JSON, every point numbered p1, p2, … across the parts. It writes the note on a context that shows none of the call's lines, and its points are checked like A1's. Its reply has twice the usual room (8,192 tokens by default, its repair too), so its prompt limit leaves that room; the context size (`num_ctx`) stays, so the model is not reloaded.
   - The digests' commitments, decisions and questions become the action items, decisions and open questions through A4–A6's own steps (`check_items`, then `settle_items`): owner, one check of them all (a commitment's due phrase is part of its claim), A3's pruning, repeats kept once (the earliest, which now cites its repeats' lines too, on one pass as well), and a decision that restates a kept task left to the task. Digest points carry no confidence.
   - A3 only removes: an item it lists as a repeat of an earlier one of the same kind (its lines join the earlier one), and a question it lists as answered later, together with the kept questions that repeat it (the same question read in two overlapping parts, which the merge has not folded yet). Every other entry is ignored. Removals are counted (`repeats`, `answered`), not dropped. A reply that is not used removes nothing.
-  - A part whose reply fails is left out (`note_part_failed`, with its number and reason); when every part fails, the first error is raised. When A3's JSON still fails after its repair, the note is its records alone (`a0-v1+a2-v1`). A cut-off A3 reply, or digests too long for one prompt, fail the note: the window and the console then say "This meeting is too long for a note. You can still ask about it."
+  - A part whose reply fails is left out (`note_part_failed`, with its number and reason); when every part fails, the first error is raised. When A3's JSON still fails after its repair, the note is its records alone (`a0-v1+a2-v1`). Digests too long for one prompt fail the note `too_long`: the window and the console then say "This meeting is too long for a note. You can still ask about it." A cut-off A3 reply fails it `cut_off` ("The model ran out of room while writing.", with Retry).
   - Version `a0-v1+a2-v1+a3-v2`, with `+a9-v1` after `a2-v1` when a part was repaired and after `a3-v2` when A3 was. Tokens and seconds are every call's. Stages: "Reading part i of n…", then "Putting the note together…".
   - `write_note_and_items` chooses, on the estimate `draft_note` checks: a call longer than `llm.single_pass_minutes`, or one whose single-pass prompt passes the budget, is read in parts. `evra note`, the window and the bake-off share that choice, and a long transcript no longer fails `too_long`.
   - The title (A8) of a call whose whole transcript and title task would not fit is written on a context with none of its lines, from the note alone (RB46).

@@ -2,6 +2,49 @@
 
 Newest first. Each entry: date, what happened, and (once code exists) the commit hash.
 
+## 2026-11-27 — Complete notes (branch `notes-complete`)
+
+- **Planned:** plan B updated from plan A's results (`1d83b00`).
+- **Embeddings through Ollama** (`0ab41cb`): `qwen3-embedding:0.6b` (639 MB, 1,024 dimensions; Apache-2.0 on its Hugging Face card) through `/api/embed`, vectors normalised in Evra. D17 now runs in Ollama instead of a torch worker (DECISIONS.md).
+- **The meaning check** (`c506afe`, `98a9155`): a point whose words fall short of the lines it cites is kept when its embedding is close enough to theirs (cosine ≥ 0.55, from `tools/calibrate_semantic.py`), and still needs its numbers and names. Long-call asking ranks a call's parts by words and meaning: one embedder per meeting, the Ask tab pre-reads a long call's parts, and a 1,536-token embedding context saves 0.58 GiB of VRAM (`e71849a`); a call every question reads whole gets the whole-call pre-read (`ac5250b`).
+- **Action items, decisions and open questions as records** (`dfd0136`, `8e55599`, `81da8e7`): A1 v4 writes the note's own sections, and A4–A6 (v2) list the records on the same meeting context. They are checked like note points, saved with the note (`0003_items.sql`) and shown in their sections; each action item has a Done box, and the tick survives a rewrite (DECISIONS "Extraction sorts, synthesis writes", "Fuzzy matching with difflib").
+- **Long calls in parts** (`fc734a9`, `0d3c221`, `acc858c`): parts of about 10 minutes cut at speaker turns (A2), combined by A3 (v2, with twice the reply room). One pass up to 60 minutes (`llm.single_pass_minutes`), parts beyond that or over the budget, so a long transcript no longer fails `too_long`. After a long silence the next part starts after it (DECISIONS "Long calls: single pass up to 60 minutes, then parts (A2/A3)").
+- **The notepad steers the note** (`e512247`, `178d877`, `6e2f59e`, `0cec96d`): the owner's typed lines are stored, linked to the transcript lines they were written about (time, words and meaning; cut-offs 0.60 with meaning, 0.65 without), shown in every prompt about the meeting, and the `[user]` points are checked against them. A long call's part gets the notes about its stretch (DECISIONS "Notepad alignment weights", "Typed notes in the note, and a note cited by its label").
+- **The My notes tab** (`460bde5`, `5304439`, `a8aff1d`): one field per line, the typed time as a time tab, the pad saved 400 ms after typing and flushed before Stop, Write note and a meeting change (a failed save is sent again), and the linked lines beside each line once the note is written. A point from the owner's notes quotes the typed line ("From your notes"; DECISIONS "A point from your notes quotes your line"). Its tests took the frontend from 144 to 175 and Python from 777 to 784; looked at in Edge with the fake bridge (light, dark, 1100×720, 720×480, keyboard and mouse).
+- **Measured** (gemma4:12b, Ollama 0.34.4, RTX 5070 Ti Laptop 12 GB, the app's defaults; `tools/bakeoff_notes.py`, 2 runs a call unless noted, the first with the model load; validity is the share of the note's own points the check kept; coverage counts the planted facts in the note's own points, then with the records):
+
+  | call | path | in all, s | kept / dropped (validity) | coverage, own / with records | items a/d/q | planted commitments |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 4 minutes | one pass | 29.8, 30.2 | 10/0, 11/0 (100%) | 80% / 100% | 5/1/2 | 3/3 |
+  | 60 minutes | one pass | 115.4, 78.9 | 16/1, 17/2 (94.1%, 89.5%) | 46% / 77%, 46% / 62% | 19/7/3 | 2/3 |
+  | 60 minutes | parts (forced), 7 | 317.0, 308.5 | 59/5 (92.2%) | 62% / 100% | 25/6/1 | 3/3 |
+  | 60 minutes + 12 typed notes | parts (estimate 28,070 over the 28,000 budget) | 308.5, 304.0 | 61/2 (96.8%) | 46% / 69% | 18/5/0 | 2/3 |
+  | the same, budget raised to 28,400 for the measurement | one pass | 121.1, 71.2 | 21/1, 14/1 | 92% / 92%, 85% / 85% | 14/7/3, 16/7/3 | 2/3, 3/3 |
+  | 2 hours (the hour said twice) | parts, 13 | 637.3 (one run) | 68/3 (95.8%) | 54% / 85% | 36/16/1 | 3/3 |
+
+  - Against §9.5 (a 1:1 note after 60 minutes in at most 1.5 minutes): met in one pass with the model loaded, as Stop leaves it (78.9 s); not with the load counted (115.4 s), and not in parts (304–317 s), which is also how the hour is read once 12 typed notes take it over the budget. BACKLOG keeps "Digest windows while recording".
+  - Against §7.8 (citation validity of at least 97%): met on the 4-minute call; on the hour 89.5–96.8%, the drops mostly names said away from the lines cited (BACKLOG "Name check over long calls"). Every point shown has passed the check.
+  - Typed notes, the hour: in parts 5 of 5 points written from them were kept; in one pass all 12 were, and coverage of the note's own points went from 46% to 85–92%. That is what the 28,000 budget costs a call this close to it (BACKLOG "Typed notes can send a call to parts").
+  - In one pass the second run differs from the first even at temperature 0, while runs in parts repeat exactly; the 2-hour call was run once, so its spread is not measured.
+  - The meaning check's 0.55 still holds on A1 v4's notes (`tools/calibrate_semantic.py`): no mismatched pair reaches it (75 pairs, highest 0.506), every supported pair does (25, median 0.809), and the one point the words dropped scores 0.550, true of the call, its detail partly in a line it doesn't cite.
+  - Linking typed notes (`tools/eval_alignment.py`, the 12 synthetic lines): 95% precision at 86% recall with meaning (cut-off 0.60), 85% at 81% by time and words (0.65); 12 lines in 1.1 s, 50 lines over the hour in 4.4 s (§7.2 met).
+- **Checked in the real window.** Setup: `python -m evra run` on a test data folder holding only the synthetic 60-minute call and its 12 typed lines, beside the owner's own instance. The window was driven through Windows UI Automation (one real mouse click), with no microphone or speakers. Captures were of the Evra window only, looked at, then deleted. The test instance was closed afterwards.
+  - **Write note:** the band showed "Linking your notes…", then "Reading part 1 of 7…" through "Reading part 7 of 7…", then "Putting the note together…", and the note appeared once, 300 s after Write note. Six points quote the typed line they came from ("From your notes"), each the right one.
+  - **My notes:** each line shows its time tab and, after the note, its 1–3 linked transcript lines (19 in all). A time tab opens the transcript at the line being said.
+  - **Done:** a tick fills the box rule green and strikes the point through. Hover fills the row band and the box's line full rule green, and keyboard focus draws the 2px rule-green ring (seen once the page was scrolled back; see Found). At 840 px the sheet folds with the boxes in place.
+  - **Rewrites:** the window offers Write note only when there is no note, so the note was rewritten twice with `evra note --data-dir` (291 s and 320 s). Both ticked items stayed done, once onto a reworded item ("Move tickets over…" for "Move the tickets over…").
+  - **Two lines typed in My notes:** both saved through the bridge, with ids from `crypto.randomUUID` under `file://`, phase `after`, and their first time kept. They reached every prompt of the next rewrite, but on this call, read in parts, neither became a point or an item; in one pass, the same kind of lines became action items (BACKLOG "TODO lines on a call read in parts").
+  - **The log:** 35 INFO lines of codes and counts; a search for 752 content words from the note, its items, the typed lines and the transcript found none.
+  - **Found:**
+    - Ticking or tabbing onto a Done box scrolls the whole window to an empty stretch. The boxes' visually hidden inputs escape the note's scroller and make the page about 22 screens tall. Left for the final review.
+    - A time-tab jump to the transcript shifts the page about 85 px; it predates this work (M3c, BACKLOG).
+- **Docs:**
+  - BUILD.md: D17 and §4 (embeddings in Ollama); §7.1–7.6 as built (My notes, the linking cut-offs, stages, one pass or parts, extraction, the meaning check, templates); §8.2 (`0003_items.sql`, `note_block`); §8.3 (both models in Ollama); §8.4 (the Note view with Done boxes, My notes); §9.1 (the new failure rows); Appendix A (A1–A6 as shipped) and B (the schemas as shipped).
+  - DECISIONS.md: "Extraction sorts, synthesis writes" and "Fuzzy matching with difflib".
+  - BACKLOG.md: the deferred items, including A7 and an agenda pad per person.
+  - README.md: `ollama pull qwen3-embedding:0.6b`.
+- Tests: Python 784 passed (+170 on this branch), frontend 175 (+38).
+
 ## 2026-11-26 — Asking a meeting (branch `ask-meetings`)
 
 - **Planned:** the design for asking a meeting, complete notes and open promises (`docs/superpowers/specs/2026-11-26-ask-notes-promises-design.md`) and plan A (`d4cff45`); plans B and C written ahead of their branches (`d8d9d5c`). The owner put this work before M4 (DECISIONS.md).

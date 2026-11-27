@@ -8,8 +8,8 @@ Nothing leaves your computer. Speech recognition runs on the CPU, the note model
 [Ollama](https://ollama.com), and Evra opens no network listener of its own.
 
 > **Status:** early development (Phase 1, Windows only). The 1:1 flow works end to end:
-> record a call, watch the live transcript, get a cited note. Speaker separation, echo
-> cancellation for laptop speakers, the meeting notepad and installers are still to come.
+> record a call, watch the live transcript, type your own notes, get a cited note. Speaker
+> separation, echo cancellation for laptop speakers and installers are still to come.
 > See [`PROGRESS.md`](PROGRESS.md) for what is done and [`BUILD.md`](BUILD.md) for the full design.
 
 ## What works today
@@ -18,9 +18,15 @@ Nothing leaves your computer. Speech recognition runs on the CPU, the note model
   as separate channels through WASAPI loopback, so it works with any call app (Meet, Teams, Zoom…).
 - **Live transcript.** [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
   through sherpa-onnx, with Silero voice activity detection.
-- **Cited notes.** After you press Stop, a local model writes a summary, then the discussion,
-  decisions, action items, open questions and topics for next time. Points that can't be checked
-  against the transcript are dropped, not shown.
+- **Cited notes.** After you press Stop, a local model writes a summary, the discussion and
+  topics for next time, and lists the action items, decisions and open questions in focused
+  calls. Points that can't be checked against the transcript are dropped, not shown. A call
+  longer than an hour is read in parts and combined.
+- **Action items you can tick.** Each action item has a Done box; the tick survives writing the
+  note again.
+- **My notes.** Type notes during the call, one line each. Every line is stamped with the time
+  you typed it and linked to what was being said, and the note expands the topics you noted. A
+  point taken from your notes quotes your line.
 - **Main window.** Record and stop, pick a mic (remembered by name), browse past meetings,
   rename them, and click a citation to jump to that transcript line.
 - **Command line.** Everything the window does is also available as `evra` commands.
@@ -33,9 +39,13 @@ the other person, until echo cancellation lands.
 - Windows 11
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.12 for you)
 - Node.js 24 and npm (to build the UI)
-- [Ollama](https://ollama.com) for notes, with the default note model:
+- [Ollama](https://ollama.com) for notes, with the default note model and the embedding model
+  (it checks points by meaning and links your typed notes to the transcript):
 
       ollama pull gemma4:12b
+      ollama pull qwen3-embedding:0.6b
+
+  Without the embedding model, notes are still written, and checked by their words alone.
 
   Evra refuses models that run in Ollama's cloud. To make Ollama itself refuse them too, set
   `OLLAMA_NO_CLOUD=1` before it starts (or `"disable_ollama_cloud": true` in `~/.ollama/server.json`).
@@ -82,8 +92,9 @@ Evra (app process)                                   separate processes
 
 - Heavy models run in worker processes, so a model crash never stops a recording and memory is
   freed when a worker stops.
-- Notes are checked mechanically: each point must cite transcript lines that share its words,
-  numbers and names. Unsupported points are dropped; a note with nothing left is never saved.
+- Notes are checked mechanically: each point must cite transcript lines that share its words
+  (or, failing that, say the same thing by meaning), and its numbers and names must be in them.
+  Unsupported points are dropped; a note with nothing left is never saved.
 - Logs carry counts and codes only, never transcript, note or audio content.
 
 ## Development
@@ -108,8 +119,8 @@ Project records: [`BUILD.md`](BUILD.md) (design, source of truth) · [`PROGRESS.
 ## Roadmap
 
 1. **Core notes (in progress):** echo cancellation for laptop speakers, crash recovery of
-   recordings, speaker separation and voice recognition, a timestamped notepad that steers the
-   note, edit and regenerate, onboarding, tray and hotkeys.
+   recordings, speaker separation and voice recognition, edit and regenerate, onboarding, tray
+   and hotkeys.
 2. **Knowledge:** search across meetings; import documents and PDFs.
 3. **Evra Live:** ask "Hey Evra, …" during a meeting and get answers from past meetings,
    documents and the web, on screen and aloud.
