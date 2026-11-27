@@ -156,7 +156,7 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Context:** §7.4's single pass needs the prompt to fit `num_ctx − max_output_tokens`; the estimate (3.5 characters a token) was meant to be conservative.
 - **Evidence:** gemma4:12b's real counts (Ollama `prompt_eval_count`, prompt a1-v2): short fixture 6,989 characters = 2,062 tokens (3.4 a token); 60-minute fixture 75,199 characters = 27,878 tokens (2.7: transcript lines are dense in digits). The old estimate said 21,486 for the hour, 23% low; with the default budget of 24,000 an accurate estimate would refuse an hour-long 1:1.
 - **Decision:** the estimate uses 2.7 characters a token; `llm.context_budget` defaults to 28,000 (§7.4 said 24k); a prompt is refused before any call when its estimate exceeds the smaller of the budget and `num_ctx − max_output_tokens`. Ollama's real count is still checked after the call.
-- **Consequences:** short prompts are over-estimated by about a quarter, harmless that far below the limit; a dense 60-minute 1:1 just fits and anything longer is refused until the per-window path exists. `tests/unit/notes/test_note_budget.py` pins the estimate to the measured counts.
+- **Consequences:** short prompts are over-estimated by about a quarter, harmless that far below the limit; a dense 60-minute 1:1 just fits and anything longer is refused until the per-window path exists. Amended 2026-11-27: the budget is 28,400, and a prompt Ollama still cuts is read in parts ("Budget 28,400 with parts when Ollama cuts the prompt"). `tests/unit/notes/test_note_budget.py` pins the estimate to the measured counts.
 
 ## D19 replaced — the "Steno pad" look (2026-11-10)
 - **Context:** D19 "Quiet paper" (serif note text, Inter UI, one teal accent) was a starting point; §8.5 said to refine it once real screens existed. After M3c the owner asked for a window that looks neat and creative and that developers and everyone else want to use, and wanted to see options before anything was built.
@@ -562,7 +562,7 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Decision:** the check reads a note's label, `n:3`, and gemma4's `user.3` (or `user:3`), in a citation list or in brackets in a point's text, as a citation of the user's notes, the same as `user` (`notes/validate.py`). Appendix B's citation pattern already names `n:<id>`. Such a point is still checked against all of the notes' text, as `user` is. The prompts are unchanged (A0 stays `a0-v1`).
 - **Consequences:**
   - In one pass, the notes took the 60-minute call's own coverage from 46% to 92% in both runs: 12 of 13 facts, the 13th (38 customers) being in the note as "38 sign-ups", which the score's keywords don't match. Every point written from a note was kept (12 of 12).
-  - A call close to the budget is read in parts once its notes are added, and the budget stays at 28,000 (RB54): Ollama cuts a prompt that doesn't fit and loses part of the call, which is worse than a slower note. That is 2.5 times slower here (274–294 s; §9.5 asks for 90 s, and one pass took 108–116 s), and its coverage gain is smaller (46–54% own, 69–77% with items) (BACKLOG "Typed notes can send a call to parts").
+  - A call close to the budget is read in parts once its notes are added, and the budget stays at 28,000 (RB54): Ollama cuts a prompt that doesn't fit and loses part of the call, which is worse than a slower note. That is 2.5 times slower here (274–294 s; §9.5 asks for 90 s, and one pass took 108–116 s), and its coverage gain is smaller (46–54% own, 69–77% with items) (BACKLOG "Typed notes can send a call to parts"). Replaced the same day: the budget is 28,400, and a cut prompt is read in parts ("Budget 28,400 with parts when Ollama cuts the prompt", below).
   - A point that cites a note by its label is checked against every note, so a name from another note can support it. One point ("The Atlas beta currently has 38 sign-ups…") was kept that way, and it is true.
 
 ## A point from your notes quotes your line (2026-11-27)
@@ -576,3 +576,28 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Consequences:**
   - No prompt changes: the links and the words are evidence Evra already has. If the pick is wrong, the point shows a neighbouring note line; the owner still sees their own words.
   - A paste shares more words by its length alone and usually sits at the top of the pad, so the typed lines come first (RB61): "From your notes" shows what the owner wrote. A point drawn from a pasted agenda therefore quotes a typed line that shares fewer of its words, whenever some typed line shares one.
+
+## Budget 28,400 with parts when Ollama cuts the prompt (2026-11-27)
+- **Context:** the 60-minute synthetic 1:1's 12 typed notes take its A1 estimate from 27,738 to 28,070, over the 28,000 budget (2026-11-07), so the call was read in parts. The budget stayed (RB54) because Ollama cuts a prompt that passes its room, and a cut call would be missing part of its transcript. The main case is an hour's 1:1 with typed notes, and Task 8 measured what that costs it.
+- **Evidence** (gemma4:12b, `tools/bakeoff_notes.py`, 2 runs a row unless noted):
+
+  | the hour | path | A1 estimate | Ollama's count | in all, s | coverage own / with records | items a/d/q | commitments | `[user]` written / kept |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  | no notes | one pass | 27,738 | 27,806 | 115.4, 78.9 | 46% / 77%, 46% / 62% | 19/7/3 | 2/3 | - |
+  | 12 notes, budget 28,000 | parts | 28,070 | (parts) | 308.5, 304.0 | 46% / 69% | 18/5/0 | 2/3 | 5 / 5 |
+  | 12 notes, budget 28,400 | one pass | 28,070 | 28,217 | 106.7, 68.6 | 92% / 92%, 85% / 85% | 14/7/3, 16/7/3 | 2/3, 3/3 | 12 / 12 |
+  | no notes, budget 28,400 (1 run) | one pass | 27,738 | 27,806 | 113.0 | 46% / 77% | 19/7/3 | 2/3 | - |
+
+  - Near the budget the estimate (2.7 characters a token) runs 0.2–1.0% under Ollama's count: 27,738 for 27,806; 28,070 for 28,217; 28,175 for 28,460 (every note linking 5 lines). It runs about 24% over on a 4-minute call (2,475 for 1,990). The room after the reply is 28,672.
+  - In parts the typed notes lowered coverage (62% → 46% own, 100% → 69% with the records, against the same call in parts without notes), and in the real window two TODO lines typed after the call became no item.
+  - A4–A6 send the same context with smaller tasks: on the hour their estimates are 27,170, 26,969 and 27,008 against A1's 27,738 (with the notes 27,505, 27,304 and 27,342 against 28,072).
+- **Decision:**
+  - `llm.context_budget` defaults to 28,400, just under the room.
+  - When Ollama cuts A1's one-pass prompt anyway (its count reaches the room), the job reads the call in parts instead of failing `too_long`. The log says `note_prompt_cut`, with counts only.
+  - A4–A6 need no check of their own: their prompts are smaller than A1's, and a test pins that for both templates.
+  - This amends the 2026-11-07 budget and replaces RB54's reasoning ("Typed notes in the note, and a note cited by its label"): a cut prompt now costs one A1 call, and never a failed note or a silently cut one.
+- **Consequences:**
+  - An hour's 1:1 with its typed notes is written in one pass: 69–107 s instead of 304–309 s, 85–92% of its facts in the note's own points instead of 46%, every point from a note kept, and its TODO lines in reach of A4.
+  - Typed notes send a call to parts only past 28,400 or 60 minutes (BACKLOG "Typed notes on a call read in parts").
+  - When the estimate undercounts by more than about 1% near 28,400, the call spends one wasted A1 call (30–60 s) before its parts.
+  - Asking (`min(context_budget, num_ctx − its reply)`) and the title follow the new value.
