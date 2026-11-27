@@ -112,6 +112,11 @@ it("shows progress instead of an old note while a new one is written", () => {
   expect(screen.queryByText("Launch moves to October 14.")).toBeNull();
 });
 
+it("says which part of a long call is being read", () => {
+  sheet({ status: { stage: "part:2:6" }, canWrite: false });
+  expect(screen.getByRole("status")).toHaveTextContent("Reading part 2 of 6…");
+});
+
 it("explains a failure and offers Retry only when it can help", async () => {
   const onWrite = vi.fn();
   const { rerender } = render(

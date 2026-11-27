@@ -138,3 +138,115 @@ def test_extraction_schemas_ignore_extra_fields_and_need_citations() -> None:
     OpenQuestions.model_validate(
         {"items": [{"question": "Q", "raised_by": None, "citations": ["u:1"]}]}
     )
+
+
+A2_RULE_1 = (
+    '1. Return points of these kinds: "topic" (what was discussed, one per topic), "point" (a'
+    " specific thing said: a fact, number, date, update, problem or piece of feedback),"
+    ' "decision" (explicitly agreed; a task someone took on is a commitment, not a decision),'
+    ' "commitment" (a task someone accepted or was given, written as an imperative without the'
+    " owner or the due date; an agreed date, time or choice on its own is a decision; owner"
+    ' "You" or "Them", due as it was said, else null) and "question" (raised and not answered'
+    " in this part, or said to be still undecided; phrased as a question)."
+)
+A2_RULE_2 = (
+    "2. Each point is under 30 words and specific (who, what, when; names and numbers exactly as"
+    " said; a commitment's who and when go in owner and due). Cite every line the point draws on"
+    " (u:<id>): the lines that say it and the lines its names, numbers and dates come from, or"
+    " user for the user's notes."
+)
+
+
+def test_a2_reads_one_part_with_the_lessons_of_a4_to_a6() -> None:
+    """RB26: A2's rules 1 and 2 carry what A4-A6 taught; rules 3 and 4 are the brief's."""
+    from evra.llm.prompt_files import load_part
+
+    a2 = load_part("a2_digest")
+    assert a2.version == "a2-v1"
+    assert a2.text == "\n".join(
+        [
+            "Summarise this part of the meeting for a later step that combines every part into"
+            " one note.",
+            "",
+            "Rules:",
+            A2_RULE_1,
+            A2_RULE_2,
+            "3. supports_notes lists the user's notes (n:<id>) this part supports.",
+            "4. Return only JSON matching the WindowDigest schema, with window_index"
+            " {window_index}.",
+            "",
+            "The WindowDigest schema:",
+            "{schema}",
+        ]
+    )
+
+
+def test_a3_is_a1_v4_over_the_parts_digests() -> None:
+    """A3 = A1 v4 with its first line replaced, the digests before the template, and RB27's two
+    rules before its "Return only JSON" rule (the schema it names is A3's own)."""
+    from evra.llm.prompt_files import load_part
+
+    a1, a3 = load_part("a1_note").text, load_part("a3_combine")
+    assert a3.version == "a3-v1"
+    first = (
+        "Write the note for the meeting above from the summaries of its parts in <digests>."
+        " Citations inside the digests are valid: copy them through."
+    )
+    rules = a1.split("\n", 1)[1].split("\n11. Return only JSON")[0]  # "\nRules:\n1. ... 10. ..."
+    template = "<template" + a1.split("\n\n<template", 1)[1]
+    expected = (
+        f"{first}\n{rules}\n"
+        "11. repeats lists each decision, commitment or question in <digests> that repeats an"
+        ' earlier one of the same kind, as {"id": its id, "of": the earlier one\'s id}.\n'
+        "12. answered lists the ids of the questions in <digests> that the meeting answers"
+        " later.\n"
+        "13. Return only JSON matching the CombinedNote schema.\n\n"
+        "<digests>\n{digests}\n</digests>\n\n" + template.replace("NoteDraft", "CombinedNote")
+    )
+    assert a3.text == expected
+    assert "10. Cite every line the bullet draws on" in a3.text
+    assert (
+        a3.render(
+            digests="D",
+            output_language="English",
+            template_name="1:1",
+            template_sections_yaml="Y",
+            schema="S",
+        ).count("<digests>\nD\n</digests>")
+        == 1
+    )
+
+
+def test_digests_and_the_combined_note_parse_as_appendix_b() -> None:
+    from evra.llm.schemas import CombinedNote, NoteDraft, WindowDigest
+
+    digest = WindowDigest.model_validate(
+        {
+            "window_index": 3,
+            "points": [{"kind": "commitment", "text": "Send it", "citations": ["u:1"], "x": 1}],
+            "more": 2,
+        }
+    )
+    assert (digest.points[0].owner, digest.points[0].due, digest.supports_notes) == (
+        None,
+        None,
+        [],
+    )
+    bad = {"kind": "commitment", "text": "Send it", "citations": ["u:1"]}
+    for change in ({"kind": "task"}, {"citations": []}, {"text": "x" * 301}):
+        with pytest.raises(ValidationError):
+            WindowDigest.model_validate({"window_index": 1, "points": [bad | change]})
+    assert issubclass(CombinedNote, NoteDraft)
+    plain = CombinedNote.model_validate({"summary": [], "sections": []})
+    assert (plain.repeats, plain.answered) == ([], [])
+    pruned = CombinedNote.model_validate(
+        {
+            "summary": [],
+            "sections": [],
+            "repeats": [{"id": "p4", "of": "p1", "why": "same"}],
+            "answered": ["p2"],
+        }
+    )
+    assert [(r.id, r.of) for r in pruned.repeats] == [("p4", "p1")]
+    assert pruned.answered == ["p2"]
+    assert set(CombinedNote.model_json_schema()["required"]) == {"summary", "sections"}

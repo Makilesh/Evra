@@ -1,5 +1,6 @@
 """The window's meeting flow (M3c spec §3.1): one recording at a time, then its note
-(BUILD.md §7.3, D16), whose stages are announced as it goes: writing, then listing the items.
+(BUILD.md §7.3, D16), whose stages are announced as it goes: writing, then listing the items;
+for a long call, reading each part ("part:2:6"), then putting the note together ("combining").
 
 Bridge calls arrive on their own threads (pywebview), so the state lives under one lock and
 nothing slow, and no event, runs while holding it. Events carry transcript text only to the

@@ -2,15 +2,16 @@
 kind over the same meeting context, then every item is checked like a note point.
 
 Order inside a job (§8.3): the three chat calls run back to back, then one `check_all` covers
-every item, so its embedding request comes after the model's replies. Nothing here logs or
-raises with item or transcript text."""
+every item, so its embedding request comes after the model's replies. A long call's items come
+from its parts' digests instead (`evra.notes.mapreduce`), through the same steps: `check_items`,
+then `settle_items`. Nothing here logs or raises with item or transcript text."""
 
 from __future__ import annotations
 
 import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from types import MappingProxyType
 from typing import Literal
@@ -76,10 +77,16 @@ class Extraction:
     seconds: float
     failed_kinds: tuple[ItemKind, ...]
     tasks_as_decisions: int = 0  # decisions left out as repeats of an action item (not drops)
+    # a long call's items that A3 removed (RB27), not drops: repeats of an earlier one, and
+    # questions the meeting answers later
+    repeats_removed: int = 0
+    answered_removed: int = 0
 
 
 @dataclass(frozen=True)
-class _Raw:
+class RawItem:
+    """An item as a model listed it, before the check: it cites prompt ids (u:3)."""
+
     kind: ItemKind
     text: str
     citations: tuple[str, ...]
@@ -116,19 +123,25 @@ def is_repeat(
     return ratio >= SAME_TEXT_AND_LINE and bool(set(a_citations) & set(b_citations))
 
 
-def _parse(kind: ItemKind, value: BaseModel) -> list[_Raw]:
+def join_citations(first: Sequence[str], more: Sequence[str]) -> tuple[str, ...]:
+    """The citations of both, in order, each once."""
+    return tuple(dict.fromkeys([*first, *more]))
+
+
+def _parse(kind: ItemKind, value: BaseModel) -> list[RawItem]:
     if isinstance(value, ActionItems):
         return [
-            _Raw(kind, i.text, tuple(i.citations), i.owner, i.due, i.confidence)
+            RawItem(kind, i.text, tuple(i.citations), i.owner, i.due, i.confidence)
             for i in value.items
         ]
     if isinstance(value, Decisions):
         return [
-            _Raw(kind, d.statement, tuple(d.citations), d.made_by, None, None) for d in value.items
+            RawItem(kind, d.statement, tuple(d.citations), d.made_by, None, None)
+            for d in value.items
         ]
     assert isinstance(value, OpenQuestions)
     return [
-        _Raw(kind, q.question, tuple(q.citations), q.raised_by, None, None) for q in value.items
+        RawItem(kind, q.question, tuple(q.citations), q.raised_by, None, None) for q in value.items
     ]
 
 
@@ -148,10 +161,58 @@ def _without_restated_tasks(kept: Sequence[CheckedItem]) -> tuple[list[CheckedIt
     return left, restated
 
 
-def _claim(item: _Raw) -> str:
+def _claim(item: RawItem) -> str:
     """What the check reads: an action item's due phrase is part of the claim."""
     text = f"{item.text} {item.due}" if item.due else item.text
     return text[:MAX_CLAIM_CHARS]
+
+
+def check_items(
+    raw: Sequence[RawItem],
+    *,
+    grounder: Grounder,
+    names: Mapping[str, str] | None,
+    reasons: Counter[str],
+) -> list[CheckedItem | None]:
+    """Each item's owner, then one check of every item (its one embedding batch, RB8): in
+    order, the item checked, or None for one dropped, its reason counted."""
+    labels = names or {}
+    owners = [normalise_owner(item.owner, names=labels) for item in raw]
+    verdicts = grounder.check_all(
+        [NoteBullet(text=_claim(i), citations=list(i.citations)) for i in raw]
+    )
+    checked: list[CheckedItem | None] = []
+    for item, owner, (bullet, reason) in zip(raw, owners, verdicts, strict=True):
+        if bullet is None:
+            reasons[reason] += 1
+            checked.append(None)
+            continue
+        checked.append(
+            CheckedItem(item.kind, item.text, bullet.citations, owner, item.due, item.confidence)
+        )
+    return checked
+
+
+def settle_items(
+    items: Sequence[CheckedItem], reasons: Counter[str]
+) -> tuple[list[CheckedItem], int]:
+    """Repeats within a kind are kept once: the earliest, citing its repeats' lines too (RB11,
+    RB24; each repeat counts as a "duplicate" drop). Then a decision that restates a kept task
+    is left to the task (RB20). Returns the items and how many decisions were left out."""
+    kept: list[CheckedItem] = []
+    for item in items:
+        for n, earlier in enumerate(kept):
+            if earlier.kind == item.kind and is_repeat(
+                earlier.text, earlier.citations, item.text, item.citations
+            ):
+                kept[n] = replace(
+                    earlier, citations=join_citations(earlier.citations, item.citations)
+                )
+                reasons["duplicate"] += 1
+                break
+        else:
+            kept.append(item)
+    return _without_restated_tasks(kept)
 
 
 def extract_items(
@@ -167,7 +228,7 @@ def extract_items(
     reasons: Counter[str] = Counter()
     versions: list[str] = []
     failed: list[ItemKind] = []
-    raw: list[_Raw] = []
+    raw: list[RawItem] = []
     tokens_in = tokens_out = cached = 0
     seconds = 0.0
     for kind in kinds:  # the chat calls, back to back
@@ -199,26 +260,8 @@ def extract_items(
                 reasons["low_confidence"] += 1
                 continue
             raw.append(item)
-    labels = names or {}
-    owners = [normalise_owner(item.owner, names=labels) for item in raw]
-    verdicts = grounder.check_all(
-        [NoteBullet(text=_claim(i), citations=list(i.citations)) for i in raw]
-    )
-    kept: list[CheckedItem] = []
-    for item, owner, (checked, reason) in zip(raw, owners, verdicts, strict=True):
-        if checked is None:
-            reasons[reason] += 1
-            continue
-        if any(
-            k.kind == item.kind and is_repeat(k.text, k.citations, item.text, checked.citations)
-            for k in kept
-        ):
-            reasons["duplicate"] += 1
-            continue
-        kept.append(
-            CheckedItem(item.kind, item.text, checked.citations, owner, item.due, item.confidence)
-        )
-    kept, tasks_as_decisions = _without_restated_tasks(kept)
+    checked = check_items(raw, grounder=grounder, names=names, reasons=reasons)
+    kept, tasks_as_decisions = settle_items([c for c in checked if c is not None], reasons)
     dropped = sum(reasons.values())
     log.info(
         "items_extracted",

@@ -342,6 +342,11 @@ class Grounder:
         self._semantic = semantic
         self._vocabulary = _vocabulary([*utterance_text.values(), user_notes])
 
+    @property
+    def semantic(self) -> SemanticCheck | None:
+        """The meaning check, for a caller that checks a whole note with the same one."""
+        return self._semantic
+
     def check(self, bullet: NoteBullet) -> tuple[CheckedBullet | None, str]:
         """One bullet, by its words alone (no meaning check)."""
         claim, reason = _claim(bullet, self._aliases, self._utterance_text, self._user_notes)

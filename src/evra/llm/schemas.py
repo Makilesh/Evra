@@ -6,6 +6,8 @@ drops one bullet instead of failing the whole note.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -30,6 +32,42 @@ class NoteDraft(BaseModel):
     summary: list[NoteBullet] = Field(max_length=6)
     sections: list[NoteSection]
     language: str = "en"
+
+
+class WindowPoint(BaseModel):
+    """A2: one point of a part of a long call. Decisions, commitments and questions become the
+    note's records (`evra.notes.mapreduce`); topics and points are what A3 writes from."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: Literal["topic", "point", "decision", "commitment", "question"]
+    text: str = Field(max_length=300)
+    owner: str | None = None
+    due: str | None = None
+    citations: list[str] = Field(min_length=1)
+
+
+class WindowDigest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    window_index: int  # the model's own number is never used: the code numbers the parts
+    points: list[WindowPoint]
+    supports_notes: list[str] = Field(default_factory=list)  # n:<id>
+
+
+class Repeat(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    of: str
+
+
+class CombinedNote(NoteDraft):
+    """A3: the note, and what it saw across the parts' digests: items that repeat an earlier
+    one, and questions answered later. Both only ever remove an item (RB27)."""
+
+    repeats: list[Repeat] = Field(default_factory=list)
+    answered: list[str] = Field(default_factory=list)
 
 
 class MeetingTitle(BaseModel):

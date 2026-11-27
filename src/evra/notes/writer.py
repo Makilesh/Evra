@@ -7,7 +7,7 @@ logs or raises with prompt, reply or transcript text."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,7 +40,11 @@ __all__ = [
     "NoteResult",
     "NoteTooLong",
     "check_drafted",
+    "cut_to_fit",
     "draft_note",
+    "lists_only",
+    "note_prompt_tokens",
+    "prompt_limit",
     "synthesis_only",
     "write_note",
 ]
@@ -74,6 +78,30 @@ class DraftedNote:
     repaired: bool
 
 
+def prompt_limit(settings: LlmSettings) -> int:
+    """What one note prompt may use: the budget, never more than the context minus the reply."""
+    return min(settings.context_budget, settings.num_ctx - settings.max_output_tokens)
+
+
+def cut_to_fit(settings: LlmSettings) -> Callable[[ChatResult], None]:
+    """Raises NoteTooLong when Ollama cut the prompt to fit its context window: its count of
+    what it read reaches the context minus the reply."""
+    room = settings.num_ctx - settings.max_output_tokens
+
+    def too_long(first: ChatResult) -> None:
+        if first.tokens_in >= room:
+            raise NoteTooLong(first.tokens_in, room)
+
+    return too_long
+
+
+def note_prompt_tokens(context: MeetingContext, template: Template) -> int:
+    """A1's estimated size: what `draft_note` checks against the budget."""
+    return note_prompt(
+        context, template=template, schema=NoteDraft.model_json_schema()
+    ).estimated_tokens
+
+
 def draft_note(
     provider: LlmProvider,
     *,
@@ -84,16 +112,10 @@ def draft_note(
 ) -> DraftedNote:
     schema = NoteDraft.model_json_schema()
     prompt = note_prompt(context, template=template, schema=schema)
-    room = settings.num_ctx - settings.max_output_tokens  # what the prompt may use
-    limit = min(settings.context_budget, room)
+    limit = prompt_limit(settings)
     if prompt.estimated_tokens > limit:
         raise NoteTooLong(prompt.estimated_tokens, limit)
     messages = [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)]
-
-    def too_long(first: ChatResult) -> None:
-        if first.tokens_in >= room:  # Ollama cut the prompt to fit its context window
-            raise NoteTooLong(first.tokens_in, room)
-
     reply = chat_structured(
         provider,
         model,
@@ -101,7 +123,7 @@ def draft_note(
         NoteDraft,
         max_output_tokens=settings.max_output_tokens,
         invalid_event="note_json_invalid",
-        after_first=too_long,
+        after_first=cut_to_fit(settings),
     )
     version = prompt.prompt_version
     if reply.repair_version:
@@ -114,6 +136,25 @@ def draft_note(
         tokens_out=reply.tokens_out,
         seconds=reply.seconds,
         repaired=reply.repaired,
+    )
+
+
+NO_POINTS = CheckedNote((), (), 0, 0, {})
+
+
+def lists_only(*, model: str, prompt_version: str, template: Template) -> NoteResult:
+    """The note of its action items, decisions and open questions alone (§9.1): the call that
+    writes its own sections failed even after its repair, so its reply adds nothing."""
+    return NoteResult(
+        note=NO_POINTS,
+        model=model,
+        prompt_version=prompt_version,
+        template=template.id,
+        tokens_in=0,
+        tokens_out=0,
+        seconds=0.0,
+        repaired=False,
+        items_only=True,
     )
 
 

@@ -18,7 +18,10 @@ from evra.llm.provider import (
     LlmTimeout,
     LlmUnavailable,
 )
+from evra.llm.schemas import NoteDraft
+from evra.notes.context import build_context
 from evra.notes.job import NothingSupported, SavedNote, failure_reason, write_and_save
+from evra.notes.prompt_input import note_prompt
 from evra.notes.semantic import Embedder, SemanticCheck
 from evra.notes.templates import load_template
 from evra.notes.writer import NoteCutOff, NoteInvalid, NoteTooLong, NoTranscript
@@ -28,6 +31,7 @@ from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
 from evra.store.notes import NoteStore
 from tests.unit.notes.fakes import FakeProvider
+from tests.unit.notes.test_mapreduce import PART1, PART2, SAID, combined
 
 GOOD = json.dumps(
     {
@@ -255,6 +259,91 @@ def test_a_failed_list_leaves_its_section_empty(conn: sqlite3.Connection) -> Non
     assert failed == [{"event": "note_items_failed", "kinds": ["decision"], "log_level": "info"}]
     stored = NoteStore(conn).current_note(_meeting(conn))
     assert stored is not None and stored.prompt_version == "a0-v1+a1-v4+a4-v2+a6-v2"
+
+
+def _long_meeting(conn: sqlite3.Connection) -> str:
+    """15 minutes, the speaker changing on every 10-second line: two parts."""
+    store = MeetingStore(conn)
+    mid = store.create_meeting(
+        title="t", mode="one_on_one", situation="call_headphones", template="one_on_one"
+    )
+    vid = store.create_transcript_version(mid, kind="live", model="fake")
+    filler = "Some small talk about the weather, the traffic and the weekend."
+    for k in range(90):
+        store.add_utterance(
+            version_id=vid,
+            meeting_id=mid,
+            channel=k % 2,
+            start_ms=k * 10_000,
+            end_ms=(k + 1) * 10_000,
+            text=SAID.get(k, filler),
+        )
+    return mid
+
+
+def _write_long(
+    conn: sqlite3.Connection,
+    mid: str,
+    provider: FakeProvider,
+    settings: LlmSettings,
+    stages: list[str] | None = None,
+) -> SavedNote:
+    store = MeetingStore(conn)
+    vid = store.current_transcript_version(mid)
+    assert vid is not None
+    return write_and_save(
+        conn,
+        meeting=store.get_meeting(mid),
+        version_id=vid,
+        utterances=store.utterances(vid),
+        template=load_template("one_on_one"),
+        provider=provider,
+        model="fake:1b",
+        settings=settings,
+        on_stage=(stages if stages is not None else []).append,
+    )
+
+
+def test_a_call_longer_than_one_pass_is_written_in_parts(conn: sqlite3.Connection) -> None:
+    mid = _long_meeting(conn)
+    provider = FakeProvider([PART1, PART2, combined()])
+    stages: list[str] = []
+    saved = _write_long(conn, mid, provider, LlmSettings(single_pass_minutes=10), stages)
+    assert stages == ["part:1:2", "part:2:2", "combining"]  # the window showed "writing" first
+    assert len(provider.calls) == 3
+    stored = NoteStore(conn).current_note(mid)
+    assert stored is not None and stored.generation_id == saved.generation_id
+    assert stored.prompt_version == "a0-v1+a2-v1+a3-v1"
+    assert [b.text for b in stored.blocks] == [
+        "The Atlas beta moves to March 3.",
+        "Them asked whether to sunset the legacy API.",
+    ]
+    items = ItemStore(conn).for_generation(saved.generation_id)
+    assert [i.kind for i in items].count("action_item") == 4 and len(items) == 7
+
+
+def test_a_call_too_long_for_one_prompt_is_read_in_parts(conn: sqlite3.Connection) -> None:
+    """RB31: the path is chosen on the A1 estimate draft_note checks, so a transcript that does
+    not fit one prompt is read in parts instead of failing as too long."""
+    mid = _long_meeting(conn)
+    store = MeetingStore(conn)
+    vid = store.current_transcript_version(mid)
+    assert vid is not None
+    context = build_context(meeting=store.get_meeting(mid), utterances=store.utterances(vid))
+    a1 = note_prompt(
+        context, template=load_template("one_on_one"), schema=NoteDraft.model_json_schema()
+    )
+    settings = LlmSettings(single_pass_minutes=600, context_budget=a1.estimated_tokens - 1)
+    provider = FakeProvider([PART1, PART2, combined()])
+    saved = _write_long(conn, mid, provider, settings)
+    assert provider.calls[0][1].content.startswith("Summarise this part of the meeting")
+    assert saved.result.prompt_version == "a0-v1+a2-v1+a3-v1"
+    beta = {"text": "The Atlas beta moves to March 3.", "citations": ["u:5"]}
+    note = json.dumps({"summary": [beta], "sections": []})
+    fits = FakeProvider([note, NO_ITEMS, NO_ITEMS, NO_ITEMS])
+    budget_met = settings.model_copy(update={"context_budget": a1.estimated_tokens})
+    _write_long(conn, mid, fits, budget_met)  # with the budget just met: one pass
+    assert fits.calls[0][1].content.startswith("Write the note for the meeting above.")
 
 
 def test_a_cut_off_note_stops_before_the_lists(conn: sqlite3.Connection) -> None:

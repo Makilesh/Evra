@@ -168,6 +168,18 @@ def test_repeated_items_kept_once() -> None:
     assert not is_repeat("Send the vendor quote", ["a"], "Send Priya the vendor quote", ["b"])
 
 
+def test_a_repeat_adds_its_lines_to_the_item_kept() -> None:
+    """RB24/RB25: one merge for a single pass and for a long call's parts: the earliest is
+    kept, citing the lines its repeats cite too (in order, once each)."""
+    reply = items_reply(
+        action("Send the vendor quote", ["u:2"]),
+        action("Send the vendor quote", ["u:1", "u:2"]),
+    )
+    result = run(FakeProvider([reply]), kinds=("action_item",))
+    assert [(i.text, i.citations) for i in result.items] == [("Send the vendor quote", ("b", "a"))]
+    assert dict(result.drop_reasons) == {"duplicate": 1}
+
+
 def test_two_tasks_from_one_line_are_both_kept() -> None:
     reply = items_reply(
         action("Update the deck", ["u:5"]), action("Send the deck to Priya", ["u:5"])

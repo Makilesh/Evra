@@ -1,0 +1,89 @@
+"""A long call in parts (BUILD.md §7.4, spec §4.6): windows of about 10 minutes cut at speaker
+turns, each starting about a minute before the last one ended; a tail of under 3 minutes joins
+the last window. And the choice between writing a note in one pass and in parts."""
+
+from __future__ import annotations
+
+from bisect import bisect_left
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Literal
+
+from evra.config import LlmSettings
+from evra.notes.writer import prompt_limit
+from evra.store.meetings import Utterance
+
+WINDOW_MS, OVERLAP_MS, MIN_TAIL_MS = 600_000, 60_000, 180_000
+MINUTE_MS = 60_000
+
+NotePath = Literal["single", "windows"]
+
+
+@dataclass(frozen=True)
+class Window:
+    index: int  # 1, 2, ... in time order
+    start_ms: int  # when its first line starts
+    end_ms: int  # when the last of its lines ends
+    ids: tuple[str, ...]  # its lines, in time order
+
+
+def _turn_end(ordered: Sequence[Utterance], i: int) -> int:
+    """The last line of the speaker turn that line i is in."""
+    while i + 1 < len(ordered) and ordered[i + 1].channel == ordered[i].channel:
+        i += 1
+    return i
+
+
+def _turn_start(ordered: Sequence[Utterance], i: int) -> int:
+    while i > 0 and ordered[i - 1].channel == ordered[i].channel:
+        i -= 1
+    return i
+
+
+def _window(index: int, lines: Sequence[Utterance]) -> Window:
+    return Window(
+        index, lines[0].start_ms, max(u.end_ms for u in lines), tuple(u.id for u in lines)
+    )
+
+
+def _span_ms(lines: Sequence[Utterance]) -> int:
+    return max(u.end_ms for u in lines) - lines[0].start_ms
+
+
+def split_windows(utterances: Sequence[Utterance]) -> list[Window]:
+    """Every line lands in at least one window. A call of one window plus a short tail is one
+    window; a call with no change of speaker is one turn, so it is one window too."""
+    ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
+    if not ordered:
+        return []
+    if _span_ms(ordered) <= WINDOW_MS + MIN_TAIL_MS:
+        return [_window(1, ordered)]
+    starts = [u.start_ms for u in ordered]
+    windows: list[Window] = []
+    first = 0
+    while True:
+        # the last line that starts within 10 minutes of the first, then the rest of its turn
+        mark = bisect_left(starts, ordered[first].start_ms + WINDOW_MS) - 1
+        last = _turn_end(ordered, mark)
+        rest = ordered[last + 1 :]
+        if not rest or _span_ms(rest) < MIN_TAIL_MS:  # a short tail joins this window
+            windows.append(_window(len(windows) + 1, ordered[first:]))
+            return windows
+        window = _window(len(windows) + 1, ordered[first : last + 1])
+        windows.append(window)
+        # the next starts at the first line from a minute before this one ends (never after the
+        # first line it leaves out), moved back to the start of that line's turn, and always
+        # later than this window's first line
+        overlap = min(bisect_left(starts, window.end_ms - OVERLAP_MS), last + 1)
+        first = max(_turn_start(ordered, overlap), first + 1)
+
+
+def choose_path(
+    *, utterances: Sequence[Utterance], prompt_tokens: int, settings: LlmSettings
+) -> NotePath:
+    """Parts when the call is longer than `single_pass_minutes` or its one-pass prompt (A1's
+    estimate, `prompt_tokens`) would not fit the budget; one pass otherwise."""
+    length_ms = max((u.end_ms for u in utterances), default=0)
+    if length_ms > settings.single_pass_minutes * MINUTE_MS:
+        return "windows"
+    return "windows" if prompt_tokens > prompt_limit(settings) else "single"

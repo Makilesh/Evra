@@ -92,15 +92,20 @@ def build_context(
     gaps: Sequence[Mapping[str, Any]] = (),
     user_notes: str = NONE,
     only: Collection[str] | None = None,
+    note: str | None = None,
 ) -> MeetingContext:
+    """`note` is the text placed before the transcript lines (a long call's part says which part
+    it is); with `only` and no note, it is the excerpt note."""
     if not utterances:
         raise ValueError("no utterances")
     part = load_part("a0_context")
     transcript, aliases = transcript_lines(utterances, only)
     end_ms = max(u.end_ms for u in utterances)
     started = datetime.fromtimestamp(int(meeting["started_at"]) / 1000)
+    if note is None:
+        note = EXCERPT_NOTE if only is not None else ""
     system = part.render(
-        excerpt_note=EXCERPT_NOTE if only is not None else "",
+        excerpt_note=note,
         transcript=transcript,
         gaps=_gap_lines(gaps),
         user_notes=user_notes,

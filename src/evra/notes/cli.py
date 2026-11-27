@@ -144,11 +144,8 @@ def _run(
     except LlmTimeout as exc:
         _err(f"The model took too long ({exc}). Try again, or a smaller model with --model.")
         return 1
-    except NoteTooLong as exc:
-        _err(
-            f"This meeting is too long for one pass ({exc}). Notes for long meetings are not"
-            " supported yet."
-        )
+    except NoteTooLong as exc:  # even in parts: the parts' digests together do not fit
+        _err(f"This meeting is too long to write a note for yet ({exc}).")
         return 1
     except NoteCutOff as exc:
         _err(

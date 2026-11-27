@@ -25,7 +25,7 @@ export function NoteView({ note, utterances, status, canWrite, onWrite, onCite, 
     <div className="h-full overflow-y-auto px-[var(--gutter)] pb-12">
       <div className="sheet measure -mx-2.5 pt-3">
         {status?.stage ? (
-          <WritingRow label={strings.stages[status.stage] ?? strings.writingNote} />
+          <WritingRow label={strings.stages(status.stage) ?? strings.writingNote} />
         ) : (
           <>
             {failed && (

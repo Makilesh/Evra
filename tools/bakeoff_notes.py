@@ -1,19 +1,25 @@
 """Note-model bake-off (BUILD.md D4, §7.4): the same inputs through several Ollama models, each
 note written the way the window writes it (the note's own sections with A1, then its action
-items, decisions and open questions with A4-A6, checked by words and by meaning).
+items, decisions and open questions with A4-A6, checked by words and by meaning; a long call in
+parts, A2, then combined, A3).
 
     uv run python tools/bakeoff_notes.py gemma4:12b qwen3.5:9b ministral-3:14b --runs 2
     uv run python tools/bakeoff_notes.py qwen3.5:9b --think
     uv run python tools/bakeoff_notes.py gemma4:12b --meeting-id <id> --show   # a real meeting
+    uv run python tools/bakeoff_notes.py gemma4:12b --minutes 15,30,45,60 --path windows
 
 Real-meeting output stays on this console; never commit it (BUILD.md §9.3).
-Columns: seconds = the note's own call (A1), in all = from the first call to the checked note and
-its lists; validity = kept / (kept + dropped), the note's own points; rescued = points the meaning
-check kept; coverage = expected facts found in one kept point; with items = found in one point or
-one item; items = action items / decisions / open questions kept; commitments = planted tasks
-found in one action item (its owner, text and due date as shown); on GPU = share of the loaded
-model in VRAM (from Ollama's /api/ps). After each run come the points the check dropped, with
-their reasons and the lines they cite.
+Columns: path = how the note was written (`--path` forces it: auto, single or windows);
+seconds = the note's own calls (A1; or every part and A3), in all = from the first call to the
+checked note and its lists; parts s and A3 s = each part's call and the combining call;
+validity = kept / (kept + dropped), the note's own points; rescued = points the meaning check
+kept; coverage = expected facts found in one kept point; with items = found in one point or one
+item; items = action items / decisions / open questions kept; removed r/a = items A3 removed as
+repeats / as questions answered later; dup facts = facts found in two items of one kind;
+commitments = planted tasks found in one action item (its owner, text and due date as shown);
+on GPU = share of the loaded model in VRAM (from Ollama's /api/ps). After each run come the
+points the check dropped, with their reasons and the lines they cite. `--minutes` cuts the
+60-minute call after its first minutes and counts only the facts planted before each cut.
 """
 
 from __future__ import annotations
@@ -46,6 +52,17 @@ from evra.services.views import item_text
 from evra.store.db import connect
 from evra.store.meetings import MeetingStore, Utterance
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
+
+from tools.bakeoff_parts import (
+    LONG_FIXTURE,
+    PATHS,
+    call_seconds,
+    cut_cases,
+    path_settings,
+    taken_path,
+)
+
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "notes"
 
 
@@ -54,6 +71,7 @@ class Expected:
     what: str
     keywords: tuple[str, ...]  # every keyword must appear; "a|b" means either
     commitment: bool = False  # a task someone took on: it belongs in one action item
+    minute: int | None = None  # when it is said (the 60-minute call's facts)
 
 
 @dataclass(frozen=True)
@@ -92,6 +110,11 @@ class Row:
     reasons: Mapping[str, int] = field(default_factory=dict)  # the note check's drops
     drops: tuple[Dropped, ...] = ()
     tasks_as_decisions: int = 0  # decisions left out as repeats of an action item
+    path: str = ""  # "single" or "windows"
+    part_seconds: tuple[float, ...] = ()  # each part's call (A2)
+    combine_seconds: float | None = None  # the combining call (A3)
+    removed: tuple[int, int] = (0, 0)  # A3 removed: repeats, questions answered later
+    duplicates: int = 0  # facts found in two items of one kind
 
     @property
     def validity(self) -> float:
@@ -107,12 +130,14 @@ class Recorder:
         self.inner = inner
         self.name = inner.name
         self.replies: list[str] = []
+        self.calls: list[tuple[str, float]] = []  # how each call's task starts, and its seconds
 
     def chat_json(
         self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
     ) -> ChatResult:
         result = self.inner.chat_json(model, messages, schema)
         self.replies.append(result.content)
+        self.calls.append((messages[-1].content[:80], result.seconds))
         return result
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
@@ -151,7 +176,7 @@ def load_case(path: Path) -> Case:
         "template": data["template"],
     }
     expected = tuple(
-        Expected(e["what"], tuple(e["keywords"]), bool(e.get("commitment", False)))
+        Expected(e["what"], tuple(e["keywords"]), bool(e.get("commitment", False)), e.get("minute"))
         for e in data["expected"]
     )
     return Case(path.stem, meeting, utterances, expected)
@@ -209,6 +234,15 @@ def shown(item: CheckedItem) -> str:
 
 def in_items(items: Sequence[CheckedItem], fact: Expected, *, kind: str | None = None) -> bool:
     return any(_holds(shown(i), fact) for i in items if kind is None or i.kind == kind)
+
+
+def surviving_duplicates(items: Sequence[CheckedItem], facts: Sequence[Expected]) -> int:
+    """Facts found in two items of one kind: a repeat that the merge and A3 left."""
+    kinds = {i.kind for i in items}
+    return sum(
+        any(sum(_holds(shown(i), f) for i in items if i.kind == k) >= 2 for k in kinds)
+        for f in facts
+    )
 
 
 def dropped_points(
@@ -286,9 +320,12 @@ def run_case(
         return Row(model, case.name, 0.0, 0, 0, False, 0, 0, None, None, type(exc).__name__)
     total = time.monotonic() - started
     note = result.note
+    path = taken_path(result, extraction)
     drops: tuple[Dropped, ...] = ()
-    if not result.items_only:  # A1's reply, or its repair
-        drops = dropped_points(recorder.replies[int(result.repaired)], case, template, semantic)
+    if not result.items_only:  # the reply the note came from (A1's or A3's), after any repair
+        reply = recorder.replies[-1 if path == "windows" else int(result.repaired)]
+        drops = dropped_points(reply, case, template, semantic)
+    part_seconds, combine_seconds = call_seconds(recorder.calls)
     if show:
         _show(model, case, result, extraction)
     facts = case.expected
@@ -321,6 +358,11 @@ def run_case(
         reasons=dict(note.drop_reasons),
         drops=drops,
         tasks_as_decisions=extraction.tasks_as_decisions,
+        path=path,
+        part_seconds=part_seconds,
+        combine_seconds=combine_seconds,
+        removed=(extraction.repeats_removed, extraction.answered_removed),
+        duplicates=surviving_duplicates(extraction.items, facts),
     )
 
 
@@ -330,18 +372,23 @@ def _pct(value: float | None) -> str:
 
 def format_table(rows: Sequence[Row]) -> list[str]:
     head = (
-        "| model | case | seconds | in all | tokens in/out | repaired | kept | dropped | rescued"
-        " | validity | coverage | with items | items a/d/q | commitments | on GPU | error |"
+        "| model | case | path | seconds | in all | parts s | A3 s | tokens in/out | repaired"
+        " | kept | dropped | rescued | validity | coverage | with items | items a/d/q"
+        " | removed r/a | dup facts | commitments | on GPU | error |"
     )
     lines = [head, "|" + " --- |" * (head.count("|") - 1)]
     for r in rows:
         commitments = "-" if r.commitments is None else f"{r.commitments[0]}/{r.commitments[1]}"
+        parts = "/".join(f"{s:.1f}" for s in r.part_seconds) or "-"
+        combine = "-" if r.combine_seconds is None else f"{r.combine_seconds:.1f}"
         lines.append(
-            f"| {r.model} | {r.case} | {r.seconds:.1f} | {r.total_seconds:.1f}"
-            f" | {r.tokens_in}/{r.tokens_out} | {'yes' if r.repaired else 'no'} | {r.kept}"
-            f" | {r.dropped} | {r.rescued} | {_pct(r.validity if not r.error else None)}"
-            f" | {_pct(r.coverage)} | {_pct(r.with_items)} | {'/'.join(map(str, r.items))}"
-            f" | {commitments} | {_pct(r.gpu_share)} | {r.error} |"
+            f"| {r.model} | {r.case} | {r.path or '-'} | {r.seconds:.1f} | {r.total_seconds:.1f}"
+            f" | {parts} | {combine} | {r.tokens_in}/{r.tokens_out}"
+            f" | {'yes' if r.repaired else 'no'} | {r.kept} | {r.dropped} | {r.rescued}"
+            f" | {_pct(r.validity if not r.error else None)} | {_pct(r.coverage)}"
+            f" | {_pct(r.with_items)} | {'/'.join(map(str, r.items))}"
+            f" | {r.removed[0]}/{r.removed[1]} | {r.duplicates} | {commitments}"
+            f" | {_pct(r.gpu_share)} | {r.error} |"
         )
     return lines
 
@@ -366,12 +413,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--think", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--meeting-id", default=None, help="a stored meeting instead of fixtures")
     parser.add_argument("--show", action="store_true", help="print each note (console only)")
+    parser.add_argument("--path", choices=PATHS, default="auto", help="one pass, or in parts")
+    parser.add_argument("--minutes", default="", help="cuts of the 60-minute call: 15,30,45,60")
     args = parser.parse_args(argv)
     if args.meeting_id:
         cases = [meeting_case(args.meeting_id)]
+    elif args.minutes:
+        cases = cut_cases(load_case(FIXTURES / LONG_FIXTURE), args.minutes)
     else:
         cases = [load_case(p) for p in sorted(FIXTURES.glob("*.json"))]
-    settings = LlmSettings(think=args.think, keep_alive="5m")
+    settings = path_settings(LlmSettings(think=args.think, keep_alive="5m"), args.path)
     provider = OllamaProvider(settings)
     rows: list[Row] = []
     for model in args.models:

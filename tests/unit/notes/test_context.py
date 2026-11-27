@@ -62,6 +62,19 @@ def test_excerpt_marks_only_real_skips() -> None:
     assert [ln[:5] for ln in lines] == ["[u:1]", "[u:2]", "\u2026", "[u:4]"]
 
 
+def test_a_note_can_stand_before_the_lines() -> None:
+    """A part of a long call says which part it is; the excerpt note stays the default."""
+    utts = [utt(c, 0, i * 1000, i * 1000 + 500, f"line {c}") for i, c in enumerate("abc")]
+    note = "This is part 2 of 3 of the meeting.\n"
+    part = build_context(meeting=MEETING, utterances=utts, only={"b"}, note=note)
+    body = part.system.split("<transcript>\n")[1].split("\n</transcript>")[0]
+    assert body == note + "…\n[u:2] [00:01] You: line b\n…"
+    assert part.excerpt is True and EXCERPT_NOTE not in part.system
+    whole = build_context(meeting=MEETING, utterances=utts, note=note)
+    assert note + "[u:1] [00:00] You: line a\n" in whole.system and whole.excerpt is False
+    assert EXCERPT_NOTE in build_context(meeting=MEETING, utterances=utts, only={"b"}).system
+
+
 def test_estimate_uses_measured_rate() -> None:
     assert estimate_tokens("x" * 27) == 10
     assert estimate_tokens("x" * 28) == 11

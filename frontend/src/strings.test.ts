@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AskFailureReason } from "@/bridge";
-import { askFailureText, askRefusalText, canAskAgain, canRetry, noteFailureText } from "@/strings";
+import { askFailureText, askRefusalText, canAskAgain, canRetry, noteFailureText, strings } from "@/strings";
 
 describe("cloud_model failure", () => {
   it("says what happened and what to do", () => {
@@ -61,5 +61,17 @@ describe("asking", () => {
       expect(canAskAgain(reason)).toBe(true);
     }
     expect(canAskAgain(undefined)).toBe(true);
+  });
+});
+
+describe("note stages", () => {
+  it("names the part of a long call being read, then the combining", () => {
+    expect(strings.stages("part:2:6")).toBe("Reading part 2 of 6…");
+    expect(strings.stages("part:1:1")).toBe("Reading part 1 of 1…");
+    expect(strings.stages("combining")).toBe("Putting the note together…");
+    expect(strings.stages("writing")).toBe("Writing note…");
+    expect(strings.stages("items")).toBe("Listing action items…");
+    expect(strings.stages("part:x:2")).toBeUndefined();
+    expect(strings.stages("something new")).toBeUndefined();
   });
 });

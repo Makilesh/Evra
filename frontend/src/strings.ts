@@ -1,6 +1,12 @@
 // Every user-facing string in one place (BUILD.md §8.4: one i18n layer later).
 import type { AskFailureReason, AskRefusal, NoteFailureReason, Theme } from "@/bridge";
 
+const STAGES: Record<string, string> = {
+  writing: "Writing note…",
+  items: "Listing action items…",
+  combining: "Putting the note together…",
+};
+
 export const strings = {
   claim: "Everything stays on this PC",
   record: "Record",
@@ -55,7 +61,11 @@ export const strings = {
   dismiss: "Dismiss",
   jumpTo: (clock: string) => `Jump to ${clock} in the transcript`,
   markDone: (text: string) => `Done: ${text}`,
-  stages: { writing: "Writing note…", items: "Listing action items…" } as Record<string, string>,
+  /** What the note's progress band says; "part:2:6" is the second of a long call's six parts. */
+  stages: (stage: string): string | undefined => {
+    const part = /^part:(\d+):(\d+)$/.exec(stage);
+    return part ? `Reading part ${part[1]} of ${part[2]}…` : STAGES[stage];
+  },
   askTab: "Ask",
   askLabel: "Ask about this meeting",
   askPlaceholder: "Ask about this meeting…",
@@ -105,7 +115,7 @@ export function noteFailureText(reason: NoteFailureReason, model?: string): stri
     case "cloud_model":
       return "That model runs in Ollama's cloud. Evra only uses models on this PC: choose another note model in Settings.";
     case "too_long":
-      return "This meeting is too long for one note pass yet.";
+      return "This meeting is too long to write a note for yet.";
     case "cut_off":
       return "The model ran out of room while writing.";
     case "invalid":

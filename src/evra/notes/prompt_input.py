@@ -1,7 +1,8 @@
 """A1's inputs (BUILD.md §7.4). Utterances appear as short prompt ids u:1…u:N in time order,
 mapped back to real ids afterwards: the model copies a few characters instead of 32-character
 hex ids. All data is made inert inside its tags. A1 is shown only the template sections it writes;
-decisions, action items and open questions are listed by A4-A6 (v4)."""
+decisions, action items and open questions are listed by A4-A6 (v4). A3, which writes a long
+call's note from its parts, is shown the same sections."""
 
 from __future__ import annotations
 
@@ -36,21 +37,25 @@ class NotePrompt:
     estimated_tokens: int
 
 
-def note_prompt(
+def _with_template(
+    task_id: str,
     context: MeetingContext,
     *,
     template: Template,
     schema: Mapping[str, Any],
-    language: str = "English",
+    language: str,
+    **values: str,
 ) -> NotePrompt:
-    """A1 on a meeting's shared context: the context is the system message, the task the user's."""
-    task = load_part("a1_note")
+    """A task that writes the note's own sections, on a meeting's shared context: the context
+    is the system message, the task the user's."""
+    task = load_part(task_id)
     shown = replace(template, sections=template.synthesis_sections())
     user = task.render(
         output_language=language,
         schema=json.dumps(schema, separators=(",", ":")),
         template_name=template.name,
         template_sections_yaml=shown.sections_yaml(),
+        **values,
     )
     return NotePrompt(
         system=context.system,
@@ -58,6 +63,32 @@ def note_prompt(
         prompt_version=f"{context.version}+{task.version}",
         aliases=context.aliases,
         estimated_tokens=estimate_tokens(context.system + user),
+    )
+
+
+def note_prompt(
+    context: MeetingContext,
+    *,
+    template: Template,
+    schema: Mapping[str, Any],
+    language: str = "English",
+) -> NotePrompt:
+    """A1: the note from the whole call."""
+    return _with_template("a1_note", context, template=template, schema=schema, language=language)
+
+
+def combine_prompt(
+    context: MeetingContext,
+    *,
+    template: Template,
+    schema: Mapping[str, Any],
+    digests: str,
+    language: str = "English",
+) -> NotePrompt:
+    """A3: the note of a long call from its parts' digests (inert JSON), on a context that
+    shows none of the call's lines."""
+    return _with_template(
+        "a3_combine", context, template=template, schema=schema, language=language, digests=digests
     )
 
 

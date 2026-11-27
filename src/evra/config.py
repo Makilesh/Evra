@@ -31,6 +31,9 @@ class LlmSettings(BaseModel):
     # estimated prompt tokens per pass; just under num_ctx - max_output_tokens (28,672)
     context_budget: int = Field(default=28000, ge=1000)
     max_output_tokens: int = Field(default=4096, ge=256)
+    # a longer call is read in ~10-minute parts, then combined (A2/A3); so is one whose prompt
+    # does not fit (DECISIONS.md "Long calls: single pass up to 30 minutes, then parts")
+    single_pass_minutes: int = Field(default=30, ge=0)
     keep_alive: str = "30s"  # short: the GPU is shared (BUILD.md §8.3)
     timeout_s: float = Field(default=600.0, gt=0)
     think: bool = False

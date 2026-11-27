@@ -2,8 +2,10 @@
 the window (M3c). Every call reads one meeting context: A1 writes the note's own sections, then
 A4-A6 list its action items, decisions and open questions; the checks' embedding batches come
 after every chat call, so Ollama never swaps models mid-way; the note and its items are saved in
-one transaction. When A1's JSON fails even after its repair, the items make the note on their own
-(§9.1). An empty note is never saved, so it can never hide an earlier one."""
+one transaction. A call longer than `llm.single_pass_minutes`, or too long for one prompt, is
+read in parts and combined instead (A2/A3, `evra.notes.mapreduce`). When A1's JSON fails even
+after its repair, the items make the note on their own (§9.1). An empty note is never saved, so
+it can never hide an earlier one."""
 
 from __future__ import annotations
 
@@ -22,11 +24,13 @@ from evra.llm.provider import (
     LlmTimeout,
     LlmUnavailable,
 )
-from evra.notes.context import build_context
+from evra.notes.context import NONE, build_context
 from evra.notes.extract import ALL_KINDS, ITEM_SECTIONS, Extraction, ItemKind, extract_items
+from evra.notes.mapreduce import write_long_note
 from evra.notes.semantic import SemanticCheck
 from evra.notes.templates import Template
-from evra.notes.validate import CheckedNote, Grounder
+from evra.notes.validate import Grounder
+from evra.notes.windows import choose_path
 from evra.notes.writer import (
     DraftedNote,
     NoteCutOff,
@@ -37,13 +41,13 @@ from evra.notes.writer import (
     NoTranscript,
     check_drafted,
     draft_note,
+    lists_only,
+    note_prompt_tokens,
 )
 from evra.store.meetings import Utterance
 from evra.store.notes import NoteStore
 
 log = structlog.get_logger(__name__)
-
-NO_POINTS = CheckedNote((), (), 0, 0, {})
 
 
 class NothingSupported(NoteError):
@@ -107,11 +111,30 @@ def write_note_and_items(
     semantic: SemanticCheck | None = None,
     on_stage: Callable[[str], None] = _quiet,
 ) -> tuple[NoteResult, Extraction]:
-    """The note's own sections and its records, checked, not yet saved. A1's NoteTooLong and
-    NoteCutOff stop here; its NoteInvalid only when nothing was listed either."""
+    """The note's own sections and its records, checked, not yet saved. A call too long for
+    one pass is read in parts (stages "part:i:n", then "combining"); otherwise A1 writes the
+    note ("writing"), then A4-A6 list the records ("items"). A1's NoteTooLong and NoteCutOff
+    stop here; its NoteInvalid only when nothing was listed either."""
     if not utterances:
         raise NoTranscript("no transcript")
     context = build_context(meeting=meeting, utterances=utterances)
+    grounder = Grounder(
+        aliases=context.aliases, utterance_text=context.utterance_text, semantic=semantic
+    )
+    # on the estimate draft_note checks, so a call too long for one prompt is read in parts
+    tokens = note_prompt_tokens(context, template)
+    if choose_path(utterances=utterances, prompt_tokens=tokens, settings=settings) == "windows":
+        return write_long_note(
+            provider,
+            model=model,
+            meeting=meeting,
+            utterances=utterances,
+            template=template,
+            settings=settings,
+            grounder=grounder,
+            user_notes=NONE,
+            on_stage=on_stage,
+        )
     on_stage("writing")
     drafted: DraftedNote | None = None
     invalid: NoteInvalid | None = None
@@ -124,9 +147,6 @@ def write_note_and_items(
     kinds = item_kinds(template)
     if kinds:
         on_stage("items")
-    grounder = Grounder(
-        aliases=context.aliases, utterance_text=context.utterance_text, semantic=semantic
-    )
     extraction = extract_items(
         provider, model=model, context=context, settings=settings, grounder=grounder, kinds=kinds
     )
@@ -137,18 +157,10 @@ def write_note_and_items(
         if not extraction.items:
             raise invalid
         log.info("note_from_items", items=len(extraction.items))
-        lists_only = NoteResult(
-            note=NO_POINTS,
-            model=model,
-            prompt_version=context.version,  # no A1 part: its reply was not used
-            template=template.id,
-            tokens_in=0,
-            tokens_out=0,
-            seconds=0.0,
-            repaired=False,
-            items_only=True,
+        # no A1 part in its version: its reply was not used
+        return lists_only(model=model, prompt_version=context.version, template=template), (
+            extraction
         )
-        return lists_only, extraction
     # the note's own check comes last: its embedding batch follows every chat call
     result = check_drafted(drafted, context=context, template=template, semantic=semantic)
     return result, extraction
