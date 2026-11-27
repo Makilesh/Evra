@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 
 import structlog
@@ -18,6 +19,7 @@ from evra.llm.prompt_files import load_part
 from evra.llm.provider import ChatMessage, LlmProvider
 from evra.llm.schemas import MeetingTitle
 from evra.notes.context import MeetingContext, as_data, build_context
+from evra.store.items import ItemStore, StoredItem
 from evra.store.meetings import MeetingStore
 from evra.store.notes import NoteStore, StoredNote
 
@@ -53,17 +55,28 @@ def title_settings(llm: LlmSettings) -> LlmSettings:
     )
 
 
-def note_text(note: StoredNote, limit: int = NOTE_CHARS) -> str:
-    """The note's points as lines, summary first (its stored order), whole points only."""
+def _lines(texts: Iterable[str], limit: int) -> str:
+    """Texts as "- " lines, whole lines only, at most `limit` characters."""
     lines: list[str] = []
     used = 0
-    for block in note.blocks:
-        line = "- " + " ".join(block.text.split())
+    for text in texts:
+        line = "- " + " ".join(text.split())
         if used + len(line) > limit:
             break
         lines.append(line)
         used += len(line) + 1  # and its newline
     return "\n".join(lines)
+
+
+def note_text(note: StoredNote, limit: int = NOTE_CHARS) -> str:
+    """The note's points as lines, summary first (its stored order), whole points only."""
+    return _lines((block.text for block in note.blocks), limit)
+
+
+def items_text(items: Sequence[StoredItem], limit: int = NOTE_CHARS) -> str:
+    """A note with no points of its own (its lists alone, when A1 failed): its action items,
+    decisions and open questions as lines, a dismissed one left out."""
+    return _lines((item.text for item in items if item.status != "dismissed"), limit)
 
 
 def title_messages(context: MeetingContext, text: str) -> tuple[list[ChatMessage], str]:
@@ -102,7 +115,11 @@ def name_meeting(
     if not has_placeholder_title(current):
         return None
     note = NoteStore(conn).current_note(meeting_id)
-    text = note_text(note) if note is not None else ""
+    text = ""
+    if note is not None and note.blocks:
+        text = note_text(note)
+    elif note is not None:  # a note of its lists alone is named from its items
+        text = items_text(ItemStore(conn).for_generation(note.generation_id))
     if not text:
         return None
     version_id = store.current_transcript_version(meeting_id)

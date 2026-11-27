@@ -190,7 +190,7 @@ def test_pipeline_runs_note_then_items(conn: sqlite3.Connection) -> None:
     assert provider.order[4:] and set(provider.order[4:]) == {"embed"}
     stored = NoteStore(conn).current_note(_meeting(conn))
     assert stored is not None and stored.generation_id == saved.generation_id
-    assert stored.prompt_version == "a0-v1+a1-v4+a4-v1+a5-v1+a6-v1"
+    assert stored.prompt_version == "a0-v1+a1-v4+a4-v2+a5-v2+a6-v2"
     assert [b.text for b in stored.blocks] == ["You finished the search migration on Tuesday."]
     items = ItemStore(conn).for_generation(saved.generation_id)
     assert [(i.kind, i.text, i.owner, i.due) for i in items] == [
@@ -203,11 +203,20 @@ def test_pipeline_runs_note_then_items(conn: sqlite3.Connection) -> None:
     assert (row["tokens_in"], row["tokens_out"]) == (400, 200)  # the note and its three lists
 
 
+def test_the_generation_counts_the_items_drops_too(conn: sqlite3.Connection) -> None:
+    cake = PROPOSAL | {"text": "Bake a cake for the team", "due": None}  # unsupported
+    actions = json.dumps({"items": [PROPOSAL, cake]})
+    saved = _write(conn, FakeProvider([WITH_A_PARAPHRASE, actions, NO_ITEMS, NO_ITEMS]))
+    assert (saved.result.note.dropped, saved.extraction.dropped) == (1, 1)
+    stored = NoteStore(conn).current_note(_meeting(conn))
+    assert stored is not None and stored.dropped_claims == 2  # the note's and its items' (RB22)
+
+
 def test_fallback_note_from_items(conn: sqlite3.Connection) -> None:
     saved = _write(conn, FakeProvider(["{", "{", ACTIONS, NO_ITEMS, NO_ITEMS]))
     stored = NoteStore(conn).current_note(_meeting(conn))
     assert stored is not None and stored.generation_id == saved.generation_id
-    assert stored.prompt_version == "a0-v1+a4-v1+a5-v1+a6-v1"  # no A1 part: its JSON failed
+    assert stored.prompt_version == "a0-v1+a4-v2+a5-v2+a6-v2"  # no A1 part: its JSON failed
     assert stored.blocks == ()
     items = ItemStore(conn).for_generation(saved.generation_id)
     assert [i.text for i in items] == ["Send the designer proposal"]
@@ -245,7 +254,7 @@ def test_a_failed_list_leaves_its_section_empty(conn: sqlite3.Connection) -> Non
     failed = [e for e in logs if e["event"] == "note_items_failed"]
     assert failed == [{"event": "note_items_failed", "kinds": ["decision"], "log_level": "info"}]
     stored = NoteStore(conn).current_note(_meeting(conn))
-    assert stored is not None and stored.prompt_version == "a0-v1+a1-v4+a4-v1+a6-v1"
+    assert stored is not None and stored.prompt_version == "a0-v1+a1-v4+a4-v2+a6-v2"
 
 
 def test_a_cut_off_note_stops_before_the_lists(conn: sqlite3.Connection) -> None:

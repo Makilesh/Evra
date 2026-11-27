@@ -92,7 +92,7 @@ def item_kinds(template: Template) -> tuple[ItemKind, ...]:
 
 def generation_version(result: NoteResult, extraction: Extraction) -> str:
     """The A0 version, the note's own part (with "+a9-v1" after a repair) and each list's:
-    a0-v1+a1-v4+a4-v1+a5-v1+a6-v1. A note of the lists alone has no A1 part."""
+    a0-v1+a1-v4+a4-v2+a5-v2+a6-v2. A note of the lists alone has no A1 part."""
     return "+".join([result.prompt_version, *extraction.prompt_versions])
 
 
@@ -190,5 +190,6 @@ def write_and_save(
         tokens_in=result.tokens_in + extraction.tokens_in,
         tokens_out=result.tokens_out + extraction.tokens_out,
         items=extraction.items,
+        items_dropped=extraction.dropped,
     )
     return SavedNote(result, extraction, generation_id)

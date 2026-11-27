@@ -91,6 +91,7 @@ class Row:
     commitments: tuple[int, int] | None = None  # found in one action item, planted
     reasons: Mapping[str, int] = field(default_factory=dict)  # the note check's drops
     drops: tuple[Dropped, ...] = ()
+    tasks_as_decisions: int = 0  # decisions left out as repeats of an action item
 
     @property
     def validity(self) -> float:
@@ -203,7 +204,7 @@ def covered(note: CheckedNote, fact: Expected) -> bool:
 
 def shown(item: CheckedItem) -> str:
     """An item as the note shows it."""
-    return item_text(item.owner, item.text, item.due)
+    return item_text(item.kind, item.owner, item.text, item.due)
 
 
 def in_items(items: Sequence[CheckedItem], fact: Expected, *, kind: str | None = None) -> bool:
@@ -319,6 +320,7 @@ def run_case(
         ),
         reasons=dict(note.drop_reasons),
         drops=drops,
+        tasks_as_decisions=extraction.tasks_as_decisions,
     )
 
 
@@ -345,12 +347,14 @@ def format_table(rows: Sequence[Row]) -> list[str]:
 
 
 def format_drops(row: Row) -> list[str]:
-    """A run's dropped points with their reasons, and what each cites."""
+    """A run's dropped points with their reasons, and what each cites; then how many decisions
+    were left out as repeats of an action item (not drops)."""
     reasons = ", ".join(f"{reason} {n}" for reason, n in sorted(row.reasons.items()))
     lines = [f"  dropped: {reasons or 'none'}"]
     for drop in row.drops:
         lines.append(f"    - [{drop.reason}] {drop.text}")
         lines += [f"        {line}" for line in drop.cited]
+    lines.append(f"  decisions that repeated an action item: {row.tasks_as_decisions}")
     return lines
 
 

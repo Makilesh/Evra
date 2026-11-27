@@ -81,6 +81,7 @@ def test_run_case_scores_a_fake_model_as_the_window_writes_the_note() -> None:
     assert row.coverage == 0.1  # the launch date, in the note's own points
     assert row.with_items == 0.2  # and the proposal, as an action item
     assert (row.items, row.commitments) == ((1, 0, 0), (1, 3))
+    assert row.tasks_as_decisions == 0
     assert row.reasons == {"unsupported": 1}
     assert row.drops == (
         Dropped(
@@ -134,11 +135,27 @@ def test_table_has_a_row_per_run() -> None:
 def test_drops_are_listed_with_reasons_and_what_they_cite() -> None:
     drop = Dropped("Dana starts on the 14th.", "name_not_cited", ("u:3: She starts soon.",))
     row = Row(
-        "a", "c", 1.0, 1, 1, False, 1, 1, None, None, reasons={"name_not_cited": 1}, drops=(drop,)
+        "a",
+        "c",
+        1.0,
+        1,
+        1,
+        False,
+        1,
+        1,
+        None,
+        None,
+        reasons={"name_not_cited": 1},
+        drops=(drop,),
+        tasks_as_decisions=2,
     )
     assert format_drops(row) == [
         "  dropped: name_not_cited 1",
         "    - [name_not_cited] Dana starts on the 14th.",
         "        u:3: She starts soon.",
+        "  decisions that repeated an action item: 2",
     ]
-    assert format_drops(Row("a", "c", 1.0, 1, 1, False, 1, 0, None, None)) == ["  dropped: none"]
+    assert format_drops(Row("a", "c", 1.0, 1, 1, False, 1, 0, None, None)) == [
+        "  dropped: none",
+        "  decisions that repeated an action item: 0",
+    ]

@@ -6,7 +6,7 @@ import pytest
 
 from evra.notes.extract import CheckedItem
 from evra.notes.validate import CheckedBullet, CheckedNote, CheckedSection
-from evra.services.views import clean_title, meeting_detail, meeting_summary
+from evra.services.views import clean_title, item_text, meeting_detail, meeting_summary
 from evra.store.db import connect
 from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
@@ -189,9 +189,9 @@ def test_note_view_items_carry_status(conn: sqlite3.Connection) -> None:
             },
         },
     ]
-    assert sections[1]["blocks"] == [
+    assert sections[1]["blocks"] == [  # who made a decision stays in the record (RB21)
         {
-            "text": "Them: Go with the annual plan.",
+            "text": "Go with the annual plan.",
             "citations": [{"utterance_id": plan.id, "start_ms": 20_000}],
             "item": {
                 "id": decision.id,
@@ -204,6 +204,27 @@ def test_note_view_items_carry_status(conn: sqlite3.Connection) -> None:
     ]
     assert "item" not in sections[0]["blocks"][0]  # the note's own points are not records
     json.dumps(detail)
+
+
+def test_item_text_names_a_tasks_owner_and_its_due_date_once() -> None:
+    assert item_text("action_item", "You", "Send the vendor quote", "by Friday") == (
+        "You: Send the vendor quote (by Friday)"
+    )
+    assert item_text("action_item", None, "Book the venue", None) == "Book the venue"
+    # a due date the text already says is not said again, whatever its case
+    assert item_text("action_item", "You", "Write the postmortem by Friday.", "by Friday") == (
+        "You: Write the postmortem by Friday."
+    )
+    assert item_text("action_item", "Them", "Send it BY FRIDAY", "by Friday") == (
+        "Them: Send it BY FRIDAY"
+    )
+    # only a task shows its owner first; a decision or a question stands alone
+    assert item_text("decision", "You", "You will send the proposal.", None) == (
+        "You will send the proposal."
+    )
+    assert item_text("open_question", "Them", "Do we need batching?", None) == (
+        "Do we need batching?"
+    )
 
 
 def test_a_meeting_without_note_or_transcript(conn: sqlite3.Connection) -> None:

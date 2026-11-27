@@ -95,7 +95,7 @@ def test_three_calls_share_the_context() -> None:
     assert "decisions" in provider.calls[1][1].content
     assert "questions" in provider.calls[2][1].content
     assert [i.kind for i in result.items] == ["action_item", "decision", "open_question"]
-    assert result.prompt_versions == ("a4-v1", "a5-v1", "a6-v1")
+    assert result.prompt_versions == ("a4-v2", "a5-v2", "a6-v2")
     assert (result.tokens_in, result.tokens_out) == (300, 150)
     assert result.failed_kinds == ()
     first = result.items[0]
@@ -140,7 +140,7 @@ def test_failed_kind_keeps_the_others() -> None:
     result = run(provider)
     assert result.failed_kinds == ("decision",)
     assert [i.kind for i in result.items] == ["action_item", "open_question"]
-    assert result.prompt_versions == ("a4-v1", "a6-v1")
+    assert result.prompt_versions == ("a4-v2", "a6-v2")
 
 
 def test_cut_off_kind_is_failed_not_raised() -> None:
@@ -151,7 +151,7 @@ def test_cut_off_kind_is_failed_not_raised() -> None:
 def test_repaired_kind_adds_its_version() -> None:
     provider = FakeProvider(["nope", items_reply(QUOTE), DECISION, QUESTION])
     result = run(provider)
-    assert result.prompt_versions == ("a4-v1+a9-v1", "a5-v1", "a6-v1")
+    assert result.prompt_versions == ("a4-v2+a9-v1", "a5-v2", "a6-v2")
 
 
 def test_repeated_items_kept_once() -> None:
@@ -174,6 +174,28 @@ def test_two_tasks_from_one_line_are_both_kept() -> None:
     )
     result = run(FakeProvider([reply]), kinds=("action_item",))
     assert [i.text for i in result.items] == ["Update the deck", "Send the deck to Priya"]
+
+
+def test_a_decision_that_restates_a_task_is_left_to_the_task() -> None:
+    """RB20: "You will send the vendor quote by Friday" is the action item already listed, not
+    a decision; an unrelated decision stays. The removal is counted, and is not a drop."""
+    restated = {
+        "statement": "You will send the vendor quote by Friday.",
+        "made_by": "me",
+        "citations": ["u:2"],
+    }
+    annual = {"statement": "Go with the annual plan.", "made_by": None, "citations": ["u:3"]}
+    decisions = json.dumps({"items": [restated, annual]})
+    with structlog.testing.capture_logs() as logs:
+        result = run(FakeProvider([items_reply(QUOTE), decisions, json.dumps({"items": []})]))
+    assert [(i.kind, i.text) for i in result.items] == [
+        ("action_item", "Send the vendor quote"),
+        ("decision", "Go with the annual plan."),
+    ]
+    assert result.tasks_as_decisions == 1
+    assert (result.dropped, dict(result.drop_reasons)) == (0, {})
+    extracted = next(e for e in logs if e["event"] == "items_extracted")
+    assert extracted["tasks_as_decisions"] == 1
 
 
 def test_due_date_must_be_in_the_cited_lines() -> None:

@@ -69,12 +69,13 @@ class Extraction:
     items: tuple[CheckedItem, ...]
     dropped: int
     drop_reasons: Mapping[str, int]
-    prompt_versions: tuple[str, ...]  # per successful kind: "a4-v1", "a5-v1+a9-v1", ...
+    prompt_versions: tuple[str, ...]  # per successful kind: "a4-v2", "a5-v2+a9-v1", ...
     tokens_in: int
     tokens_out: int
     cached_tokens: int
     seconds: float
     failed_kinds: tuple[ItemKind, ...]
+    tasks_as_decisions: int = 0  # decisions left out as repeats of an action item (not drops)
 
 
 @dataclass(frozen=True)
@@ -129,6 +130,22 @@ def _parse(kind: ItemKind, value: BaseModel) -> list[_Raw]:
     return [
         _Raw(kind, q.question, tuple(q.citations), q.raised_by, None, None) for q in value.items
     ]
+
+
+def _without_restated_tasks(kept: Sequence[CheckedItem]) -> tuple[list[CheckedItem], int]:
+    """A decision that repeats a kept action item ("You will send the quote by Friday") is that
+    task, already listed: it is left out and counted, not dropped (RB20)."""
+    tasks = [k for k in kept if k.kind == "action_item"]
+    left: list[CheckedItem] = []
+    restated = 0
+    for item in kept:
+        if item.kind == "decision" and any(
+            is_repeat(t.text, t.citations, item.text, item.citations) for t in tasks
+        ):
+            restated += 1
+            continue
+        left.append(item)
+    return left, restated
 
 
 def _claim(item: _Raw) -> str:
@@ -201,6 +218,7 @@ def extract_items(
         kept.append(
             CheckedItem(item.kind, item.text, checked.citations, owner, item.due, item.confidence)
         )
+    kept, tasks_as_decisions = _without_restated_tasks(kept)
     dropped = sum(reasons.values())
     log.info(
         "items_extracted",
@@ -208,6 +226,7 @@ def extract_items(
         dropped=dropped,
         reasons=dict(reasons),
         failed=failed,
+        tasks_as_decisions=tasks_as_decisions,
     )
     return Extraction(
         items=tuple(kept),
@@ -219,4 +238,5 @@ def extract_items(
         cached_tokens=cached,
         seconds=seconds,
         failed_kinds=tuple(failed),
+        tasks_as_decisions=tasks_as_decisions,
     )

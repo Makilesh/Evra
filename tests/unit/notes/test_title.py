@@ -9,6 +9,7 @@ import pytest
 from evra.config import LlmSettings
 from evra.llm.provider import ChatMessage, ChatResult, LlmUnavailable
 from evra.notes.context import build_context
+from evra.notes.extract import CheckedItem
 from evra.notes.title import (
     TITLE_TIMEOUT_S,
     clean_generated_title,
@@ -18,10 +19,12 @@ from evra.notes.title import (
     placeholder_title,
     title_settings,
 )
+from evra.notes.validate import CheckedNote
 from evra.store.db import connect
+from evra.store.items import ItemStore
 from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
-from evra.store.notes import OutputBlock, StoredNote
+from evra.store.notes import NoteStore, OutputBlock, StoredNote
 from tests.unit.notes.fakes import FakeProvider, saved_meeting, title_reply
 
 PLACEHOLDER = "Recording 2026-11-11 15:25"
@@ -56,6 +59,37 @@ def test_a_meeting_with_the_placeholder_is_named_from_its_note(conn: sqlite3.Con
     assert "- The launch moves to October 14." in user
     assert user.index("October 14") < user.index("designer proposal")  # summary first
     assert "u1" not in user  # citation ids are not part of the note's text
+
+
+def test_a_note_of_the_lists_alone_is_named_from_its_items(conn: sqlite3.Connection) -> None:
+    """RB23: when the note has no points of its own (A1 failed), its items name the meeting."""
+    mid = saved_meeting(conn, PLACEHOLDER, with_note=False)
+    version = MeetingStore(conn).current_transcript_version(mid)
+    assert version is not None
+    generation = NoteStore(conn).save_generation(
+        meeting_id=mid,
+        transcript_version_id=version,
+        note=CheckedNote((), (), 0, 0, {}),
+        provider="fake",
+        model="fake:1b",
+        prompt_version="a0-v1+a4-v2+a5-v2+a6-v2",
+        template="one_on_one",
+        tokens_in=1,
+        tokens_out=1,
+        items=[
+            CheckedItem("action_item", "Send the designer proposal", ("u2",), "You", None, 0.9),
+            CheckedItem("action_item", "Plan the offsite", ("u2",), None, None, 0.8),
+            CheckedItem("decision", "The launch moves to October 14.", ("u1",), None, None, None),
+        ],
+    )
+    offsite = ItemStore(conn).for_generation(generation)[1]
+    assert ItemStore(conn).set_status(offsite.id, "dismissed")
+    provider = FakeProvider([title_reply("Launch date and designer proposal")])
+    named = name_meeting(conn, mid, provider=provider, model="fake:1b")
+    assert named == "Launch date and designer proposal"
+    user = provider.calls[0][1].content
+    assert "- Send the designer proposal\n- The launch moves to October 14." in user
+    assert "offsite" not in user  # a dismissed item is not part of the note
 
 
 def _context_system(conn: sqlite3.Connection, mid: str) -> str:

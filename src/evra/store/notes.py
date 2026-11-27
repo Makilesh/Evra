@@ -56,7 +56,10 @@ class NoteStore:
         tokens_in: int,
         tokens_out: int,
         items: Sequence[CheckedItem] = (),
+        items_dropped: int = 0,
     ) -> str:
+        """`dropped_claims` counts every point the check dropped: the note's own and, given
+        `items_dropped`, its items'."""
         generation_id = new_id()
         groups: list[tuple[str, tuple[CheckedBullet, ...]]] = [(SUMMARY, note.summary)]
         groups += [(s.section_id, s.bullets) for s in note.sections]
@@ -80,7 +83,7 @@ class NoteStore:
                     transcript_version_id,
                     tokens_in,
                     tokens_out,
-                    note.dropped,
+                    note.dropped + items_dropped,
                 ),
             )
             position = 0

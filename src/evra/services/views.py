@@ -41,10 +41,14 @@ def utterance_view(utterance: Utterance) -> dict[str, Any]:
     }
 
 
-def item_text(owner: str | None, text: str, due: str | None) -> str:
-    """An item as the note shows it: "You: Send the vendor quote (by Friday)"."""
-    shown = f"{owner}: {text}" if owner else text
-    return f"{shown} ({due})" if due else shown
+def item_text(kind: str, owner: str | None, text: str, due: str | None) -> str:
+    """An item as the note shows it. A task names its owner first, and its due date once:
+    "You: Send the vendor quote (by Friday)". A decision or a question stands alone; who made
+    or raised it stays in the record."""
+    shown = f"{owner}: {text}" if owner and kind == "action_item" else text
+    if due and due.casefold() not in text.casefold():
+        shown = f"{shown} ({due})"
+    return shown
 
 
 def note_view(
@@ -73,7 +77,7 @@ def note_view(
             continue
         blocks.setdefault(ITEM_SECTIONS[item.kind], []).append(
             {
-                "text": item_text(item.owner, item.text, item.due),
+                "text": item_text(item.kind, item.owner, item.text, item.due),
                 "citations": cited(item.citations),
                 "item": {
                     "id": item.id,

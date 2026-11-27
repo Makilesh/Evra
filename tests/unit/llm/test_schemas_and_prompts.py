@@ -102,13 +102,26 @@ def test_extraction_prompts_have_one_section_and_a_schema_slot() -> None:
     from evra.llm.prompt_files import load_part
 
     for prompt_id, version in [
-        ("a4_actions", "a4-v1"),
-        ("a5_decisions", "a5-v1"),
-        ("a6_questions", "a6-v1"),
+        ("a4_actions", "a4-v2"),
+        ("a5_decisions", "a5-v2"),
+        ("a6_questions", "a6-v2"),
     ]:
         part = load_part(prompt_id)
         assert part.version == version
         assert "{schema}" in part.text
+    # v2 (RB18-RB20): a task's text without its due date; a task is not a decision; what was
+    # left undecided is an open question too, phrased as one
+    assert "without the owner or the due date" in load_part("a4_actions").text
+    assert (
+        "A task someone took on or was given is an action item, not a decision: leave it out."
+        in load_part("a5_decisions").text
+    )
+    a6 = load_part("a6_questions").text
+    assert a6.startswith(
+        "List the questions raised in the meeting above that were not answered by the end of"
+        " it, points said to be still undecided, and the user's notes containing"
+    )
+    assert "question (phrased as a question, under 25 words)" in a6
 
 
 def test_extraction_schemas_ignore_extra_fields_and_need_citations() -> None:
