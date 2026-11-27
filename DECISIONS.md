@@ -455,22 +455,54 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - A part that fails leaves about 10 minutes out of the note, and only the log says so; a call whose digests together pass the budget (over about four hours) fails `too_long` (BACKLOG has both).
 
 ## Notepad alignment weights (2026-11-27)
-- **Context:** the note job links each line the owner typed during a call to the transcript lines it was written about (BUILD.md §7.2, `notes/align.py`), so A1 can expand those topics and a long call's parts get the notes about them. §7.2 gives the starting weights (time 0.4, words 0.3, meaning 0.3), the candidates (utterances ending from 90 s before the line was typed to 30 s after, the time weight peaking 15 s after a line ends, spread 30 s), a cut-off of 0.35 and at most 5 lines a note, and asks to tune them on the owner's labelled lines against: precision ≥ 0.80 at recall ≥ 0.60, and a 60-minute meeting with 50 note lines linked in under 5 s. Without meaning (no embedder, or the batch fails) the score is (0.4 · time + 0.3 · words) / 0.7. The owner has labelled no lines yet; Plan B measures a synthetic set.
-- **Evidence:** `tools/eval_alignment.py` with and without `--no-embed` (Ollama 0.34.4, RTX 5070 Ti Laptop, `qwen3-embedding:0.6b`). The set (`tests/fixtures/notes/one_on_one_60min_notes.json`): 12 terse lines typed during the 60-minute synthetic 1:1, one after each planted fact but the last, each started 6–29 s after the last line it notes ended (6–45 s after the first), labelled with the 1–3 lines it is about (21 in all). "Right" is a linked line that is labelled.
+- **Context:** the note job links each line the owner typed during a call to the transcript lines it was written about (BUILD.md §7.2, `notes/align.py`), so A1 can expand those topics and a long call's parts get the notes about them. §7.2 gives the starting weights (time 0.4, words 0.3, meaning 0.3), the candidates (utterances ending from 90 s before the line was typed to 30 s after, the time weight peaking 15 s after a line ends, spread 30 s), a starting cut-off of 0.35 and at most 5 lines a note. It asks to tune the threshold on labelled lines against: precision ≥ 0.80 at recall ≥ 0.60, and a 60-minute meeting with 50 note lines linked in under 5 s. Without meaning (no embedder, or the batch fails) the score is (0.4 · time + 0.3 · words) / 0.7.
+- **The labelled set:** `tests/fixtures/notes/one_on_one_60min_notes.json`, 12 synthetic lines we wrote and labelled ourselves, not the owner's. They are terse lines typed during the 60-minute synthetic 1:1, one after each planted fact but the last. Each started 6–29 s after the last line it notes ended (6–45 s after the first), and is labelled with the 1–3 lines it is about (21 in all). Measured with `tools/eval_alignment.py` (with `--sweep`, with and without `--no-embed`; Ollama 0.34.4, RTX 5070 Ti Laptop, `qwen3-embedding:0.6b`). "Right" is a linked line that is labelled.
+- **The rule (RB52):** a link must agree with the note in its words or its meaning, not only in its time. So each mode's cut-off sits just above the best score that time alone gives:
+  - with meaning, 0.55: 0.4 at the peak, plus 0.3 × 0.5, the cosine qwen3 gives two lines of one conversation;
+  - by time and words alone, 0.57: 0.4 / 0.7.
+- **Evidence, at §7.2's starting cut-off of 0.35:** every note linked 5 lines, 60 in all, 20 of them right: 33% precision at 95% recall in both modes.
+  - With meaning, each note's best line is one it is about (0.69–0.97), and its other labelled lines score 0.53–0.89.
+  - Its neighbours score 0.42–0.62. Time alone gives a line heard 0–30 s before the note 0.31–0.40, and qwen3 adds 0.06–0.15 for any line of the same conversation.
+  - Without meaning, the reweighting lifts time alone to 0.45–0.57 and shared words alone to 0.43.
+- **Evidence, the sweep** (precision / recall; the score at least, at most 5 a note):
 
-  | | linked | right | precision | recall | the 12 lines | 50 lines over the hour |
-  | --- | --- | --- | --- | --- | --- | --- |
-  | with meaning | 60 | 20 | 33% | 95% | 5.19 s (the embedding model loaded first), 3.31 s warm | 8.36–8.64 s |
-  | time and words alone | 60 | 20 | 33% | 95% | under 0.01 s | 0.02 s |
+  | score at least | with meaning | time and words alone |
+  | --- | --- | --- |
+  | 0.35 | 33% / 95% | 33% / 95% |
+  | 0.40 | 33% / 95% | 33% / 95% |
+  | 0.45 | 36% / 95% | 33% / 95% |
+  | 0.50 | 53% / 95% | 33% / 95% |
+  | 0.55 | 79% / 90% | 45% / 95% |
+  | **0.60** | **95% / 86%** (19 linked, 18 right) | 73% / 90% |
+  | **0.65** | 100% / 76% | **85% / 81%** (20 linked, 17 right) |
+  | 0.70 | 100% / 67% | 100% / 76% |
 
-  - Every note links 5 lines. With meaning, each note's best line is one it is about (0.69–0.97), and its other labelled lines score 0.53–0.89. Its neighbours come next: a line heard 0–30 s before the note scores 0.31–0.40 on time alone, and qwen3 puts two lines of one conversation at a cosine of 0.2–0.5, so the neighbours score 0.42–0.62 and pass 0.35. Without meaning the reweighting lifts time alone to 0.45–0.57, and shared words alone to 0.43, so the cut-off passes them too. The one labelled line missed is "Right, we don't have an answer on that yet." (the legacy API, n12), sixth on its note.
-  - Other cut-offs on the same set (score at least, most per note: precision / recall): with meaning 0.60, 5: 95% / 86%; 0.65, 5: 100% / 76%; 0.55, 3: 83% / 90%; 0.50, 2: 83% / 90%. Time and words alone 0.65, 5: 85% / 81%; 0.70, 5: 100% / 76%; 0.60, 2: 83% / 90%. At most one line per note gives 100% / 57% in both.
-  - Time: Ollama embeds 93–99 short lines a second whatever the request size (a spike: 64, 128 and 256 lines a request; 512 answered HTTP 400). The 12 notes' candidate windows hold 331 transcript lines; 50 lines spread over the hour hold 836, every line of the call, so their one batch takes 8.4–8.6 s, the same with gemma4:12b loaded too. Loading the embedding model first adds about 1.9 s.
-- **Decision:** the values stay §7.2's (the plan's): `W_TIME, W_LEX, W_SEM, MIN_SCORE, MAX_PER_LINE = 0.4, 0.3, 0.3, 0.35, 5`, `BEFORE_S, AFTER_S, PEAK_S, SPREAD_S = 90, 30, 15, 30`, and the query instruction `ALIGN_TASK`. On this set they miss §7.2's precision (33% at 95% recall), and with meaning its time for 50 lines (8.4–8.6 s). The cut-off is not tuned here: 12 lines labelled by the builder are not the owner's labelled lines §7.2 asks for, and the cut-offs that meet it (0.60 with meaning, 0.65–0.70 without) are read off those 12 alone (BACKLOG "Notepad links on the owner's lines").
+  - At most one line a note gives 100% / 57% in both modes (52% at 0.70); at most two gives 100% / 86% with meaning at 0.60, and 89% / 81% without at 0.65.
+  - The one labelled line missed with meaning at 0.60 is "Right, we don't have an answer on that yet." (the legacy API, n12). Without meaning at 0.65, four are missed.
+- **Evidence, time:** Ollama embeds 93–99 short lines a second whatever the request size (a spike: 64, 128 and 256 lines a request; 512 answered HTTP 400).
+  - Embedding every candidate, the 12 notes' windows hold 331 transcript lines, and 50 lines spread over the hour hold 836, every line of the call.
+  - RB53 leaves out, before the batch, a candidate that could not reach 0.60 even with a perfect meaning (0.4 · time + 0.3 · words + 0.3 < 0.60). That leaves 98 of the 331 and 409 of the 836.
+  - It changes no link: without meaning such a candidate scores under 0.30 / 0.7 = 0.43, below 0.65, and a test checks the fixture's links in both modes.
+
+  | | 12 lines, embedding model loaded first | 12 lines, warm | 50 lines over the hour |
+  | --- | --- | --- | --- |
+  | with meaning, every candidate embedded | 5.19 s | 3.31 s | 8.36–8.64 s |
+  | with meaning, candidates that cannot reach 0.60 left out (3 runs) | 2.75–2.84 s | 1.06–1.11 s | 4.25–4.28 s |
+  | time and words alone | under 0.01 s | under 0.01 s | 0.02 s |
+
+  - Loading the embedding model takes about 1.7–1.9 s. gemma4:12b being loaded as well made no difference.
+- **Decision (RB52, RB53):**
+  - `MIN_SCORE = 0.60` with meaning, and `MIN_SCORE_NO_MEANING = 0.65` by time and words alone, which includes a failed batch.
+  - The weights stay 0.4 / 0.3 / 0.3, the window 90 s before to 30 s after (peak 15 s, spread 30 s), and at most 5 lines a note, with `ALIGN_TASK` as the query's instruction.
+  - A candidate that cannot reach `MIN_SCORE` even with a perfect meaning is not embedded, and a note left with no candidate sends no query.
+  - Both cut-offs meet §7.2 on this set: 95% / 86% with meaning, 85% / 81% without. So does the time: 4.25–4.28 s for 50 lines, about 15% under the 5 s.
+  - The set is 12 lines we labelled ourselves, so the cut-offs are to be re-tuned on the owner's own labelled lines (BACKLOG).
 - **Consequences:**
-  - A typed line's `|| aligned:` lists about 5 lines: the 1–2 it is about and their neighbours, a stretch of about a minute. A1 reads the stretch; a long call's part gets every note whose stretch it holds (RB36); the My notes tab will show the neighbours too.
-  - Linking is the note job's one embedding batch before its chats (RB35). With 12 notes it adds about 3.3 s to the note (5.2 s when the embedding model has to load); with 50 over an hour, 8.4–8.6 s (BACKLOG "Linking many notes").
-  - The batch embeds the transcript lines the note's check may cite, so a point citing one of them is checked without embedding it again.
+  - A typed line's `|| aligned:` lists 1–3 lines, on the fixture 19 for 12 notes. A1 reads what the note is about, and a long call's parts get the notes about their stretch (RB36); the My notes tab shows those lines.
+  - A note that agrees with no line in words or meaning links nothing. RB36 then routes it by its time, and A1 still sees its time.
+  - On real notes a note may link fewer lines than it should (cost if wrong).
+  - Linking is the note job's one embedding batch before its chats (RB35). It adds about 1.1 s with 12 notes (2.8 s when the embedding model has to load) and about 4.3 s with 50 over an hour.
+  - The batch holds the transcript lines most likely to be cited, so a point citing one of them is checked without embedding it again.
 
 ## Typed notes in the note, and a note cited by its label (2026-11-27)
 - **Context:** the owner's typed lines now reach every prompt about a meeting, in A0's `<user_notes>`: `[n:k] (mm:ss | before | after) text || aligned: u:…`, or `[n:k] (context) text`, numbered over the whole meeting. The note job, the title and asking build that context in one place (`user_notes.meeting_context`, RB1). A long call's part shows the notes about its stretch, and A3 shows them all (RB36). A0 asks for the notes to be cited as `user`, and the check accepted only `user` (or `[user]` in a point's text).
@@ -483,11 +515,15 @@ One entry per decision. Format: context · evidence · decision · consequences.
   | notes | 7 parts, 274.3 s | 27 / 1 | 96% | 54% / 77% | 22/10/0 | 3/3 | 9 / 9, 1 |
   | notes, one pass, before the label fix | one pass, 107.9 s | 18 / 1 | 95% | 92% / 92% | 9/6/3 | 3/3 | 12 (counted later) / 0, 0 |
   | notes, one pass | one pass, 107.6 s | 19 / 0 | 100% | 92% / 92% | 9/6/3 | 3/3 | 12 / 12, 3 |
+  | notes, linked at the new cut-offs | 7 parts, 293.5 s | 61 / 2 | 97% | 46% / 69% | 18/5/0 | 2/3 | 5 / 5, 1 |
+  | notes, linked at the new cut-offs, one pass | one pass, 115.7 s | 21 / 1 | 95% | 92% / 92% | 14/7/3 | 2/3 | 12 / 12, 3 |
 
-  - The 12 notes add about 440 tokens: the call's A1 estimate goes from 27,738 to 28,175, over the 28,000 budget, so with its notes the call is read in parts (274–280 s instead of about 110 s).
+  - The rows above the last two link 5 lines to every note (the starting cut-off of 0.35). The last two use the cut-offs of "Notepad alignment weights", 1–3 lines a note.
+  - The 12 notes add about 440 tokens with 5 links each: the call's A1 estimate goes from 27,738 to 28,175, over the 28,000 budget. With 1–3 links it is 28,070, still over. So with its notes the call is read in parts: 274–294 s, against 108–116 s in one pass. Ollama counted 28,460 and 28,217 prompt tokens in the two one-pass runs.
+  - At temperature 0 the runs still differ with the prompt. On parts, the new links gave a longer note (61 points, A3's reply 3,955 tokens against 2,926) with fewer points from the notes (5). The two runs at the new cut-offs found 2 of the 3 planted commitments as action items (the postmortem was a point instead).
   - A3 wrote one point for each of 9 notes, each ending in a citation list such as "[u:140, u:138, u:139, u:140, u:141, u:142, user.2]": `user` and the note's number. The check read only `u:…` and `user` in brackets, so the bracket stayed in the claim, its numbers were not in the cited lines, and all 9 were dropped as `number_not_cited`. In one pass, A1 cited the notes by their label too, in its citation lists; those points were kept for their transcript lines, but not as citing the notes.
 - **Decision:** the check reads a note's label, `n:3`, and gemma4's `user.3` (or `user:3`), in a citation list or in brackets in a point's text, as a citation of the user's notes, the same as `user` (`notes/validate.py`). Appendix B's citation pattern already names `n:<id>`. Such a point is still checked against all of the notes' text, as `user` is. The prompts are unchanged (A0 stays `a0-v1`).
 - **Consequences:**
-  - In one pass, the notes took the 60-minute call's own coverage from 46% to 92%: 12 of 13 facts, the 13th (38 customers) being in the note as "38 sign-ups", which the score's keywords don't match. It found 3 of 3 commitments, and kept every point written from a note.
-  - A call close to the budget is read in parts once its notes are added. That is 2.5 times slower here (274–280 s; §9.5 asks for 90 s, and one pass took 108–111 s), and its coverage gain is smaller (54% own, 77% with items).
+  - In one pass, the notes took the 60-minute call's own coverage from 46% to 92% in both runs: 12 of 13 facts, the 13th (38 customers) being in the note as "38 sign-ups", which the score's keywords don't match. Every point written from a note was kept (12 of 12).
+  - A call close to the budget is read in parts once its notes are added, and the budget stays at 28,000 (RB54): Ollama cuts a prompt that doesn't fit and loses part of the call, which is worse than a slower note. That is 2.5 times slower here (274–294 s; §9.5 asks for 90 s, and one pass took 108–116 s), and its coverage gain is smaller (46–54% own, 69–77% with items) (BACKLOG "Typed notes can send a call to parts").
   - A point that cites a note by its label is checked against every note, so a name from another note can support it. One point ("The Atlas beta currently has 38 sign-ups…") was kept that way, and it is true.

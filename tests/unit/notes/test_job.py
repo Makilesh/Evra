@@ -393,8 +393,9 @@ def test_job_aligns_then_writes_with_notes(conn: sqlite3.Connection) -> None:
     assert version is not None
     first = store.utterances(version)[0]
     [line] = NotepadStore(conn).lines(mid)
-    assert line.aligned[0][0] == first.id  # the line heard just before it, with its words
-    notes = "[n:1] (00:14) Search migration done, Tuesday || aligned: u:1, u:2, u:3"
+    # the line heard just before it, with its words; the next two share only the time (RB52)
+    assert [uid for uid, _ in line.aligned] == [first.id]
+    notes = "[n:1] (00:14) Search migration done, Tuesday || aligned: u:1"
     assert all(f"<user_notes>\n{notes}\n</user_notes>" in c[0].content for c in provider.calls)
     stored = NoteStore(conn).current_note(mid)
     assert stored is not None

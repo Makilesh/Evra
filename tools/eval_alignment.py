@@ -7,11 +7,14 @@ lines it was written about, linked as the note job links them (`evra.notes.align
     uv run python tools/eval_alignment.py --sweep --show
 
 Precision = linked lines that are labelled / every linked line; recall = labelled lines that are
-linked / every labelled line, over all twelve. §7.2's acceptance: precision >= 0.80 at recall
->= 0.60, and a 60-minute meeting with 50 note lines links in under 5 s. The twelve are linked
-first with the embedding model unloaded (its load counted); then 50 lines spread over the call
-are linked on a fresh embedder. `--sweep` shows precision and recall at other cut-offs (the
-score and the most lines kept per note); `--show` each line's links. Synthetic fixtures only.
+linked / every labelled line, over all twelve, at the cut-off of the mode (MIN_SCORE with
+meaning, MIN_SCORE_NO_MEANING without). §7.2's acceptance: precision >= 0.80 at recall >= 0.60,
+and a 60-minute meeting with 50 note lines links in under 5 s. The twelve are linked first with
+the embedding model unloaded (its load counted), then again warm on a fresh embedder; then 50
+lines spread over the call are linked on a fresh embedder, as the note job links them.
+`--sweep` shows precision and recall at other cut-offs (the score and the most lines kept per
+note), from every candidate, none left out before the batch; `--show` each line's candidates.
+Synthetic fixtures only.
 """
 
 from __future__ import annotations
@@ -28,14 +31,21 @@ from evra.config import LlmSettings
 from evra.console import safe_console
 from evra.llm.ollama import OllamaProvider
 from evra.llm.provider import LlmError
-from evra.notes.align import MAX_PER_LINE, MIN_SCORE, Candidate, best, candidates
+from evra.notes.align import (
+    MAX_PER_LINE,
+    MIN_SCORE,
+    MIN_SCORE_NO_MEANING,
+    Candidate,
+    best,
+    candidates,
+)
 from evra.notes.semantic import Embedder
 from evra.store.notepad import NoteLine
 from evra.transcribe.cli import format_ms
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run as a script
 
-from tools.bakeoff_notes import FIXTURES, load_case
+from tools.bakeoff_notes import FIXTURES, Case, load_case
 from tools.bakeoff_parts import LONG_FIXTURE
 from tools.notes_fixture import NOTES_FIXTURE, load_notes
 
@@ -123,12 +133,18 @@ def _show(
             )
 
 
+def _timed(lines: Sequence[NoteLine], case: Case, embedder: Embedder | None) -> float:
+    started = time.monotonic()
+    candidates(lines, case.utterances, embedder=embedder)
+    return time.monotonic() - started
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     safe_console()
     parser = argparse.ArgumentParser(description="Notepad alignment against labelled lines")
     parser.add_argument("--no-embed", action="store_true", help="link by time and words alone")
     parser.add_argument("--sweep", action="store_true", help="other cut-offs")
-    parser.add_argument("--show", action="store_true", help="each line's links")
+    parser.add_argument("--show", action="store_true", help="each line's candidates")
     args = parser.parse_args(argv)
     case = load_case(FIXTURES / LONG_FIXTURE)
     notes = load_notes(NOTES_FIXTURE, case.utterances)
@@ -142,8 +158,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         with contextlib.suppress(LlmError):
             provider.unload(settings.embedding_model)
     how = "time and words alone" if args.no_embed else f"with meaning, {settings.embedding_model}"
+    cut = MIN_SCORE_NO_MEANING if args.no_embed else MIN_SCORE
     print(f"Notepad alignment: {len(notes.lines)} typed lines of {LONG_FIXTURE} ({how})")
-    print(f"kept: score at least {MIN_SCORE}, at most {MAX_PER_LINE} per note\n")
+    print(f"kept: score at least {cut:.2f}, at most {MAX_PER_LINE} per note\n")
     started = time.monotonic()
     found = candidates(notes.lines, case.utterances, embedder=embedder())
     seconds = time.monotonic() - started
@@ -151,16 +168,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("| run | linked | labelled | right | precision | recall |")
     print("| --- | --- | --- | --- | --- | --- |")
     print(_row("kept", score(linked, notes.about)))
-    print(f"\n{len(notes.lines)} lines linked in {seconds:.2f} s")
-    length_ms = max(u.end_ms for u in case.utterances)
-    timed = spread(notes.lines, TIMED_LINES, length_ms)
-    started = time.monotonic()
-    candidates(timed, case.utterances, embedder=embedder())
-    print(f"{TIMED_LINES} lines over the call linked in {time.monotonic() - started:.2f} s")
-    if args.sweep:
-        _sweep(found, notes.about)
-    if args.show:
-        _show(notes.lines, found, notes.about, {u.id: u.start_ms for u in case.utterances})
+    twelve = len(notes.lines)
+    first = "first" if args.no_embed else "the embedding model loaded first"
+    print(f"\n{twelve} lines linked in {seconds:.2f} s, {first}")
+    print(f"{twelve} lines linked in {_timed(notes.lines, case, embedder()):.2f} s, warm")
+    timed = spread(notes.lines, TIMED_LINES, max(u.end_ms for u in case.utterances))
+    print(f"{TIMED_LINES} lines over the call linked in {_timed(timed, case, embedder()):.2f} s")
+    if args.sweep or args.show:
+        every = candidates(
+            notes.lines, case.utterances, embedder=embedder(), at_least=min(CUT_OFFS)
+        )
+        if args.sweep:
+            _sweep(every, notes.about)
+        if args.show:
+            _show(notes.lines, every, notes.about, {u.id: u.start_ms for u in case.utterances})
     return 0
 
 

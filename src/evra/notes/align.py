@@ -2,12 +2,15 @@
 (BUILD.md §7.2). A line typed at T looks at the utterances that ended from 90 s before T to 30 s
 after it, and scores each by when it ended (best about 15 s before T), by the words they share
 (BM25 over those candidates, scaled to the best) and, with an embedder, by meaning (the line as
-a query, Qwen3's instruction format). The best five at or above MIN_SCORE are kept.
+a query, Qwen3's instruction format). The best five at or above the cut-off are kept: a link must
+agree with the note in its words or its meaning, not only in its time, so each cut-off sits just
+above the best that time alone gives (RB52: 0.60 with meaning, 0.65 by time and words alone).
 
 Every line's candidates go in one embedding batch, the job's only one before its chats (RB35): the
-same embedder then checks the note, and its cache already holds these transcript lines. When
-embedding fails, the time and the words decide, reweighted to fill the scale. Nothing here logs
-note or transcript text."""
+same embedder then checks the note, and its cache already holds these transcript lines. A
+candidate that could not reach MIN_SCORE even with a perfect meaning is left out before the batch
+(RB53); with the cut-offs above, no link changes. When embedding fails, the time and the words
+decide, reweighted to fill the scale. Nothing here logs note or transcript text."""
 
 from __future__ import annotations
 
@@ -26,7 +29,8 @@ from evra.store.notepad import NoteLine
 
 log = structlog.get_logger(__name__)
 
-W_TIME, W_LEX, W_SEM, MIN_SCORE, MAX_PER_LINE = 0.4, 0.3, 0.3, 0.35, 5
+W_TIME, W_LEX, W_SEM, MIN_SCORE, MAX_PER_LINE = 0.4, 0.3, 0.3, 0.60, 5
+MIN_SCORE_NO_MEANING = 0.65  # by time and words alone: no embedder, or the batch failed
 BEFORE_S, AFTER_S, PEAK_S, SPREAD_S = 90, 30, 15, 30
 ALIGN_TASK = (
     "Given a note typed during a meeting, retrieve the transcript lines it was written about"
@@ -45,6 +49,11 @@ class Candidate:
         if self.w_sem is None:
             return (W_TIME * self.w_time + W_LEX * self.w_lex) / (W_TIME + W_LEX)
         return W_TIME * self.w_time + W_LEX * self.w_lex + W_SEM * self.w_sem
+
+    @property
+    def cut_off(self) -> float:
+        """The score a link needs, in the mode it was scored in."""
+        return MIN_SCORE_NO_MEANING if self.w_sem is None else MIN_SCORE
 
 
 def linkable(lines: Sequence[NoteLine]) -> list[NoteLine]:
@@ -89,40 +98,52 @@ def _meanings(
 
 
 def candidates(
-    lines: Sequence[NoteLine], utterances: Sequence[Utterance], *, embedder: Embedder | None = None
+    lines: Sequence[NoteLine],
+    utterances: Sequence[Utterance],
+    *,
+    embedder: Embedder | None = None,
+    at_least: float = MIN_SCORE,
 ) -> dict[str, list[Candidate]]:
-    """Every linkable line's candidates, in the call's order, with the parts of their score."""
+    """Every linkable line's candidates, in the call's order, with the parts of their score. The
+    time and the words come first, the words scaled over every utterance in the line's window.
+    A candidate whose best possible score (a perfect meaning) is under `at_least` is left out
+    then, so its text is never embedded; at MIN_SCORE that changes no link, since without
+    meaning it scores under 0.30 / 0.7 = 0.43 too (RB53)."""
     ordered = sorted(utterances, key=lambda u: (u.end_ms, u.start_ms, u.seq))
     ends = [u.end_ms for u in ordered]
-    near: dict[str, tuple[NoteLine, list[Utterance]]] = {}
+    parts: dict[str, list[tuple[Utterance, float, float]]] = {}  # (utterance, w_time, w_lex)
     for line in linkable(lines):
         assert line.captured_at_ms is not None
-        found = sorted(_near(line.captured_at_ms, ordered, ends), key=lambda u: (u.start_ms, u.seq))
-        near[line.id] = (line, found)
-    meaning = _meanings({k: v for k, v in near.items() if v[1]}, embedder)
-    result: dict[str, list[Candidate]] = {}
-    for line_id, (line, found) in near.items():
-        assert line.captured_at_ms is not None
-        words = Bm25([tokenize(u.text) for u in found]).scores(tokenize(line.text))
+        near = sorted(_near(line.captured_at_ms, ordered, ends), key=lambda u: (u.start_ms, u.seq))
+        words = Bm25([tokenize(u.text) for u in near]).scores(tokenize(line.text))
         top = max(words, default=0.0)
-        result[line_id] = [
-            Candidate(
-                u.id,
-                _w_time(line.captured_at_ms, u),
-                score / top if top > 0 else 0.0,
-                None if meaning is None else meaning[line_id][u.id],
-            )
-            for u, score in zip(found, words, strict=True)
+        scored = [
+            (u, _w_time(line.captured_at_ms, u), score / top if top > 0 else 0.0)
+            for u, score in zip(near, words, strict=True)
         ]
-    return result
+        parts[line.id] = [p for p in scored if W_TIME * p[1] + W_LEX * p[2] + W_SEM >= at_least]
+    by_id = {line.id: line for line in lines}
+    meaning = _meanings(
+        {k: (by_id[k], [u for u, _, _ in found]) for k, found in parts.items() if found}, embedder
+    )
+    return {
+        line_id: [
+            Candidate(u.id, w_time, w_lex, None if meaning is None else meaning[line_id][u.id])
+            for u, w_time, w_lex in found
+        ]
+        for line_id, found in parts.items()
+    }
 
 
 def best(
-    found: Sequence[Candidate], *, min_score: float = MIN_SCORE, most: int = MAX_PER_LINE
+    found: Sequence[Candidate], *, min_score: float | None = None, most: int = MAX_PER_LINE
 ) -> list[tuple[str, float]]:
-    """The candidates at or above `min_score`, best first (earlier first on a tie), at most
-    `most` of them."""
-    kept = sorted((c for c in found if c.score >= min_score), key=lambda c: -c.score)
+    """The candidates at or above `min_score` (by default each one's `cut_off`), best first
+    (earlier first on a tie), at most `most` of them."""
+    kept = sorted(
+        (c for c in found if c.score >= (c.cut_off if min_score is None else min_score)),
+        key=lambda c: -c.score,
+    )
     return [(c.utterance_id, c.score) for c in kept[:most]]
 
 

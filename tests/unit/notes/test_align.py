@@ -7,11 +7,22 @@ import pytest
 import structlog
 
 from evra.llm.provider import LlmModelMissing
-from evra.notes.align import ALIGN_TASK, MAX_PER_LINE, MIN_SCORE, align
+from evra.notes.align import (
+    ALIGN_TASK,
+    MAX_PER_LINE,
+    MIN_SCORE,
+    MIN_SCORE_NO_MEANING,
+    align,
+    best,
+    candidates,
+)
 from evra.notes.semantic import Embedder, as_query
 from evra.store.meetings import Utterance
 from evra.store.notepad import NoteLine, Phase
 from tests.unit.notes.fakes import FakeProvider, utt
+from tools.bakeoff_notes import FIXTURES, load_case
+from tools.bakeoff_parts import LONG_FIXTURE
+from tools.notes_fixture import NOTES_FIXTURE, load_notes
 
 T = 600_000  # the note is typed 10 minutes into the call
 
@@ -69,46 +80,49 @@ def test_align_prefers_the_line_heard_just_before() -> None:
         ending("after", -25, said, 3),
         ending("too_late", -30.5, said, 4),  # ended more than 30 s after: not a candidate
     ]
-    aligned = align([note("n1", "Atlas beta: March 3")], lines)
-    assert [uid for uid, _ in aligned["n1"]] == ["just_before", "after", "earlier"]
-    assert aligned["n1"][0][1] == pytest.approx(1.0)  # its words, at the peak 15 s after
+    typed = [note("n1", "Atlas beta: March 3")]
+    found = sorted(candidates(typed, lines)["n1"], key=lambda c: -c.score)
+    assert [c.utterance_id for c in found] == ["just_before", "after", "earlier"]  # same words
+    [(uid, score)] = align(typed, lines)["n1"]  # the others only by time: under the cut-off
+    assert (uid, score) == ("just_before", pytest.approx(1.0))
 
 
 def test_candidates_end_from_90_s_before_to_30_s_after() -> None:
     said = "The Atlas beta moves to March 3."
     lines = [ending("first", 90, said, 0), ending("last", -30, said, 1)]
-    assert {uid for uid, _ in align([note("n1", "Atlas beta")], lines)["n1"]} == {"first", "last"}
+    found = candidates([note("n1", "Atlas beta")], lines, at_least=0.0)["n1"]
+    assert {c.utterance_id for c in found} == {"first", "last"}
+
+
+LINES_20_S_BEFORE = [  # each ended 20 s before the note: w_time 0.97
+    ending("words", 20, "The budget is in.", 0),
+    ending("meaning", 20, "Finance approved the money yesterday.", 1),
+    ending("neither", 20, "Nice weather today.", 2),
+]
 
 
 def test_align_uses_words_and_meaning() -> None:
     typed = "budget signed off"
-    lines = [
-        ending("words", 50, "The budget is in.", 0),
-        ending("meaning", 50, "Finance approved the money yesterday.", 1),
-        ending("neither", 50, "Nice weather today.", 2),
-    ]
     query = as_query(typed, ALIGN_TASK)
     provider = Meanings((query, "Finance approved the money yesterday."))
-    aligned = align([note("n1", typed)], lines, embedder=Embedder(provider, "embed"))
-    by_time = 0.4 * w_time(50)  # 0.10, under MIN_SCORE: "neither" is left out
+    aligned = align([note("n1", typed)], LINES_20_S_BEFORE, embedder=Embedder(provider, "embed"))
+    by_time = 0.4 * w_time(20)  # 0.39: time alone links nothing (RB52)
     assert by_time < MIN_SCORE
     assert dict(aligned["n1"]) == pytest.approx({"words": by_time + 0.3, "meaning": by_time + 0.3})
     [batch] = provider.embed_calls  # one batch: the note as a query, then its candidates
     assert batch[0] == query
-    assert sorted(batch[1:]) == sorted(u.text for u in lines)
+    assert sorted(batch[1:]) == sorted(u.text for u in LINES_20_S_BEFORE)
 
 
 def test_align_without_embeddings_reweights() -> None:
-    lines = [
-        ending("words", 50, "The budget is in.", 0),
-        ending("meaning", 50, "Finance approved the money yesterday.", 1),
-    ]
     typed = [note("n1", "budget signed off")]
-    aligned = align(typed, lines)
-    # (0.4 w_time + 0.3 w_lex) / 0.7: the words keep their line, time alone does not
-    assert dict(aligned["n1"]) == pytest.approx({"words": (0.4 * w_time(50) + 0.3) / 0.7})
+    aligned = align(typed, LINES_20_S_BEFORE)
+    # (0.4 w_time + 0.3 w_lex) / 0.7, kept at MIN_SCORE_NO_MEANING: the words keep their line;
+    # time alone, 0.56, does not
+    assert 0.4 * w_time(20) / 0.7 < MIN_SCORE_NO_MEANING
+    assert dict(aligned["n1"]) == pytest.approx({"words": (0.4 * w_time(20) + 0.3) / 0.7})
     with structlog.testing.capture_logs() as logs:
-        failed = align(typed, lines, embedder=Embedder(NoEmbeddings([]), "embed"))
+        failed = align(typed, LINES_20_S_BEFORE, embedder=Embedder(NoEmbeddings([]), "embed"))
     assert failed == aligned  # a failed embedding falls back to the same weights (RB35)
     skipped = [e for e in logs if e["event"] == "semantic_check_skipped"]
     assert skipped == [
@@ -137,9 +151,39 @@ def test_at_most_five_lines_per_note_best_first() -> None:
     assert len(kept) == MAX_PER_LINE
     scores = [score for _, score in kept]
     assert scores == sorted(scores, reverse=True)
-    assert all(score >= MIN_SCORE for score in scores)
+    assert all(score >= MIN_SCORE_NO_MEANING for score in scores)
 
 
 def test_a_line_with_nothing_near_it_is_linked_to_nothing() -> None:
     lines = [ending("u1", 300, "The budget is in.")]
     assert align([note("n1", "budget")], lines) == {"n1": []}
+
+
+def test_a_line_that_cannot_be_linked_is_not_embedded() -> None:
+    """RB53: a candidate whose best possible score (a perfect meaning) is under MIN_SCORE is left
+    out before the batch; a note with no candidate left sends no query."""
+    lines = [
+        ending("near", 15, "Nice weather today.", 0),  # 0.4 + 0.3: could be linked
+        ending("far", 75, "Lunch was late.", 1),  # 0.4 x 0.02 + 0.3 = 0.31 at most
+    ]
+    provider = Meanings()
+    align([note("n1", "budget signed off")], lines, embedder=Embedder(provider, "embed"))
+    [batch] = provider.embed_calls
+    assert "Nice weather today." in batch and "Lunch was late." not in batch
+    lone = Meanings()
+    found = align([note("n1", "budget")], lines[1:], embedder=Embedder(lone, "embed"))
+    assert (found, lone.embed_calls) == ({"n1": []}, [])
+
+
+def test_leaving_out_what_cannot_be_linked_changes_no_link() -> None:
+    """RB53 on the 60-minute call's typed notes: the same links in both modes, with fewer texts
+    embedded."""
+    case = load_case(FIXTURES / LONG_FIXTURE)
+    typed = load_notes(NOTES_FIXTURE, case.utterances).lines
+    by_words: list[Embedder | None] = [None, None]
+    by_meaning = [Embedder(FakeProvider([]), "embed"), Embedder(FakeProvider([]), "embed")]
+    for left_out, every_one in (by_words, by_meaning):
+        kept = candidates(typed, case.utterances, embedder=left_out)
+        every = candidates(typed, case.utterances, embedder=every_one, at_least=0.0)
+        assert {k: best(c) for k, c in kept.items()} == {k: best(c) for k, c in every.items()}
+        assert sum(map(len, kept.values())) < sum(map(len, every.values()))
