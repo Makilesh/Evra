@@ -56,10 +56,20 @@ def _span_ms(lines: Sequence[Utterance]) -> int:
     return max(u.end_ms for u in lines) - lines[0].start_ms
 
 
+def _part_end(ordered: Sequence[Utterance], starts: Sequence[int], first: int) -> int:
+    """The last line of a part that starts at line `first`: the last line that starts within 10
+    minutes of it, then the rest of that line's turn that starts within 13."""
+    start_ms = ordered[first].start_ms
+    mark = bisect_left(starts, start_ms + WINDOW_MS) - 1
+    return _turn_end(ordered, mark, start_ms + WINDOW_MS + MIN_TAIL_MS)
+
+
 def split_windows(utterances: Sequence[Utterance]) -> list[Window]:
-    """Every line lands in at least one window. A call of one window plus a short tail is one
-    window. A turn is cut 13 minutes after a window's first line, and the next window moves back
-    at most 2 minutes, so a call with no change of speaker splits by time (RB47)."""
+    """Every line lands in at least one window, and every window adds a line. A call of one
+    window plus a short tail is one window. A turn is cut 13 minutes after a window's first
+    line, and the next window moves back at most 2 minutes, so a call with no change of speaker
+    splits by time (RB47). After a silence longer than a window's reach, the next window starts
+    at the first line after it (RB51)."""
     ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
     if not ordered:
         return []
@@ -67,19 +77,19 @@ def split_windows(utterances: Sequence[Utterance]) -> list[Window]:
         return [_window(1, ordered)]
     starts = [u.start_ms for u in ordered]
     windows: list[Window] = []
-    first = 0
+    first, previous_last = 0, -1
     while True:
-        # the last line that starts within 10 minutes of the first, then the rest of its turn
-        # that starts within 13
-        start_ms = ordered[first].start_ms
-        mark = bisect_left(starts, start_ms + WINDOW_MS) - 1
-        last = _turn_end(ordered, mark, start_ms + WINDOW_MS + MIN_TAIL_MS)
+        last = _part_end(ordered, starts, first)
+        if last <= previous_last:  # nothing new is said within its reach: start after the silence
+            first = previous_last + 1
+            last = _part_end(ordered, starts, first)
         rest = ordered[last + 1 :]
         if not rest or _span_ms(rest) < MIN_TAIL_MS:  # a short tail joins this window
             windows.append(_window(len(windows) + 1, ordered[first:]))
             return windows
         window = _window(len(windows) + 1, ordered[first : last + 1])
         windows.append(window)
+        previous_last = last
         # the next starts at the first line from a minute before this one ends (never after the
         # first line it leaves out), moved back to the start of that line's turn but not past
         # two minutes before the end, and always later than this window's first line

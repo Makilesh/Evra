@@ -3,6 +3,8 @@ turns, with about 60 s of overlap; a short tail joins the last part."""
 
 from itertools import pairwise
 
+import pytest
+
 from evra.config import LlmSettings
 from evra.notes.windows import (
     MIN_TAIL_MS,
@@ -28,6 +30,44 @@ def call(lines: int, turn: int) -> list[Utterance]:
 
 def ids(first: int, last: int) -> tuple[str, ...]:
     return tuple(f"k{k}" for k in range(first, last + 1))
+
+
+def with_silence(step_ms: int, silence_min: int) -> list[Utterance]:
+    """30 minutes of `step_ms` lines (the speaker changing on every line), a silence of
+    `silence_min` minutes, then 30 minutes more."""
+    side = 1_800_000 // step_ms
+    lines = []
+    for k in range(2 * side):
+        start = k * step_ms + (silence_min * 60_000 if k >= side else 0)
+        lines.append(utt(f"k{k}", k % 2, start, start + step_ms, f"line {k}", seq=k))
+    return lines
+
+
+@pytest.mark.parametrize(("step_ms", "silence_min"), [(10_000, 15), (4_000, 12), (4_000, 15)])
+def test_a_part_after_a_long_silence_starts_after_it(step_ms: int, silence_min: int) -> None:
+    """RB51: when nothing is said within a part's reach, the next part starts at the first line
+    after the silence (no overlap across it), so every part adds a line. That gives 10-minute
+    parts on each side: four before it (00:00, 09:00, 18:00 and 27:00-30:00, which ends where
+    the silence starts) and three after (the short tail joins the last)."""
+    lines = with_silence(step_ms, silence_min)
+    windows = split_windows(lines)
+    seen: set[str] = set()
+    for window in windows:
+        assert set(window.ids) - seen, window  # it adds a line the parts before lack
+        seen |= set(window.ids)
+    assert seen == {u.id for u in lines}
+    after = 1_800_000 + silence_min * 60_000  # the first line after the silence
+    assert [w.start_ms for w in windows] == [
+        0,
+        540_000,
+        1_080_000,
+        1_620_000,
+        after,
+        after + 540_000,
+        after + 1_080_000,
+    ]
+    assert (windows[3].end_ms, windows[4].start_ms) == (1_800_000, after)
+    assert windows[-1].end_ms == after + 1_800_000
 
 
 def test_the_part_sizes() -> None:
