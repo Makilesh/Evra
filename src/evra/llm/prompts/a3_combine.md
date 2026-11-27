@@ -1,4 +1,4 @@
-<!-- version: a3-v1 -->
+<!-- version: a3-v2 -->
 # A3 — Combine the parts of a long meeting → CombinedNote
 
 ## Prompt
@@ -16,9 +16,10 @@ Rules:
 8. Every bullet states one specific point: what was said, agreed, asked or promised, with who, what and when wherever the transcript gives them. Start with the point itself, never with a "Topic:" label. A bullet that only names a topic ("Budget discussion.") is not allowed.
 9. Leave decisions, action items and open questions out: they are listed separately. A topic someone wants to come back to later goes in the section for next time when the template has one, not under open questions.
 10. Cite every line the bullet draws on: the lines that say what it says, and the lines its names, numbers and dates come from. When a short reply ("Yeah, I can do that.") confirms something said just before it, cite both lines.
-11. repeats lists each decision, commitment or question in <digests> that repeats an earlier one of the same kind, as {"id": its id, "of": the earlier one's id}.
-12. answered lists the ids of the questions in <digests> that the meeting answers later.
-13. Return only JSON matching the CombinedNote schema.
+11. Write the note at the length of a note for a one-hour meeting: at most 25 points in all, the summary included. Merge points that say the same thing in different parts and leave out minor details; keep names, numbers and dates as they were said.
+12. repeats lists each decision, commitment or question in <digests> that repeats an earlier one of the same kind, as {"id": its id, "of": the earlier one's id}.
+13. answered lists the ids of the questions in <digests> that the meeting answers later.
+14. Return only JSON matching the CombinedNote schema.
 
 <digests>
 {digests}

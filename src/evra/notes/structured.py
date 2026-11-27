@@ -75,14 +75,19 @@ def chat_structured[T: BaseModel](
     max_output_tokens: int,
     invalid_event: str,
     after_first: Callable[[ChatResult], None] | None = None,
+    reply_tokens: int | None = None,
 ) -> Structured[T]:
     """A truncated reply raises NoteCutOff (a cut-off reply would be "repaired" into a shortened
     one); invalid JSON gets one A9 repair, then NoteInvalid. `after_first` may raise on the first
-    reply, before it is parsed."""
+    reply, before it is parsed. `reply_tokens` asks the provider for that much room for this
+    call's replies (the repair's too) instead of its own setting."""
     schema = model_cls.model_json_schema()
 
     def call(chat: Sequence[ChatMessage]) -> ChatResult:
-        result = provider.chat_json(model, chat, schema)
+        if reply_tokens is None:
+            result = provider.chat_json(model, chat, schema)
+        else:
+            result = provider.chat_json(model, chat, schema, max_output_tokens=reply_tokens)
         if result.truncated:
             raise NoteCutOff(max_output_tokens)
         return result

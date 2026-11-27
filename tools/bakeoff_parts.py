@@ -8,7 +8,7 @@ part and the combining call took.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
 from evra.config import LlmSettings
@@ -62,24 +62,33 @@ def taken_path(result: NoteResult, extraction: Extraction) -> str:
     return "windows" if any(p.startswith("a2-") for p in parts) else "single"
 
 
-def call_seconds(calls: Sequence[tuple[str, float]]) -> tuple[tuple[float, ...], float | None]:
-    """Each part's seconds (A2 with its repair) and the combining call's (A3 with its repair),
-    from the recorded calls: (how its last message starts, seconds)."""
+@dataclass(frozen=True)
+class PartCalls:
+    part_seconds: tuple[float, ...]  # each part's call (A2), with its repair
+    combine_seconds: float | None  # the combining call (A3), with its repair
+    combine_tokens: int | None  # A3's reply in tokens, with its repair's
+
+
+def part_calls(calls: Sequence[tuple[str, float, int]]) -> PartCalls:
+    """What each part and the combining call took, from the recorded calls: (how its last
+    message starts, seconds, reply tokens)."""
     parts: list[float] = []
     combine: float | None = None
+    combine_tokens: int | None = None
     last = ""
-    for task, seconds in calls:
+    for task, seconds, tokens in calls:
         if task.startswith(REPAIR_TASK):
             if last == "part":
                 parts[-1] += seconds
             elif last == "combine":
                 combine = (combine or 0.0) + seconds
+                combine_tokens = (combine_tokens or 0) + tokens
             continue
         last = ""
         if task.startswith(PART_TASK):
             parts.append(seconds)
             last = "part"
         elif task.startswith(COMBINE_TASK):
-            combine = seconds
+            combine, combine_tokens = seconds, tokens
             last = "combine"
-    return tuple(parts), combine
+    return PartCalls(tuple(parts), combine, combine_tokens)

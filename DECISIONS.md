@@ -398,19 +398,20 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - The first embedding after this change reloads the model once at the new size.
   - 1024 would save more (0.93 GiB) but is under 4× the longest point query.
 
-## Long calls: single pass up to 30 minutes, then parts (A2/A3) (2026-11-27)
+## Long calls: single pass up to 60 minutes, then parts (A2/A3) (2026-11-27)
 - **Context:** a call whose note prompt (A1) did not fit the context budget failed `too_long`, and a single-pass note keeps fewer of a call's facts as the call grows (spec §1). Plan B reads long calls in parts of about 10 minutes (A2), combines the parts (A3), and sets the length where one pass stops from a measurement (spec §3.5, §4.6).
 - **How a long call is written** (`notes/windows.py`, `notes/mapreduce.py`):
-  - A part runs from its first line to the last line that starts within 10 minutes of it, then to the end of that speaker's turn. The next part starts at the first line from a minute before this one ends, moved back to the start of that line's turn. A tail under 3 minutes joins the last part; a call of 13 minutes or less is one part.
+  - A part runs from its first line to the last line that starts within 10 minutes of it, then to the end of that speaker's turn, but no further than the last line starting within 13 minutes. The next part starts at the first line from a minute before this one ends, moved back to the start of that line's turn, but no earlier than 2 minutes before the end. A tail under 3 minutes joins the last part, and a call of 13 minutes or less is one part. So a call with no change of speaker splits by time too, into parts of at most 16 minutes overlapping by at most 2.
   - Each part (A2, `a2-v1`) is read on the meeting's A0 context with only its own lines printed, their ids still the whole call's (u:1…u:N), after "This is part i of n of the meeting (mm:ss–mm:ss); … marks lines left out." Its rules carry what A4–A6 taught (RB26). The code numbers the parts; the model's `window_index` is ignored. Every part sees all of the user's notes.
-  - A3 (`a3-v1`) is A1 v4 with its first line replaced, two rules for `repeats` and `answered`, and the parts' digests as inert JSON, every point numbered p1, p2, … across the parts. It writes the note on a context that shows none of the call's lines; its points are checked like A1's.
+  - A3 (`a3-v2`) is A1 v4 with its first line replaced, a rule for the note's length ("at most 25 points in all, the summary included", merging repeats across parts), two rules for `repeats` and `answered`, and the parts' digests as inert JSON, every point numbered p1, p2, … across the parts. It writes the note on a context that shows none of the call's lines, and its points are checked like A1's. Its reply has twice the usual room (8,192 tokens by default, its repair too), so its prompt limit leaves that room; the context size (`num_ctx`) stays, so the model is not reloaded.
   - The digests' commitments, decisions and questions become the action items, decisions and open questions through A4–A6's own steps (`check_items`, then `settle_items`): owner, one check of them all (a commitment's due phrase is part of its claim), A3's pruning, repeats kept once (the earliest, which now cites its repeats' lines too, on one pass as well), and a decision that restates a kept task left to the task. Digest points carry no confidence.
   - A3 only removes: an item it lists as a repeat of an earlier one of the same kind (its lines join the earlier one), and a question it lists as answered later, together with the kept questions that repeat it (the same question read in two overlapping parts, which the merge has not folded yet). Every other entry is ignored. Removals are counted (`repeats`, `answered`), not dropped. A reply that is not used removes nothing.
-  - A part whose reply fails is left out (`note_part_failed`, with its number and reason); when every part fails, the first error is raised. When A3's JSON still fails after its repair, the note is its records alone (`a0-v1+a2-v1`). A cut-off A3 reply, or digests too long for one prompt, fail the note.
-  - Version `a0-v1+a2-v1+a3-v1`, with `+a9-v1` after `a2-v1` when a part was repaired and after `a3-v1` when A3 was. Tokens and seconds are every call's. Stages: "Reading part i of n…", then "Putting the note together…".
+  - A part whose reply fails is left out (`note_part_failed`, with its number and reason); when every part fails, the first error is raised. When A3's JSON still fails after its repair, the note is its records alone (`a0-v1+a2-v1`). A cut-off A3 reply, or digests too long for one prompt, fail the note: the window and the console then say "This meeting is too long for a note. You can still ask about it."
+  - Version `a0-v1+a2-v1+a3-v2`, with `+a9-v1` after `a2-v1` when a part was repaired and after `a3-v2` when A3 was. Tokens and seconds are every call's. Stages: "Reading part i of n…", then "Putting the note together…".
   - `write_note_and_items` chooses, on the estimate `draft_note` checks: a call longer than `llm.single_pass_minutes`, or one whose single-pass prompt passes the budget, is read in parts. `evra note`, the window and the bake-off share that choice, and a long transcript no longer fails `too_long`.
+  - The title (A8) of a call whose whole transcript and title task would not fit is written on a context with none of its lines, from the note alone (RB46).
 - **Departure from spec §3.6 (RB24):** the spec merges digest items at a text ratio ≥ 0.9 "or overlapping citations". Parts overlap by a minute, so a line holding two tasks ("I'll update the deck and send it to Priya") is read in two parts, and a shared line alone would fold the two tasks into one. The merge uses `extract.is_repeat` instead (ratio ≥ 0.9, or a shared line and ratio ≥ 0.6), the one rule for every repeat.
-- **Evidence:** `tools/bakeoff_notes.py gemma4:12b --runs 2 --minutes 15,30,45,60 --path single`, then the same with `--path windows` (Ollama 0.34.4, RTX 5070 Ti Laptop). A cut is the first N minutes of the 60-minute synthetic 1:1, scored on the facts planted before it. Coverage: facts in the note's own points, then with the records (what the owner sees, RB31). Seconds: from the first call to the checked note and its records.
+- **Evidence, first measurement** (A3 `a3-v1`, without the length rule or the room): `tools/bakeoff_notes.py gemma4:12b --runs 2 --minutes 15,30,45,60 --path single`, then the same with `--path windows` (Ollama 0.34.4, RTX 5070 Ti Laptop). A cut is the first N minutes of the 60-minute synthetic 1:1, scored on the facts planted before it. Coverage: facts in the note's own points, then with the records (what the owner sees, RB31). Seconds: from the first call to the checked note and its records.
 
   | cut (facts) | parts | one pass: own / with records | in parts: own / with records | one pass, s | in parts, s |
   | --- | --- | --- | --- | --- | --- |
@@ -424,10 +425,31 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - The note in parts is long: 20 kept points at 15 minutes, 26–37 at 30, 47 at 45 and 61 at 60, against 10, 10–15, 14–17 and 16–17 in one pass.
   - The 60-minute call in parts, run 1: parts 23.1, 27.6, 43.1, 29.1, 26.1, 34.6 and 28.4 s, then A3 94.1 s.
   - At temperature 0 the runs still differ: 30 minutes in one pass found 6/6 facts in run 1 and 3/6 in run 2.
-- **A3 runs out of room:** on the 45-minute cut, run 1, all 5 parts were read and A3's reply hit the 4,096-token output limit, so there was no note (`cut_off`, RB28). Run again with room for 8,192 tokens (a diagnostic, not the app's settings), A3 wrote 4,157 tokens at 45 minutes and 4,024 at 60, in 95–98 s: right at the limit. With that room the 45-minute note found 8/8 facts with its records.
-- **Decision:** `llm.single_pass_minutes = 30`: the longest cut at which one pass's coverage with the records is at least the parts' in both runs (30 minutes: 100% ≥ 83% and 50% ≥ 50%; 45 minutes: 75% against a failed note, but 62% < 75%; 60 minutes: 77% < 85% and 62% < 85%).
-- **A 60-minute note** against §9.5's 1.5 minutes: 80.0–111.0 s in one pass, 303.9–307.4 s in parts. In parts it is over three times the target (BACKLOG: "Digest windows while recording").
+  - A3 ran out of room: on the 45-minute cut, run 1, all 5 parts were read and A3's reply hit the 4,096-token output limit, so there was no note (`cut_off`, RB28). Run again with room for 8,192 tokens (a diagnostic), A3 wrote 4,157 tokens at 45 minutes and 4,024 at 60, in 95–98 s.
+- **Evidence, after the review round** (A3 `a3-v2` with its length rule and twice the room; parts cut at 13 minutes): `--runs 2 --minutes 45,60 --path windows`, and one note on the 2-hour call that `tools/bakeoff_ask.py --hours 2` builds (the 60-minute call said twice, an hour apart; `--hours 2`, auto path, which reads it in parts).
+
+  | call (facts) | parts | own / with records | kept points | items a/d/q | A3: seconds, reply tokens | in all, s |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 45 min (8), run 1 | 5 | 75/100% | 51 | 15/6/0 | 84.6 s, 3,620 | 263.7 |
+  | 45 min (8), run 2 | 5 | 50/75% | 45 | 11/8/0 | 75.1 s, 3,173 | 224.0 |
+  | 60 min (13), runs 1 and 2 | 7 | 62/100%, 62/100% | 59, 59 | 25/6/1 | 92.5 and 91.9 s, 3,909 | 309.0, 308.5 |
+  | 2 hours (13), auto | 13 | 54/85% | 68 | 36/16/1 | 133.7 s, 5,398 | 622.9 |
+
+  - No A3 reply was cut off. On the 2-hour call A3 wrote 5,398 tokens, past the usual 4,096, so the doubled room is what let that note through.
+  - gemma4:12b does not keep to the length rule: the notes kept 45–68 points where A3 is asked for at most 25. Its replies shrank a little (3,173–3,909 tokens at 45–60 minutes, against 4,024–4,157).
+  - Removed by A3: 1 question as answered (45 minutes, run 1); on the 2-hour call 1 repeat and 5 answered questions. The 2-hour call keeps 2 planted facts in two records of one kind: every fact is said twice there, in different words.
+  - Commitments: 1/1 at 45 minutes, 3/3 at 60 minutes and on the 2-hour call. The 2-hour call's 13 parts took 23.6–71.8 s each.
+- **Decision:** `llm.single_pass_minutes = 60` (RB44). Up to 60 minutes a call is written in one pass whenever it fits the budget; longer calls, and calls that do not fit, are read in parts.
+  - The plan's rule was the longest cut at which one pass's coverage with the records is at least the parts' in both runs. That rule gives 30: 30 minutes 100% ≥ 83% and 50% ≥ 50%; 45 minutes 75% against a failed note, but 62% < 75%; 60 minutes 77% < 85% and 62% < 85%.
+  - It weighs recall alone, and was overridden. In parts takes 3–4 times as long:
+    - 60 minutes: 304–309 s, against one pass's 80–111 s and §9.5's 90 s;
+    - 30 minutes: 166–184 s, against 35–56 s.
+  - In the first measurement, 1 run in 4 at 45–60 minutes failed (A3 cut off). The recall gain there (62–77% with the records, to 75–100%) comes with a note of 45–61 points.
+  - The spec sets §9.5's time target as well as recall, and a note that fails is worse than a shorter one.
+  - Revisit once parts are read while the call is recorded (BACKLOG "Digest windows while recording"); then only A3 runs after Stop.
+- **A 60-minute note** against §9.5's 1.5 minutes: 80.0–111.0 s in one pass, the way it is now written; 303.9–309.0 s in parts, over three times the target.
 - **Consequences:**
-  - A call over 30 minutes is written in parts. On the 60-minute call that finds more of its facts with the records (85% in both runs, against 62–77%) and every planted commitment. It takes 3–5 minutes instead of 1–2.
-  - A3 copies nearly every digest point, so the note of a long call runs 47–61 points, and its reply needs about 4,000–4,200 tokens at 45–60 minutes: in 1 of the 4 runs there it was cut off and the note failed (BACKLOG: "A3's note runs long").
-  - A part that fails leaves about 10 minutes out of the note, and only the log says so; a call whose digests together pass the budget (over about four hours) fails `too_long`; a call with no change of speaker is one part (BACKLOG has all three).
+  - A call of up to an hour is written as before: one pass, then A4–A6. It gets one pass's recall (62–77% with the records on the 60-minute call, where parts found 85–100%). Cost if wrong: that recall gap on 45–60 minute calls.
+  - A longer call is read in parts instead of failing `too_long`: the 2-hour call took about 10 minutes and found 11 of its 13 facts with the records.
+  - Its note is long (45–68 points) because A3 does not keep to its length; the records still list every item (BACKLOG "A3's note runs long").
+  - A part that fails leaves about 10 minutes out of the note, and only the log says so; a call whose digests together pass the budget (over about four hours) fails `too_long` (BACKLOG has both).

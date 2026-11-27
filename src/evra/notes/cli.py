@@ -145,7 +145,7 @@ def _run(
         _err(f"The model took too long ({exc}). Try again, or a smaller model with --model.")
         return 1
     except NoteTooLong as exc:  # even in parts: the parts' digests together do not fit
-        _err(f"This meeting is too long to write a note for yet ({exc}).")
+        _err(f"This meeting is too long for a note. You can still ask about it. ({exc})")
         return 1
     except NoteCutOff as exc:
         _err(
@@ -213,7 +213,9 @@ def titles_command(
         try:
             llm = provider or OllamaProvider(settings)
             for meeting in todo:
-                title = name_meeting(conn, str(meeting["id"]), provider=llm, model=model)
+                title = name_meeting(
+                    conn, str(meeting["id"]), provider=llm, model=model, settings=settings
+                )
                 if title is None:
                     print(f"{meeting['title']}: kept, no usable title came back")
                 else:

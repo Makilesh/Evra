@@ -58,6 +58,14 @@ def _provider(http: FakeHttp, **settings: Any) -> OllamaProvider:
     return OllamaProvider(LlmSettings(**settings), http=http, clock=lambda: next(ticks))
 
 
+def test_one_call_may_ask_for_more_reply_room() -> None:
+    """RB45: the reply room of one call (A3's); the context size stays, so no reload."""
+    http = FakeHttp({"/api/chat": reply()})
+    _provider(http).chat_json("m", [ChatMessage("user", "hi")], SCHEMA, max_output_tokens=8192)
+    body = http.calls[-1][2]
+    assert body["options"] == {"num_ctx": 32768, "temperature": 0, "num_predict": 8192}
+
+
 def test_chat_sends_the_settings_every_time() -> None:
     http = FakeHttp({"/api/chat": reply()})
     _provider(http).chat_json("gemma4:12b", [ChatMessage("user", "hi")], SCHEMA)

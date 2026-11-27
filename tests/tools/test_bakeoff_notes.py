@@ -124,19 +124,21 @@ def test_table_has_a_row_per_run() -> None:
         ),
         Row("b", "c", 0.0, 0, 0, False, 0, 0, None, None, "LlmTimeout"),
     ]
-    rows.append(replace(rows[0], path="windows", part_seconds=(12.04, 9.96), combine_seconds=20.5))
+    windows = {"part_seconds": (12.04, 9.96), "combine_seconds": 20.5, "combine_tokens": 1800}
+    rows.append(replace(rows[0], path="windows", **windows))
     rows[2] = replace(rows[2], removed=(1, 2), duplicates=1)
     lines = format_table(rows)
     assert lines[0].startswith("| model | case | path |")
     assert lines[1].count("---") == lines[0].count("|") - 1
     assert len(lines) == 5
     assert lines[2] == (
-        "| a | c | - | 12.3 | 40.5 | - | - | 4000/600 | no | 18 | 2 | 1 | 90% | 80% | 90%"
+        "| a | c | - | 12.3 | 40.5 | - | - | - | 4000/600 | no | 18 | 2 | 1 | 90% | 80% | 90%"
         " | 3/2/1 | 0/0 | 0 | 2/3 | 100% |  |"
     )
     assert lines[3].endswith("| LlmTimeout |")
     assert lines[4] == (
-        "| a | c | windows | 12.3 | 40.5 | 12.0/10.0 | 20.5 | 4000/600 | no | 18 | 2 | 1 | 90%"
+        "| a | c | windows | 12.3 | 40.5 | 12.0/10.0 | 20.5 | 1800 | 4000/600 | no | 18 | 2"
+        " | 1 | 90%"
         " | 80% | 90% | 3/2/1 | 1/2 | 1 | 2/3 | 100% |  |"
     )
 
@@ -220,7 +222,8 @@ def test_run_case_reports_the_parts_of_a_long_call() -> None:
     case = load_case(FIXTURE)
     row = run_case(provider, "fake:1b", case, path_settings(LlmSettings(), "windows"))
     assert (row.path, row.error) == ("windows", "")
-    assert (row.part_seconds, row.combine_seconds) == ((0.5,), 0.5)
+    assert (row.part_seconds, row.combine_seconds, row.combine_tokens) == ((0.5,), 0.5, 50)
+    assert provider.reply_room == [None, 8_192]  # A3 alone gets twice the usual room
     assert (row.removed, row.duplicates) == ((0, 0), 0)  # the repeat merged into one item
     assert (row.coverage, row.with_items, row.items) == (0.1, 0.2, (1, 0, 0))
     assert row.seconds == 1.0  # the part and the combining call

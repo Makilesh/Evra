@@ -296,8 +296,11 @@ class MeetingService:
         try:
             conn = connect(self._paths.db_path)
             try:
-                provider = self._provider_factory(title_settings(llm))
-                title = name_meeting(conn, meeting_id, provider=provider, model=llm.model)
+                settings = title_settings(llm)
+                provider = self._provider_factory(settings)
+                title = name_meeting(
+                    conn, meeting_id, provider=provider, model=llm.model, settings=settings
+                )
             finally:
                 conn.close()
         except LlmError as exc:  # Ollama went away or gave up: the placeholder stays

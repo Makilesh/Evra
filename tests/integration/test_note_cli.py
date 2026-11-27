@@ -187,6 +187,20 @@ def test_parser_accepts_the_note_command() -> None:
     assert build_parser().parse_args(["note"]).meeting_id is None
 
 
+def test_a_meeting_too_long_even_in_parts_says_what_to_do(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With a budget too small even for one part, nothing is sent and the console says the
+    meeting can still be asked about (RB48)."""
+    paths, mid = recorded(tmp_path)
+    save_settings(paths.settings_file, Settings(llm=LlmSettings(context_budget=1000)))
+    provider = FakeProvider([])
+    assert note_command(_args(), paths, provider=provider) == 1
+    err = capsys.readouterr().err
+    assert "This meeting is too long for a note. You can still ask about it." in err
+    assert provider.calls == [] and _current(paths, mid) is None
+
+
 def test_a_cut_off_note_says_why_and_stores_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

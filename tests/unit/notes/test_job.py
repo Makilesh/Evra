@@ -313,7 +313,7 @@ def test_a_call_longer_than_one_pass_is_written_in_parts(conn: sqlite3.Connectio
     assert len(provider.calls) == 3
     stored = NoteStore(conn).current_note(mid)
     assert stored is not None and stored.generation_id == saved.generation_id
-    assert stored.prompt_version == "a0-v1+a2-v1+a3-v1"
+    assert stored.prompt_version == "a0-v1+a2-v1+a3-v2"
     assert [b.text for b in stored.blocks] == [
         "The Atlas beta moves to March 3.",
         "Them asked whether to sunset the legacy API.",
@@ -337,7 +337,7 @@ def test_a_call_too_long_for_one_prompt_is_read_in_parts(conn: sqlite3.Connectio
     provider = FakeProvider([PART1, PART2, combined()])
     saved = _write_long(conn, mid, provider, settings)
     assert provider.calls[0][1].content.startswith("Summarise this part of the meeting")
-    assert saved.result.prompt_version == "a0-v1+a2-v1+a3-v1"
+    assert saved.result.prompt_version == "a0-v1+a2-v1+a3-v2"
     beta = {"text": "The Atlas beta moves to March 3.", "citations": ["u:5"]}
     note = json.dumps({"summary": [beta], "sections": []})
     fits = FakeProvider([note, NO_ITEMS, NO_ITEMS, NO_ITEMS])

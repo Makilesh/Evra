@@ -114,7 +114,12 @@ class OllamaProvider:
         self._tags: list[Mapping[str, Any]] | None = None
 
     def chat_json(
-        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+        self,
+        model: str,
+        messages: Sequence[ChatMessage],
+        schema: Mapping[str, Any],
+        *,
+        max_output_tokens: int | None = None,
     ) -> ChatResult:
         self._ensure_local(model)
         s = self._settings
@@ -130,7 +135,7 @@ class OllamaProvider:
                 "options": {
                     "num_ctx": s.num_ctx,
                     "temperature": 0,
-                    "num_predict": s.max_output_tokens,
+                    "num_predict": max_output_tokens or s.max_output_tokens,
                 },
                 "keep_alive": s.keep_alive,
                 "think": s.think,

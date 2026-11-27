@@ -115,7 +115,7 @@ export function noteFailureText(reason: NoteFailureReason, model?: string): stri
     case "cloud_model":
       return "That model runs in Ollama's cloud. Evra only uses models on this PC: choose another note model in Settings.";
     case "too_long":
-      return "This meeting is too long to write a note for yet.";
+      return "This meeting is too long for a note. You can still ask about it.";
     case "cut_off":
       return "The model ran out of room while writing.";
     case "invalid":

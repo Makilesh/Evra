@@ -27,15 +27,21 @@ class Window:
     ids: tuple[str, ...]  # its lines, in time order
 
 
-def _turn_end(ordered: Sequence[Utterance], i: int) -> int:
-    """The last line of the speaker turn that line i is in."""
-    while i + 1 < len(ordered) and ordered[i + 1].channel == ordered[i].channel:
+def _turn_end(ordered: Sequence[Utterance], i: int, before_ms: int) -> int:
+    """The last line of the speaker turn that line i is in, among the lines that start before
+    `before_ms`."""
+    while (
+        i + 1 < len(ordered)
+        and ordered[i + 1].channel == ordered[i].channel
+        and ordered[i + 1].start_ms < before_ms
+    ):
         i += 1
     return i
 
 
-def _turn_start(ordered: Sequence[Utterance], i: int) -> int:
-    while i > 0 and ordered[i - 1].channel == ordered[i].channel:
+def _turn_start(ordered: Sequence[Utterance], i: int, floor: int) -> int:
+    """The first line of the speaker turn that line i is in, no earlier than line `floor`."""
+    while i > floor and ordered[i - 1].channel == ordered[i].channel:
         i -= 1
     return i
 
@@ -52,7 +58,8 @@ def _span_ms(lines: Sequence[Utterance]) -> int:
 
 def split_windows(utterances: Sequence[Utterance]) -> list[Window]:
     """Every line lands in at least one window. A call of one window plus a short tail is one
-    window; a call with no change of speaker is one turn, so it is one window too."""
+    window. A turn is cut 13 minutes after a window's first line, and the next window moves back
+    at most 2 minutes, so a call with no change of speaker splits by time (RB47)."""
     ordered = sorted(utterances, key=lambda u: (u.start_ms, u.seq))
     if not ordered:
         return []
@@ -63,8 +70,10 @@ def split_windows(utterances: Sequence[Utterance]) -> list[Window]:
     first = 0
     while True:
         # the last line that starts within 10 minutes of the first, then the rest of its turn
-        mark = bisect_left(starts, ordered[first].start_ms + WINDOW_MS) - 1
-        last = _turn_end(ordered, mark)
+        # that starts within 13
+        start_ms = ordered[first].start_ms
+        mark = bisect_left(starts, start_ms + WINDOW_MS) - 1
+        last = _turn_end(ordered, mark, start_ms + WINDOW_MS + MIN_TAIL_MS)
         rest = ordered[last + 1 :]
         if not rest or _span_ms(rest) < MIN_TAIL_MS:  # a short tail joins this window
             windows.append(_window(len(windows) + 1, ordered[first:]))
@@ -72,10 +81,11 @@ def split_windows(utterances: Sequence[Utterance]) -> list[Window]:
         window = _window(len(windows) + 1, ordered[first : last + 1])
         windows.append(window)
         # the next starts at the first line from a minute before this one ends (never after the
-        # first line it leaves out), moved back to the start of that line's turn, and always
-        # later than this window's first line
+        # first line it leaves out), moved back to the start of that line's turn but not past
+        # two minutes before the end, and always later than this window's first line
         overlap = min(bisect_left(starts, window.end_ms - OVERLAP_MS), last + 1)
-        first = max(_turn_start(ordered, overlap), first + 1)
+        floor = min(bisect_left(starts, window.end_ms - 2 * OVERLAP_MS), overlap)
+        first = max(_turn_start(ordered, overlap, floor), first + 1)
 
 
 def choose_path(

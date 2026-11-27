@@ -107,10 +107,16 @@ class Scripted(FakeProvider):
         self.order: list[str] = []
 
     def chat_json(
-        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+        self,
+        model: str,
+        messages: Sequence[ChatMessage],
+        schema: Mapping[str, Any],
+        *,
+        max_output_tokens: int | None = None,
     ) -> ChatResult:
         self.order.append("chat")
         self.calls.append(list(messages))
+        self.reply_room.append(max_output_tokens)
         reply = self.replies.pop(0)
         return ChatResult("{" if reply == CUT else reply, self.tokens_in, 50, 0.5, reply == CUT)
 
@@ -196,8 +202,8 @@ def test_long_note_parts_then_combine() -> None:
     }
     assert [b.text for b in result.note.summary] == ["The Atlas beta moves to March 3."]
     assert result.note.kept == 2 and not result.items_only
-    assert result.prompt_version == "a0-v1+a2-v1+a3-v1"
-    assert generation_version(result, extraction) == "a0-v1+a2-v1+a3-v1"
+    assert result.prompt_version == "a0-v1+a2-v1+a3-v2"
+    assert generation_version(result, extraction) == "a0-v1+a2-v1+a3-v2"
     # every call is counted once, on the note (RB29)
     assert (result.tokens_in, result.tokens_out, result.seconds) == (300, 150, 1.5)
     assert (extraction.tokens_in, extraction.tokens_out, extraction.prompt_versions) == (0, 0, ())
@@ -290,7 +296,7 @@ def test_a_failed_part_is_left_out() -> None:
         "Keep the legacy API until June",
         "Write the postmortem for the outage",
     }
-    assert result.prompt_version == "a0-v1+a2-v1+a3-v1"
+    assert result.prompt_version == "a0-v1+a2-v1+a3-v2"
     cut = Scripted([PART1, CUT, combined()])
     with structlog.testing.capture_logs() as logs:
         run(cut)
@@ -319,13 +325,28 @@ def test_a3_cut_off_or_too_long_raises() -> None:
     assert len(too_long.calls) == 2
 
 
+def test_a3_alone_gets_twice_the_reply_room() -> None:
+    """RB45: the combining call may write twice the usual reply (its repair too), and its
+    prompt must leave that room in the context, which stays the same size."""
+    provider = Scripted([PART1, PART2, "nope", combined()])
+    run(provider)
+    assert provider.reply_room == [None, None, 8_192, 8_192]  # the parts keep the usual room
+    many = [point("point", f"{n} " + "detail " * 30, ["u:2"]) for n in range(40)]
+    wordy = digest(1, *many)
+    small = LlmSettings(num_ctx=16_384)  # a part may use 12,288 tokens; A3 only 8,192
+    with pytest.raises(NoteTooLong) as caught:
+        run(Scripted([wordy, wordy]), settings=small)
+    assert caught.value.limit == 8_192
+    run(Scripted([wordy, wordy, combined()]))  # the same digests fit the usual context
+
+
 def test_versions_mark_repairs() -> None:
-    """RB29: "+a9-v1" follows a2-v1 when any part was repaired, a3-v1 when A3 was."""
+    """RB29: "+a9-v1" follows a2-v1 when any part was repaired, a3's when A3 was."""
     result, extraction = run(Scripted(["nope", PART1, PART2, combined()]))
-    assert generation_version(result, extraction) == "a0-v1+a2-v1+a9-v1+a3-v1"
+    assert generation_version(result, extraction) == "a0-v1+a2-v1+a9-v1+a3-v2"
     assert result.repaired
     result, extraction = run(Scripted([PART1, PART2, "nope", combined()]))
-    assert generation_version(result, extraction) == "a0-v1+a2-v1+a3-v1+a9-v1"
+    assert generation_version(result, extraction) == "a0-v1+a2-v1+a3-v2+a9-v1"
     result, extraction = run(Scripted([PART1, "nope", PART2, "{", "{"]))
     assert generation_version(result, extraction) == "a0-v1+a2-v1+a9-v1"
 

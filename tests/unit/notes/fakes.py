@@ -87,14 +87,21 @@ class FakeProvider:
         self.models = ["fake:1b"]
         self.loaded: list[str] = []
         self.embed_calls: list[list[str]] = []
+        self.reply_room: list[int | None] = []  # each chat call's own reply room, if any
 
     def load(self, model: str) -> None:
         self.loaded.append(model)
 
     def chat_json(
-        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+        self,
+        model: str,
+        messages: Sequence[ChatMessage],
+        schema: Mapping[str, Any],
+        *,
+        max_output_tokens: int | None = None,
     ) -> ChatResult:
         self.calls.append(list(messages))
+        self.reply_room.append(max_output_tokens)
         return ChatResult(self.replies.pop(0), self.tokens_in, 50, 0.5, self.truncated)
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:

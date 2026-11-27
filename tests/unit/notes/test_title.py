@@ -8,9 +8,10 @@ import pytest
 
 from evra.config import LlmSettings
 from evra.llm.provider import ChatMessage, ChatResult, LlmUnavailable
-from evra.notes.context import build_context
+from evra.notes.context import ELLIPSIS, build_context
 from evra.notes.extract import CheckedItem
 from evra.notes.title import (
+    LONG_CALL_NOTE,
     TITLE_TIMEOUT_S,
     clean_generated_title,
     has_placeholder_title,
@@ -99,6 +100,39 @@ def _context_system(conn: sqlite3.Connection, mid: str) -> str:
     return build_context(
         meeting=store.get_meeting(mid), utterances=store.utterances(version)
     ).system
+
+
+def test_a_call_too_long_for_one_prompt_is_named_from_its_note_alone(
+    conn: sqlite3.Connection,
+) -> None:
+    """RB46: when the whole call and the title task would not fit, the title call's context
+    shows none of the call's lines, and says so; the note's text is what it names."""
+    mid = saved_meeting(conn, PLACEHOLDER)
+    store = MeetingStore(conn)
+    version = store.current_transcript_version(mid)
+    assert version is not None
+    for k in range(120):  # about 2,000 tokens of transcript
+        store.add_utterance(
+            version_id=version,
+            meeting_id=mid,
+            channel=k % 2,
+            start_ms=20_000 + k * 5_000,
+            end_ms=24_000 + k * 5_000,
+            text=f"We went over item {k} of the long agenda in some detail.",
+        )
+    settings = title_settings(LlmSettings(context_budget=1_000))
+    provider = FakeProvider([title_reply("Launch date and designer proposal")])
+    named = name_meeting(conn, mid, provider=provider, model="fake:1b", settings=settings)
+    assert named == "Launch date and designer proposal"
+    system, user = (m.content for m in provider.calls[0])
+    lines = system.split("<transcript>\n", 1)[1].split("\n</transcript>", 1)[0]
+    assert lines == LONG_CALL_NOTE + ELLIPSIS
+    assert "- The launch moves to October 14." in user  # the note gives it what it needs
+    MeetingStore(conn).rename_meeting(mid, PLACEHOLDER)
+    expected = _context_system(conn, mid)
+    whole = FakeProvider([title_reply("Launch date")])  # with the default room: the whole call
+    name_meeting(conn, mid, provider=whole, model="fake:1b", settings=title_settings(LlmSettings()))
+    assert whole.calls[0][0].content == expected
 
 
 def test_title_shares_the_meeting_context(conn: sqlite3.Connection) -> None:

@@ -60,8 +60,16 @@ class LlmProvider(Protocol):
     name: str
 
     def chat_json(
-        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
-    ) -> ChatResult: ...
+        self,
+        model: str,
+        messages: Sequence[ChatMessage],
+        schema: Mapping[str, Any],
+        *,
+        max_output_tokens: int | None = None,
+    ) -> ChatResult:
+        """`max_output_tokens`: this reply's room instead of the settings' (the context size
+        stays, so the model is not reloaded)."""
+        ...
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         """One unit-length vector per text, in order."""

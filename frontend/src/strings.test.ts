@@ -64,6 +64,13 @@ describe("asking", () => {
   });
 });
 
+describe("a meeting too long for a note", () => {
+  it("says so and what the owner can still do, without Retry", () => {
+    expect(noteFailureText("too_long")).toBe("This meeting is too long for a note. You can still ask about it.");
+    expect(canRetry("too_long")).toBe(false);
+  });
+});
+
 describe("note stages", () => {
   it("names the part of a long call being read, then the combining", () => {
     expect(strings.stages("part:2:6")).toBe("Reading part 2 of 6…");

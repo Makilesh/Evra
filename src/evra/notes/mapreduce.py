@@ -64,6 +64,7 @@ COMBINE_NOTE = (
     "This meeting is long: its parts are summarised in <digests> below; the lines themselves"
     " are not shown.\n"
 )
+COMBINE_ROOM = 2  # A3's reply may use twice the usual room (RB45), if it overshoots its bound
 # the digest points that become records, and the record each becomes
 RECORDS: Mapping[str, ItemKind] = MappingProxyType(
     {"commitment": "action_item", "decision": "decision", "question": "open_question"}
@@ -86,8 +87,8 @@ def part_note(window: Window, parts: int) -> str:
     )
 
 
-def _fits(prompt_tokens: int, settings: LlmSettings) -> None:
-    limit = prompt_limit(settings)
+def _fits(prompt_tokens: int, settings: LlmSettings, *, reply: int | None = None) -> None:
+    limit = prompt_limit(settings, reply=reply)
     if prompt_tokens > limit:
         raise NoteTooLong(prompt_tokens, limit)
 
@@ -308,11 +309,12 @@ def write_long_note(
     names: Mapping[str, str] | None = None,
 ) -> tuple[NoteResult, Extraction]:
     """The note's own sections (A3) and its records (from the digests), checked, not yet saved.
-    Every part and the combining call see all of `user_notes` (A0's text). When A3's JSON fails
-    even after its repair, the records alone make the note (RB16); A3's NoteCutOff and
-    NoteTooLong are raised, and so is every LlmError.
+    Every part and the combining call see all of `user_notes` (A0's text). A3's reply has twice
+    the usual room, inside the same context (RB45). When A3's JSON fails even after its repair,
+    the records alone make the note (RB16); A3's NoteCutOff and NoteTooLong are raised, and so
+    is every LlmError.
 
-    The note's version is a0-v1+a2-v1+a3-v1 ("+a9-v1" after a part's or A3's repair) and its
+    The note's version is a0-v1+a2-v1+a3-v2 ("+a9-v1" after a part's or A3's repair) and its
     tokens and seconds are every call's; a note of the records alone has the A0 version, and
     its records carry a2-v1 and the parts' tokens and seconds (RB29)."""
     parts = _read_parts(
@@ -332,7 +334,8 @@ def write_long_note(
     prompt = combine_prompt(
         context, template=template, schema=CombinedNote.model_json_schema(), digests=digests
     )
-    _fits(prompt.estimated_tokens, settings)
+    reply = COMBINE_ROOM * settings.max_output_tokens  # the context's size stays the same
+    _fits(prompt.estimated_tokens, settings, reply=reply)
     combined: Structured[CombinedNote] | None = None
     invalid: NoteInvalid | None = None
     try:
@@ -341,9 +344,10 @@ def write_long_note(
             model,
             [ChatMessage("system", prompt.system), ChatMessage("user", prompt.user)],
             CombinedNote,
-            max_output_tokens=settings.max_output_tokens,
+            max_output_tokens=reply,
             invalid_event="combine_json_invalid",
-            after_first=cut_to_fit(settings),
+            after_first=cut_to_fit(settings, reply=reply),
+            reply_tokens=reply,
         )
     except NoteInvalid as exc:  # the records can still make a note (§9.1)
         invalid = exc
@@ -362,7 +366,7 @@ def write_long_note(
         log.info("note_from_items", items=len(extraction.items))
         note = lists_only(model=model, prompt_version=context.version, template=template)
         return note, extraction
-    task_version = prompt.prompt_version.removeprefix(f"{context.version}+")  # "a3-v1"
+    task_version = prompt.prompt_version.removeprefix(f"{context.version}+")  # "a3-v2"
     if combined.repair_version:
         task_version = f"{task_version}+{combined.repair_version}"
     calls = [*(p.reply for p in parts), combined]

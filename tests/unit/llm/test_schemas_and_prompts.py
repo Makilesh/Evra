@@ -182,12 +182,13 @@ def test_a2_reads_one_part_with_the_lessons_of_a4_to_a6() -> None:
 
 
 def test_a3_is_a1_v4_over_the_parts_digests() -> None:
-    """A3 = A1 v4 with its first line replaced, the digests before the template, and RB27's two
-    rules before its "Return only JSON" rule (the schema it names is A3's own)."""
+    """A3 = A1 v4 with its first line replaced, the digests before the template, a bound on the
+    note's size (RB45), then RB27's two rules, before its "Return only JSON" rule (the schema it
+    names is A3's own)."""
     from evra.llm.prompt_files import load_part
 
     a1, a3 = load_part("a1_note").text, load_part("a3_combine")
-    assert a3.version == "a3-v1"
+    assert a3.version == "a3-v2"
     first = (
         "Write the note for the meeting above from the summaries of its parts in <digests>."
         " Citations inside the digests are valid: copy them through."
@@ -196,11 +197,14 @@ def test_a3_is_a1_v4_over_the_parts_digests() -> None:
     template = "<template" + a1.split("\n\n<template", 1)[1]
     expected = (
         f"{first}\n{rules}\n"
-        "11. repeats lists each decision, commitment or question in <digests> that repeats an"
+        "11. Write the note at the length of a note for a one-hour meeting: at most 25 points in"
+        " all, the summary included. Merge points that say the same thing in different parts"
+        " and leave out minor details; keep names, numbers and dates as they were said.\n"
+        "12. repeats lists each decision, commitment or question in <digests> that repeats an"
         ' earlier one of the same kind, as {"id": its id, "of": the earlier one\'s id}.\n'
-        "12. answered lists the ids of the questions in <digests> that the meeting answers"
+        "13. answered lists the ids of the questions in <digests> that the meeting answers"
         " later.\n"
-        "13. Return only JSON matching the CombinedNote schema.\n\n"
+        "14. Return only JSON matching the CombinedNote schema.\n\n"
         "<digests>\n{digests}\n</digests>\n\n" + template.replace("NoteDraft", "CombinedNote")
     )
     assert a3.text == expected

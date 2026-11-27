@@ -7,11 +7,13 @@ parts, A2, then combined, A3).
     uv run python tools/bakeoff_notes.py qwen3.5:9b --think
     uv run python tools/bakeoff_notes.py gemma4:12b --meeting-id <id> --show   # a real meeting
     uv run python tools/bakeoff_notes.py gemma4:12b --minutes 15,30,45,60 --path windows
+    uv run python tools/bakeoff_notes.py gemma4:12b --hours 2   # the 60-minute call twice over
 
 Real-meeting output stays on this console; never commit it (BUILD.md §9.3).
 Columns: path = how the note was written (`--path` forces it: auto, single or windows);
 seconds = the note's own calls (A1; or every part and A3), in all = from the first call to the
-checked note and its lists; parts s and A3 s = each part's call and the combining call;
+checked note and its lists; parts s and A3 s = each part's call and the combining call, A3 out
+= the combining call's reply in tokens;
 validity = kept / (kept + dropped), the note's own points; rescued = points the meaning check
 kept; coverage = expected facts found in one kept point; with items = found in one point or one
 item; items = action items / decisions / open questions kept; removed r/a = items A3 removed as
@@ -57,8 +59,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `tools` when run
 from tools.bakeoff_parts import (
     LONG_FIXTURE,
     PATHS,
-    call_seconds,
     cut_cases,
+    part_calls,
     path_settings,
     taken_path,
 )
@@ -113,6 +115,7 @@ class Row:
     path: str = ""  # "single" or "windows"
     part_seconds: tuple[float, ...] = ()  # each part's call (A2)
     combine_seconds: float | None = None  # the combining call (A3)
+    combine_tokens: int | None = None  # A3's reply, in tokens
     removed: tuple[int, int] = (0, 0)  # A3 removed: repeats, questions answered later
     duplicates: int = 0  # facts found in two items of one kind
 
@@ -130,14 +133,20 @@ class Recorder:
         self.inner = inner
         self.name = inner.name
         self.replies: list[str] = []
-        self.calls: list[tuple[str, float]] = []  # how each call's task starts, and its seconds
+        # each call: how its task starts, its seconds and its reply's tokens
+        self.calls: list[tuple[str, float, int]] = []
 
     def chat_json(
-        self, model: str, messages: Sequence[ChatMessage], schema: Mapping[str, Any]
+        self,
+        model: str,
+        messages: Sequence[ChatMessage],
+        schema: Mapping[str, Any],
+        *,
+        max_output_tokens: int | None = None,
     ) -> ChatResult:
-        result = self.inner.chat_json(model, messages, schema)
+        result = self.inner.chat_json(model, messages, schema, max_output_tokens=max_output_tokens)
         self.replies.append(result.content)
-        self.calls.append((messages[-1].content[:80], result.seconds))
+        self.calls.append((messages[-1].content[:80], result.seconds, result.tokens_out))
         return result
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
@@ -325,7 +334,7 @@ def run_case(
     if not result.items_only:  # the reply the note came from (A1's or A3's), after any repair
         reply = recorder.replies[-1 if path == "windows" else int(result.repaired)]
         drops = dropped_points(reply, case, template, semantic)
-    part_seconds, combine_seconds = call_seconds(recorder.calls)
+    parts = part_calls(recorder.calls)
     if show:
         _show(model, case, result, extraction)
     facts = case.expected
@@ -359,8 +368,9 @@ def run_case(
         drops=drops,
         tasks_as_decisions=extraction.tasks_as_decisions,
         path=path,
-        part_seconds=part_seconds,
-        combine_seconds=combine_seconds,
+        part_seconds=parts.part_seconds,
+        combine_seconds=parts.combine_seconds,
+        combine_tokens=parts.combine_tokens,
         removed=(extraction.repeats_removed, extraction.answered_removed),
         duplicates=surviving_duplicates(extraction.items, facts),
     )
@@ -372,8 +382,8 @@ def _pct(value: float | None) -> str:
 
 def format_table(rows: Sequence[Row]) -> list[str]:
     head = (
-        "| model | case | path | seconds | in all | parts s | A3 s | tokens in/out | repaired"
-        " | kept | dropped | rescued | validity | coverage | with items | items a/d/q"
+        "| model | case | path | seconds | in all | parts s | A3 s | A3 out | tokens in/out"
+        " | repaired | kept | dropped | rescued | validity | coverage | with items | items a/d/q"
         " | removed r/a | dup facts | commitments | on GPU | error |"
     )
     lines = [head, "|" + " --- |" * (head.count("|") - 1)]
@@ -381,9 +391,10 @@ def format_table(rows: Sequence[Row]) -> list[str]:
         commitments = "-" if r.commitments is None else f"{r.commitments[0]}/{r.commitments[1]}"
         parts = "/".join(f"{s:.1f}" for s in r.part_seconds) or "-"
         combine = "-" if r.combine_seconds is None else f"{r.combine_seconds:.1f}"
+        combine_out = "-" if r.combine_tokens is None else str(r.combine_tokens)
         lines.append(
             f"| {r.model} | {r.case} | {r.path or '-'} | {r.seconds:.1f} | {r.total_seconds:.1f}"
-            f" | {parts} | {combine} | {r.tokens_in}/{r.tokens_out}"
+            f" | {parts} | {combine} | {combine_out} | {r.tokens_in}/{r.tokens_out}"
             f" | {'yes' if r.repaired else 'no'} | {r.kept} | {r.dropped} | {r.rescued}"
             f" | {_pct(r.validity if not r.error else None)} | {_pct(r.coverage)}"
             f" | {_pct(r.with_items)} | {'/'.join(map(str, r.items))}"
@@ -415,11 +426,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--show", action="store_true", help="print each note (console only)")
     parser.add_argument("--path", choices=PATHS, default="auto", help="one pass, or in parts")
     parser.add_argument("--minutes", default="", help="cuts of the 60-minute call: 15,30,45,60")
+    parser.add_argument("--hours", type=int, default=1, help="the 60-minute call said N times")
     args = parser.parse_args(argv)
     if args.meeting_id:
         cases = [meeting_case(args.meeting_id)]
     elif args.minutes:
         cases = cut_cases(load_case(FIXTURES / LONG_FIXTURE), args.minutes)
+    elif args.hours > 1:  # as the asking bake-off's --hours builds it
+        cases = [repeat_case(load_case(FIXTURES / LONG_FIXTURE), args.hours)]
     else:
         cases = [load_case(p) for p in sorted(FIXTURES.glob("*.json"))]
     settings = path_settings(LlmSettings(think=args.think, keep_alive="5m"), args.path)

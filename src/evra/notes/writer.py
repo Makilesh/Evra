@@ -78,15 +78,16 @@ class DraftedNote:
     repaired: bool
 
 
-def prompt_limit(settings: LlmSettings) -> int:
-    """What one note prompt may use: the budget, never more than the context minus the reply."""
-    return min(settings.context_budget, settings.num_ctx - settings.max_output_tokens)
+def prompt_limit(settings: LlmSettings, *, reply: int | None = None) -> int:
+    """What one note prompt may use: the budget, never more than the context minus the reply's
+    room (`reply`, else the settings' own)."""
+    return min(settings.context_budget, settings.num_ctx - (reply or settings.max_output_tokens))
 
 
-def cut_to_fit(settings: LlmSettings) -> Callable[[ChatResult], None]:
+def cut_to_fit(settings: LlmSettings, *, reply: int | None = None) -> Callable[[ChatResult], None]:
     """Raises NoteTooLong when Ollama cut the prompt to fit its context window: its count of
-    what it read reaches the context minus the reply."""
-    room = settings.num_ctx - settings.max_output_tokens
+    what it read reaches the context minus the reply's room."""
+    room = settings.num_ctx - (reply or settings.max_output_tokens)
 
     def too_long(first: ChatResult) -> None:
         if first.tokens_in >= room:

@@ -76,11 +76,34 @@ def test_short_tail_joins_last_window() -> None:
     ]
 
 
-def test_a_call_on_one_channel_is_one_turn() -> None:
-    """With no change of speaker there is no turn to end a part on: the first part runs to the
-    end of its speaker's turn, the whole call."""
-    lines = call(120, turn=1_000)
-    assert split_windows(lines) == [Window(1, 0, 1_200_000, ids(0, 119))]
+def test_a_call_on_one_channel_splits_by_time() -> None:
+    """RB47: with no change of speaker, a part's turn stops 13 minutes after its first line and
+    the next part starts at most 2 minutes before the last one ended: parts of at most 16
+    minutes (with a short tail), overlapping by at most 2, covering every line."""
+    lines = call(240, turn=1_000)  # 40 minutes, all on one channel
+    windows = split_windows(lines)
+    assert {uid for w in windows for uid in w.ids} == {u.id for u in lines}
+    assert all(w.end_ms - w.start_ms <= 16 * 60_000 for w in windows)
+    for before, after in pairwise(windows):
+        assert 0 < before.end_ms - after.start_ms <= 2 * OVERLAP_MS
+    assert windows == [
+        Window(1, 0, 780_000, ids(0, 77)),
+        Window(2, 660_000, 1_440_000, ids(66, 143)),
+        Window(3, 1_320_000, 2_100_000, ids(132, 209)),
+        Window(4, 1_980_000, 2_400_000, ids(198, 239)),
+    ]
+
+
+def test_a_long_turn_is_cut_and_the_overlap_stays_short() -> None:
+    """A 5-minute turn across the 10-minute mark (08:50-14:00): the part stops at 13 minutes,
+    and the next starts 2 minutes before that, not back at the start of the turn."""
+    lines = [
+        utt(f"k{k}", 1 if 54 <= k < 84 else k % 2, k * STEP_MS, (k + 1) * STEP_MS, "x", seq=k)
+        for k in range(150)
+    ]
+    first, second = split_windows(lines)[:2]
+    assert (first.ids[-1], first.end_ms) == ("k77", 780_000)
+    assert second.ids[0] == "k66" and second.start_ms == 660_000
 
 
 def test_choose_path() -> None:
