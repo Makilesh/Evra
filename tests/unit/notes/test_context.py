@@ -238,3 +238,22 @@ def test_long_path_gets_the_names() -> None:
     )
     assert {i.text: i.owner for i in without.items}["Do we sunset the legacy API?"] is None
     assert all(PARTICIPANTS_1ON1 in call[0].content for call in unnamed.calls)
+
+
+def test_long_path_falls_back_to_the_contexts_names() -> None:
+    """A caller that hands over the meeting's context alone still gets the person named in every
+    part and in the owners the digests give, as the grounder already does."""
+    context = build_context(meeting=LONG_MEETING, utterances=LONG_CALL, names={"Them": "Priya"})
+    provider = FakeProvider([PART1, PART2, combined()])
+    result, extraction = write_note_and_items(
+        provider,
+        model="fake:1b",
+        meeting=LONG_MEETING,
+        utterances=LONG_CALL,
+        template=load_template("one_on_one"),
+        settings=LlmSettings(single_pass_minutes=10),
+        context=context,
+    )
+    assert result.prompt_version == "a0-v1+a2-v1+a3-v2"  # read in parts
+    assert len(provider.calls) == 3 and all(NAMED in call[0].content for call in provider.calls)
+    assert {i.text: i.owner for i in extraction.items}["Do we sunset the legacy API?"] == "Them"

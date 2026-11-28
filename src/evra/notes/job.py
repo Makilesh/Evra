@@ -130,6 +130,8 @@ def write_note_and_items(
     after all. A1's NoteCutOff stops here; its NoteInvalid only when nothing was listed either."""
     if not utterances:
         raise NoTranscript("no transcript")
+    if names is None and context is not None:
+        names = context.names  # the long parts and the owners read the names the grounder does
     if context is None:
         context = notes_context(meeting=meeting, utterances=utterances, notes=notes, names=names)
     grounder = Grounder(
