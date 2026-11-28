@@ -103,6 +103,39 @@ def test_a_point_may_name_the_person() -> None:
     assert "4. Open promises still on the owner's list: none\n" in provider.calls[0][1].content
 
 
+def test_a_point_that_shortens_a_month_its_notes_spell_out_is_kept() -> None:
+    """RC19: the point the window's brief lost every time, for "Oct 14" where its notes say
+    "October 14"."""
+    notes = [
+        BriefSource(
+            "m:1", "meeting-1", "Atlas status", int(LAST), "- Them: Request a laptop refresh budget"
+        ),
+        BriefSource(
+            "m:2",
+            "meeting-2",
+            "Search migration",
+            int(BEFORE),
+            "- Them: Tell marketing about the October 14 launch date (due today)\n"
+            "- Them: Ask Priya directly about the API limits (due tomorrow)\n"
+            "- Them: Check the travel policy for the November conference (due next week)",
+        ),
+    ]
+    text = (
+        "Action items for Morgan: Request laptop refresh budget, tell marketing about Oct 14"
+        " launch, ask Priya about API limits, and check travel policy for November conference."
+    )
+    provider = FakeProvider([reply((text, ["m:1", "m:2"]))])
+    result = write_brief(
+        provider,
+        model="fake:1b",
+        person="Morgan Hale",
+        sources=notes,
+        open_items=[],
+        settings=SETTINGS,
+    )
+    assert (result.state, result.points) == ("written", (CheckedBullet(text, ("m:1", "m:2")),))
+
+
 def test_a_brief_with_no_point_kept_is_unchecked() -> None:
     provider = FakeProvider([reply(("Marcus approved a 9,000 dollar budget.", ["m:1", "u:3"]))])
     result = write_brief(

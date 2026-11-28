@@ -678,7 +678,8 @@ One entry per decision. Format: context · evidence · decision · consequences.
     | (e) median seconds, at most 1.2 × v1's (10.85) | 9.04 (8.31, 9.06, 9.04) | 10.28 (10.28, 10.28, 10.06) | 8.55 (8.55, 8.55, 8.51) |
 
     - v1 wrote both missing points in every run, and the check dropped them: each said "Oct 14" where the notes say "October 14", and the name check reads "Oct" as a name the notes don't hold (`name_not_cited`). The window kept the same three points and dropped two as `name_not_cited`, so these were very likely its two. The check is unchanged.
-    - v2 named the other person's promises and what changed, but kept the owner's 14 open tasks from the hour in one point. Adjusted, it named at most three promises a point, but spent all six points on promises and said nothing of what changed. So v1 stays (BACKLOG "What the brief leaves out").
+    - v2 named the other person's promises and what changed, but kept the owner's 14 open tasks from the hour in one point. Adjusted, it named at most three promises a point, but spent all six points on promises and said nothing of what changed. So v1 stays (BACKLOG "A brief that picks the promises worth raising").
+    - With the name check fixed ("A month's short form is the month"), v1's three fresh briefs each kept 5 points and dropped none (median 8.38 s, back to back). So (a), (b) and (c) now pass, and (d) still fails, with the owner's 14 tasks in one point. v1 stays.
 - **Consequences:**
   - The prompt is bounded: at most three notes of 4,000 + 4,000 characters, about 9,000 tokens.
   - A brief's points cite meetings by id in a JSON list, with no foreign key, so deleting a meeting (not built yet) must also delete or rewrite the briefs that cite it (BACKLOG). Until then the page drops a missing meeting's link, and the point's text stays.
@@ -693,3 +694,24 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - A question or a brief waits up to a note's length: about two minutes after an hour's call.
   - The title call (A8) runs after the job has returned to idle, so a question or a brief can start while the title is written: two short calls to Ollama at once. This stays so (RC15): the note is shown when the title call starts, so "once the note is written" would be false during it, and the title is one short call, made after the speakers step has let go of the GPU.
   - The reverse is not covered: Write note or Retry while a question or a brief runs starts the note job beside that call (BACKLOG).
+
+## A month's short form is the month (RC19, 2026-11-28)
+- **Context:** the name check (BUILD.md §7.5) reads every capitalised word that isn't a stopword as a name that what a point cites must hold. So "Oct" in "the Oct 14 launch" had to be cited as "Oct", and a cited "October 14" didn't count. While A13 v2 was measured ("Prep brief (A13)"), every v1 brief lost two points this way: its point on what the other person owes and its point on what changed both said "Oct 14", where the notes say "October 14". The same rule drops a note point or an answer that shortens a month its lines spell out, and a point that spells out a month the owner typed short in My notes ("launch Oct 14").
+- **Decision:**
+  - A month's short form right beside a day (with or without "st", "nd", "rd" or "th") or a year counts as the month written out. That holds in the claim and in everything the claim is checked against: the cited lines, the owner's notes, the nearby lines and a brief's notes. "Oct 14", "Oct 14th", "14 Oct" and "Oct 2026" are all October. The short forms are Jan, Feb, Mar, Apr, Jun, Jul, Aug, Sep, Sept, Oct, Nov and Dec; May has none.
+  - One helper in `notes/validate.py` (`_months_written_out`) serves both sides: the claim's names (`_names`) and the word forms of every text they are looked for in (`_facts`). A short form there adds its month and keeps itself.
+  - **Only beside a number**, because alone a short form may be a name: "Jan said she'd send it" is Jan, not January. So "Jan will send the deck" still needs a line that says Jan.
+  - Only the name check moves. Numbers, the word check and the nearby-line number context stay as they were. Full month names are not stopwords, so a wrong month is still caught: "Moved to Oct 14" citing "November 14" is dropped (`name_not_cited`).
+- **Evidence:**
+  - Tests: a short form against the line's full month, and a full month against the owner's typed short form, are kept. So are "14 Sept" and "Oct 14th". "Oct 14" against "November 14" and "Jan will send the deck" against "January" are still dropped. The window's dropped brief point is kept through `write_brief`, its notes saying "October 14".
+  - **The re-check:** the seven v1 briefs recorded while v2 was measured (both warm-ups, runs 1, 3 and 5, and both spacers) were checked again through `write_brief`, with their points replayed as the reply. Each had kept 3 points and dropped 2; each now keeps all 5 and drops none (14 drops in all, now 0).
+  - **Fresh runs** on the same copy of the two synthetic 1:1s: gemma4:12b loaded, one warm-up call not counted, then three runs back to back. Each brief kept 5 points and dropped none, in 8.35, 8.39 and 8.38 s. Its five points:
+    - the owner's 14 open tasks;
+    - the other person's four (marketing, the API limits, the travel policy and the laptop budget);
+    - the two from the week before;
+    - what changed between the meetings;
+    - the open questions.
+- **Consequences:**
+  - "Oct. 14", with a full stop, is not read as the month: the rule covers a short form right beside its number.
+  - A name that is also a month's short form, written right before a number ("Jun 12 people"), is read as the month. The same rule applies to the line it cites, so it still matches a line that says the same.
+  - A13 is unchanged: with both points kept, what the brief still does is list the owner's promises in one long point (BACKLOG "A brief that picks the promises worth raising").

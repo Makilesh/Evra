@@ -240,6 +240,35 @@ def test_ordinary_words_starting_a_point_are_not_names(claim: str) -> None:
     assert check_lines(DECK, b(claim, "u:1")).kept == 1
 
 
+def test_a_short_month_beside_a_day_is_the_month_its_line_spells_out() -> None:
+    """RC19: "Oct 14" is October 14, so a point that shortens a month its line says in full
+    is kept (the window's brief lost two points every time this way)."""
+    line = ["the launch date is moved to October 14"]
+    assert check_lines(line, b("Tell marketing about the Oct 14 launch", "u:1")).kept == 1
+
+
+def test_a_month_in_full_is_the_short_form_typed_in_my_notes() -> None:
+    grounder = Grounder(aliases=ALIASES, utterance_text=UTTERANCES, user_notes="launch Oct 14")
+    checked, reason = grounder.check(b("Launch on October 14", "user"))
+    assert (reason, checked is not None) == ("", True)
+
+
+def test_a_short_month_after_its_day_or_with_an_ordinal_is_the_month_too() -> None:
+    beta = check_lines(["The beta ships on September 14."], b("The beta ships on 14 Sept.", "u:1"))
+    review = check_lines(["The review is on October 14th."], b("The review is on Oct 14th.", "u:1"))
+    assert (beta.kept, review.kept) == (1, 1)
+
+
+def test_a_short_month_is_still_checked_as_that_month() -> None:
+    note = check_lines(["The launch moved to November 14."], b("Moved to Oct 14", "u:1"))
+    assert note.drop_reasons == {"name_not_cited": 1}
+
+
+def test_a_short_month_with_no_number_beside_it_is_a_name() -> None:
+    note = check_lines(["the deck is due in January"], b("Jan will send the deck", "u:1"))
+    assert note.drop_reasons == {"name_not_cited": 1}
+
+
 TICKETS = ["Support got two tickets and I answered them."]
 
 
