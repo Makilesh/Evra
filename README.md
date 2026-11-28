@@ -39,9 +39,10 @@ Nothing leaves your computer. Speech recognition runs on the CPU, the note model
   them, each point citing the meeting it came from.
 - **Main window.** Record and stop, pick a mic (remembered by name), browse past meetings,
   rename them, and click a citation to jump to that transcript line.
-- **Command line.** Recording, notes and asking also work as `evra` commands. Promises, people
-  and the brief are in the window only for now, as are saying who a 1:1 was with, ticking action
-  items, typing your own notes, and browsing or renaming meetings.
+- **Command line.** Recording, notes, naming meetings from their note and asking also work as
+  `evra` commands. Promises, people and the brief are in the window only for now, as are saying
+  who a 1:1 was with, ticking action items, typing your own notes, and browsing or renaming
+  meetings.
 
 Best results today: a 1:1 call on headphones or earbuds. On laptop speakers your mic also hears
 the other person, until echo cancellation lands.
@@ -90,6 +91,7 @@ in `.data/` inside the repo. `evra run --data-dir PATH` puts it elsewhere.
 | `uv run evra transcribe FILE.wav` | Transcribe a WAV file |
 | `uv run evra record 60` | Record a 1:1 for 60 s with a live transcript in the terminal |
 | `uv run evra note [--model NAME]` | Write the note for the latest recording |
+| `uv run evra titles` | Name meetings that have a note but still a "Recording …" title; needs Ollama running |
 | `uv run python -m evra ask "QUESTION" [--meeting-id ID]` | Ask the latest meeting (or `--meeting-id`) a question; needs Ollama running |
 
 ## How it works

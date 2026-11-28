@@ -18,12 +18,15 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - **The "with" control's suggestions:** ArrowDown and Enter filled in the name without saving, and a second Enter saved once. A mouse click on the suggestion kept the editor open with the name, and Enter saved once.
   - **The log:** 15 INFO lines of codes, ids and counts; a search for 768 content words from the notes, records, transcripts, both briefs and both names found none.
   - **Seen, left to the final review:** the brief's refusal line stays on a person's page after its cause has passed (23 minutes after the note was written, the page still said "You can write a brief once the note is written."); asking and the brief are not refused while the title is written, after the note job; `evra note` prints "Them:" for the linked person's tasks.
+- **Task 4's fixes** (`dda9349`, `df0ab5a`, `5be79c1`, `2b7496e`, `9a23e4b`, `5cbe665`):
+  - A refusal on a person's page or the Ask tab clears once its cause has passed: a note job, a brief or a question ends, or the page opens again. `evra note` names who the 1:1 was with, and README caught up (the title call stays outside the note job, on purpose).
+  - A13 v2 was measured on the two synthetic 1:1s and not kept. The name check now reads a month's short form beside a date as the month ("Oct 14" is October 14), which gives every v1 brief back the two points it lost there (DECISIONS "Prep brief (A13)", "A month's short form is the month").
 - **Docs:**
   - BUILD.md: D14's note, §3, §6.5 (naming without voiceprints, the people calls), §7.5 (the known name, owners), §7.9 (the refusals), §7.10 (open promises), §7.11 (the prep brief, its calls and event), §8.2 (`0004_briefs.sql`), §8.3 (the shared slot), §8.4 (the new pages), §9.1 (the brief's failures), Appendix A (A13, the participants line) and B (`PrepBrief`).
   - DECISIONS.md: "People without voiceprints", "The person on the call is a known name", "Promises page", "Prep brief (A13)" and "Asking and the brief wait for a note job".
   - BACKLOG.md: a brief from the calendar, an agenda per person, a reminder when a due date passes, bringing back a promise set aside, a note job while a question or brief runs, deleting a meeting's briefs, the tab row at 720 px, fading focus rings.
   - DESIGN.md was updated with each task.
-- Tests: Python 849 passed (+60 on this branch), frontend 228 (+48).
+- Tests: Python 856 passed (+67 on this branch), frontend 236 (+56).
 
 ## 2026-11-27 — Complete notes (branch `notes-complete`)
 
