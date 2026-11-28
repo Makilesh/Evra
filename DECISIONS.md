@@ -601,3 +601,83 @@ One entry per decision. Format: context · evidence · decision · consequences.
   - Typed notes send a call to parts only past 28,400 or 60 minutes (BACKLOG "Typed notes on a call read in parts").
   - When the estimate undercounts by more than about 1% near 28,400, the call spends one wasted A1 call (30–60 s) before its parts.
   - Asking (`min(context_budget, num_ctx − its reply)`) and the title follow the new value.
+
+## People without voiceprints (2026-11-27)
+- **Context:** D14 stores voiceprints only for people the owner names, and voiceprints come with M4, after this work ("This work runs before M4"). Until then a 1:1 has two speakers, You and Them, and nothing says who the other person was. Their promises across meetings and a brief before the next 1:1 with them need that.
+- **Decision:**
+  - A person is a name the owner gives a 1:1, with no voiceprint. The meeting's date line has a "with" control (`set_meeting_person`): it finds the person whatever the name's case or spacing, else makes one, and links the meeting's remote "Them" speaker to them, in one transaction. A person is a `person` row with `is_owner` 0; there is no migration.
+  - "You" is the owner's own person, and no one else can take it, whatever its case or spaces (`reserved`); an empty name or one over 80 characters is `invalid`. The control never refuses a taken name: "PRIYA" links to Priya (RC4). Renaming a person in place does refuse it (`taken`).
+  - The stored labels stay "You" and "Them". The window shows the name for "Them": in the transcript, in the records and at the start of their tasks. The meeting's shared context names the person in its participants line, so every call about the meeting does (C6), and the note job hands the name to both note paths (C1).
+  - Every person has **Forget this person** (D14), on their page, asked first in two steps (RC5). It unlinks their meetings (they say "Them" again) and deletes the person; their briefs go with them through `brief.person_id ... ON DELETE CASCADE` (RC1). The notes stay.
+- **Evidence:** the real window (2026-11-28), with the two synthetic 1:1s linked to one synthetic person, "Morgan Hale" (neither transcript says "Morgan"):
+  - Linked: the note's quotes and the transcript said "MORGAN HALE" where the transcript has "Them", their tasks led with "Morgan Hale:", and every promise row named them.
+  - Renamed to "Morgan Reyes": the title, all 21 promise links, the People row and the meeting's "with" line followed at once.
+  - Forgotten: the People page said "No people yet.", and the meetings said "Them" and "Add who it was with" again. The 21 promises stayed, now with "Them". A read-only query found no person and no brief, and both "Them" speakers unlinked.
+  - The log held four `meeting_person_set` lines, each with a meeting id and `named` only.
+- **Consequences:**
+  - There are no voiceprints until M4. Then a named voice can be recognised, starting from the names the owner gave.
+  - A note written before the link says "Them". One written after it may name the person in its own words, and forgetting them does not rewrite that text: in the real window two tasks still read "…send to Morgan" after the person was forgotten. Forget removes the link and the briefs, not words already written.
+  - Relinking a meeting away from a typo leaves the typo as a person with no meetings, until the owner forgets them.
+  - Names are content: logs carry ids and counts only.
+
+## The person on the call is a known name (2026-11-27)
+- **Context:** once the participants line names the person ("People without voiceprints"), the model writes "Priya will send the deck [u:9]" where the transcript says "Them". The name check (BUILD.md §7.5) drops a point whose names are not in what it cites (`name_not_cited`), so it would drop every point that names the person. In the same way, a task whose owner the model gave as "Priya" was mapped to no one, and the Promises page lists only tasks owned by You or Them.
+- **Decision (RC3, and Task 1's fix round):**
+  - The linked person's name counts as known in the name check, like "You" and "Them": every word of it and every capitalised piece of it ("D'Souza" and "Souza"). `Grounder(people=)` and `check_note(people=)` take it from the meeting's shared context (`context.names`) in the note's check, the items' check and asking's answer check, and the brief passes the person's name.
+  - The model's owner maps to "Them" when it is the person's whole name or any one of its words, case-folded.
+  - Otherwise the name check is unchanged: it still drops a point that names someone the cited lines don't.
+- **Evidence:** `test_the_person_on_the_call_is_a_known_name` and `test_owner_name_maps_to_them`. In the real window (2026-11-28) the hour's note kept two tasks that name the person, "Send a summary of specific points regarding Atlas beta to Morgan" and "Get a quote for monitoring tool seats and send to Morgan", though neither transcript says "Morgan".
+- **Consequences:**
+  - A point that names a different person who shares a word with the linked name passes the name check (its citations are still checked).
+  - A third person who shares a word of the linked name would own a task as "Them" (a 1:1 has two people).
+  - An owner written as the piece after an apostrophe ("Souza" for "Anita D'Souza") still gets no owner: the owner rule splits the name on spaces only.
+
+## Promises page (2026-11-27)
+- **Context:** Plan B keeps action items as records with a status the owner sets, but each inside its own meeting's note. Open promises between 1:1s matter more for a 1:1 than voiceprints ("This work runs before M4"), and one action-item list across meetings was a gap in the competitor review.
+- **Decision:**
+  - A promise is an open action item of a meeting's current note, owned by "You" or "Them". `ItemStore.open_promises` reads them in one query joined to `generation.is_current = 1`, since an older note's copies would show twice. An ownerless task is not a promise. The Promises page lists "You promised" and "They promised", newest meeting first, then in the note's order, and the rail shows how many are open.
+  - Done, Undo and "Not a promise" reuse Plan B's `set_item_status` (`done`, `open`, `dismissed`) and the window's one tick queue: there is no second status call. A saved change, a new note and a meeting's person set or cleared each emit `promises.changed`, and the window reads the list again.
+  - Done keeps the row in place for 5 seconds with Undo. "Not a promise" gets the same 5-second Undo (RC6): BUILD.md hides a dismissed item everywhere, its note too, so otherwise one press on a quiet button beside the Done box would lose a promise with no way back. A refresh never takes a held row off early, rows keep their places when several wait to leave, and a row that leaves hands the keyboard focus on.
+  - The window keeps one list (RC7): a person's page filters the same rows by who the 1:1 was with, and `person_page` carries no promises. A second copy from Python would need its own held rows, or a ticked row would come back after a refresh.
+  - A row's time tab opens its meeting's transcript at the first line it cites, highlighted, with the Transcript tab focused.
+- **Evidence:** the real window (2026-11-28). The notes of the two synthetic 1:1s gave 21 open promises (16 You, 5 Them).
+  - A tick showed Done with Undo, and the rail's count went from 21 to 20 at once. Undo, 0.1 s later, put the row back in place (the same 21 rows in the same order), with the focus on its box.
+  - "Not a promise" showed "Set aside" with Undo focused, and the count went to 20. Undo put the row back in its place, the 16th of 21, and on its meeting's note.
+  - A time tab opened the hour at 28:59: the line filled band, centred in the transcript, with the title and the rail in place.
+- **Consequences:**
+  - A promise set aside and not undone within 5 seconds can't be seen or brought back from the window yet (BACKLOG).
+  - The rail's count is what the page shows open, so it drops at a tick and comes back with Undo.
+
+## Prep brief (A13) (2026-11-28)
+- **Context:** before a 1:1 the owner wants what is still open with that person, what they said they would come back to and what changed, from several meetings at once. Asking (A12) reads one meeting.
+- **Decision:**
+  - A13 (`a13-v1`), one call. It reads several meetings, so it has no A0: its own system message holds the notes of the person's three newest 1:1s that have one, as `<notes>` blocks (`m:1` the newest), and the task is the user message → `PrepBrief`, two to six points (the schema caps it at six). It uses the note's model, context size and keep-alive, asking's reply room and wait, and one A9 repair.
+  - Each note is read as its points, then its records still open (RC8): decisions, tasks led by their owner label with their due dates, and open questions. A task done or set aside is left out. The records get their own 4,000 characters, so the points are never cut for them. Why: A13's rule 1 asks for what is still open, a 1:1 note keeps its decisions, tasks and questions as records, and rule 2 lets the model cite only what the notes hold, so without the records the first real call left out 2 of its 6 open promises. The person's open promises both ways also go into the task.
+  - Every point is checked against the notes it cites (`m:<n>`): the word check, then its numbers and names, with the person's name known ("The person on the call is a known name") and `nearby=0`, since the sources are meetings, not lines of one conversation. An inline `[m:n]` is read as a citation, in every check. There is no meaning check.
+  - Each person keeps one brief, the newest. A brief that comes back unchecked (no point passed) or failed is not stored, and the earlier brief stays, as a failed note keeps the note before it. The page dates each brief, "Written {day}", and says when a new one couldn't be checked over an earlier one (RC10).
+  - One question or brief at a time (`JobSlot`, shared with asking). A brief waits for a recording to end, as asking does (RC9: a model call during a recording works against its budget), and for a note job ("Asking and the brief wait for a note job").
+- **Evidence:** gemma4:12b, the two synthetic 1:1s linked to one synthetic person. The scratch calls had hand-written notes; the window's had the notes the model wrote from both calls.
+
+  | run | open promises | seconds | points kept / dropped | promises only in the records |
+  | --- | --- | --- | --- | --- |
+  | scratch, the notes' points only | 6 | 12.5 (with the model's load) | 6 / 0 | 2 of 2 left out |
+  | scratch, points and open records | 6 | 9.5 (with the model's load) | 4 / 0 | both in |
+  | real window, Write a brief | 21 | 14.3 (with the model's load) | 3 / 2 (`name_not_cited`) | in, citing their meeting |
+  | real window, Write again | 21 | 8.8 (model loaded) | 3 / 2 (`name_not_cited`) | in |
+
+  - In the window the brief had three points: the owner's 14 open tasks from the hour in one point (most of them records the note's own points don't mention: the postmortem, the expense reminders, the monitoring quote), the two from the week before, and the open questions of both meetings. It left out the other person's five promises and what changed between the meetings.
+  - The log had `brief_started` (meetings, open items) and `brief_written` (state, counts, reasons, seconds) only.
+- **Consequences:**
+  - The prompt is bounded: at most three notes of 4,000 + 4,000 characters, about 9,000 tokens.
+  - A brief's points cite meetings by id in a JSON list, with no foreign key, so deleting a meeting (not built yet) must also delete or rewrite the briefs that cite it (BACKLOG). Until then the page drops a missing meeting's link, and the point's text stays.
+  - A paraphrase whose words fall short of its notes is dropped, since there is no meaning check.
+  - What the brief chooses to say is the model's: in the window it grouped the owner's tasks and left the other person's out. A change to A13 should be judged on more calls first.
+
+## Asking and the brief wait for a note job (2026-11-28)
+- **Context:** BUILD.md §8.3 allows one note or answer job at a time, and its GPU rule never lets diarization and the LLM hold VRAM at once. Asking a meeting was refused during a recording ("Asking a meeting (A12)": none during a recording), and so was the brief, but neither checked for a note job. So a question or a brief could load the model while the note job ran its own chats or, once M4 runs it, diarization.
+- **Decision (RC11):** one check, which app.py gives both services beside the recording check: the meeting service is "processing" (the note job after Stop, Write note or Retry: speakers, linking, the note and its lists). Asking, the Ask tab's pre-read and the brief refuse with `note` before any model call, right after the recording check (invalid, recording, note, busy, then the rest). The window says "You can ask once the note is written." or "You can write a brief once the note is written.". This extends Plan A's "none during a recording".
+- **Evidence:** the real window (2026-11-28). Write note on the hour, then, while it was written, Write a brief on the person's page (+10.6 s) and a one-click question on the other meeting's Ask tab (+11.1 s). Each showed its sentence, with the focus kept on its button. The note showed at +115.8 s. Afterwards the database held no question and no brief, and the log no `brief_started` or question line.
+- **Consequences:**
+  - A question or a brief waits up to a note's length: about two minutes after an hour's call.
+  - The title call (A8) runs after the job has returned to idle, so a question or a brief can start while the title is written: two short calls to Ollama at once.
+  - The reverse is not covered: Write note or Retry while a question or a brief runs starts the note job beside that call (BACKLOG).
