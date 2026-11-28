@@ -34,6 +34,7 @@ from evra.store.meetings import MeetingStore
 from evra.store.migrate import migrate
 from evra.store.notepad import NotepadStore
 from evra.store.notes import NoteStore
+from evra.store.speakers import SpeakerStore, names_for
 from evra.transcribe.cli import format_ms
 
 FALLBACK_MODEL = "gemma4:12b"
@@ -176,8 +177,9 @@ def _run(
     assert stored is not None
     items = ItemStore(conn).for_generation(saved.generation_id)
     typed = NotepadStore(conn).lines(meeting_id)
+    names = names_for(SpeakerStore(conn).person_for(meeting_id))  # as the window names them (C3)
     print(f"# {meeting['title']}")
-    for line in render_note(note_view(stored, utterances, items, lines=typed)):
+    for line in render_note(note_view(stored, utterances, items, lines=typed, names=names)):
         print(line)
     if result.items_only:
         print(

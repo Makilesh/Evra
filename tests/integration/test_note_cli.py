@@ -11,10 +11,12 @@ from evra.config import LlmSettings, Settings, save_settings
 from evra.llm.provider import ChatMessage, ChatResult, LlmModelMissing
 from evra.notes.cli import note_command
 from evra.paths import AppPaths
-from evra.store.db import connect
+from evra.store.db import connect, writing
 from evra.store.meetings import MeetingStore
 from evra.store.notepad import LineIn, NotepadStore
 from evra.store.notes import NoteStore, StoredNote
+from evra.store.people import PersonStore
+from evra.store.speakers import SpeakerStore
 from tests.integration.helpers import DownProvider, recorded
 from tests.unit.notes.fakes import FakeProvider
 
@@ -87,6 +89,34 @@ def test_writes_prints_and_stores_the_note(
     assert "2 points kept, 0 dropped" in out
     stored = _current(paths, mid)
     assert stored is not None and len(stored.blocks) == 1
+
+
+def test_a_1on1_names_who_it_was_with_in_its_action_items(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """RC16: the console names the linked person where the window does (C3); a meeting with no
+    one linked still says "Them"."""
+    paths, mid = recorded(tmp_path)
+    conn = connect(paths.db_path)
+    try:
+        with writing(conn):  # as set_meeting_person links them
+            person = PersonStore(conn).find_or_create("Morgan Hale")
+            SpeakerStore(conn).set_person(mid, person.id)
+    finally:
+        conn.close()
+    assert note_command(_args(), paths, provider=FakeProvider([GOOD, *LISTS])) == 0
+    out = capsys.readouterr().out
+    assert "## Action items\n- Morgan Hale: Ask Priya directly (tomorrow) [00:05]" in out
+    assert "Them:" not in out
+    conn = connect(paths.db_path)
+    try:
+        SpeakerStore(conn).set_person(mid, None)  # no one now
+    finally:
+        conn.close()
+    assert note_command(_args(), paths, provider=FakeProvider([GOOD, *LISTS])) == 0
+    out = capsys.readouterr().out
+    assert "## Action items\n- Them: Ask Priya directly (tomorrow) [00:05]" in out
+    assert "Morgan Hale" not in out
 
 
 def test_a_point_from_your_notes_prints_the_line_it_quotes(
