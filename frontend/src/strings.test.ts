@@ -110,6 +110,9 @@ describe("people and briefs", () => {
   it("explains a failed brief in brief words, sharing the Ollama texts with the note", () => {
     expect(briefFailureText("cut_off")).toBe("The model ran out of room while writing the brief.");
     expect(briefFailureText("invalid")).toBe("The model didn't return a valid brief.");
+    expect(briefFailureText("too_long")).toBe(
+      "Your notes and open promises with them are too long for the model's settings. Tick the promises that are done, then write again.",
+    );
     expect(briefFailureText("timeout")).toBe("The model took too long to write the brief.");
     expect(briefFailureText("ollama_down")).toBe(noteFailureText("ollama_down"));
     expect(briefFailureText("cloud_model")).toBe(noteFailureText("cloud_model"));

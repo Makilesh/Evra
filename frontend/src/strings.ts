@@ -226,7 +226,7 @@ export function askFailureText(reason: AskFailureReason | undefined): string {
 export function briefFailureText(reason: BriefFailureReason | undefined): string {
   switch (reason) {
     case "too_long":
-      return "Your notes with them are too long for the model's settings to write a brief.";
+      return "Your notes and open promises with them are too long for the model's settings. Tick the promises that are done, then write again.";
     case "cut_off":
       return "The model ran out of room while writing the brief.";
     case "invalid":
