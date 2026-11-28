@@ -119,7 +119,7 @@ describe("people and briefs", () => {
     expect(briefFailureText("model_missing")).toBe(askFailureText("model_missing"));
     const reasons: BriefFailureReason[] = ["too_long", "nothing_supported", "no_transcript", "llm_error", "unknown"];
     for (const reason of [...reasons, undefined]) {
-      expect(briefFailureText(reason)).toMatch(/brief/);
+      expect(briefFailureText(reason)).toMatch(reason === "too_long" ? /promises/ : /brief/);
     }
   });
 });
