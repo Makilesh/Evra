@@ -40,7 +40,7 @@ class BriefSource:
     meeting_id: str
     title: str
     started_at: int  # epoch ms
-    note_text: str  # the note's points as lines, as the title reads them (`title.note_text`)
+    note_text: str  # the note's points as lines, then its records still open (as `Decision: …`)
 
 
 @dataclass(frozen=True)

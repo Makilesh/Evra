@@ -18,7 +18,7 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - **The "with" control's suggestions:** ArrowDown and Enter filled in the name without saving, and a second Enter saved once. A mouse click on the suggestion kept the editor open with the name, and Enter saved once.
   - **The log:** 15 INFO lines of codes, ids and counts; a search for 768 content words from the notes, records, transcripts, both briefs and both names found none.
   - **Seen, left to the final review:** the brief's refusal line stays on a person's page after its cause has passed (23 minutes after the note was written, the page still said "You can write a brief once the note is written."); asking and the brief are not refused while the title is written, after the note job; `evra note` prints "Them:" for the linked person's tasks.
-- **Task 4's fixes** (`dda9349`, `df0ab5a`, `5be79c1`, `2b7496e`, `9a23e4b`, `5cbe665`):
+- **Task 4's fixes** (`dda9349`, `df0ab5a`, `5be79c1`, `2b7496e`, `9a23e4b`, `5cbe665`, `62917ac`, `e370428`):
   - A refusal on a person's page or the Ask tab clears once its cause has passed: a note job, a brief or a question ends, or the page opens again. `evra note` names who the 1:1 was with, and README caught up (the title call stays outside the note job, on purpose).
   - A13 v2 was measured on the two synthetic 1:1s and not kept. The name check now reads a month's short form beside a date as the month ("Oct 14" is October 14), which gives every v1 brief back the two points it lost there (DECISIONS "Prep brief (A13)", "A month's short form is the month").
 - **Docs:**
@@ -26,7 +26,14 @@ Newest first. Each entry: date, what happened, and (once code exists) the commit
   - DECISIONS.md: "People without voiceprints", "The person on the call is a known name", "Promises page", "Prep brief (A13)" and "Asking and the brief wait for a note job".
   - BACKLOG.md: a brief from the calendar, an agenda per person, a reminder when a due date passes, bringing back a promise set aside, a note job while a question or brief runs, deleting a meeting's briefs, the tab row at 720 px, fading focus rings.
   - DESIGN.md was updated with each task.
-- Tests: Python 856 passed (+67 on this branch), frontend 236 (+56).
+- **The final fix wave** (`f8791ca`, `6d1292d`, `1d129d1`, `768bf76`, `b49421a`, `7e9a51b`, and the docs commit after them):
+  - A note's long parts fall back to the meeting's names when only a context is given.
+  - The Ask tab's busy refusal names a brief too, and clears on `question.updated` and `brief.updated`.
+  - A brief too long to write says to tick the promises that are done (its prompt holds every open promise).
+  - The Forget confirm says notes that already use the name keep it.
+  - The ask bake-off times its calls with `perf_counter`, since `monotonic` ticks every 15.6 ms here.
+  - DECISIONS no longer calls the brief's prompt bounded, and BACKLOG gained the review's lines.
+- Tests: Python 859 passed (+70 on this branch), frontend 238 (+58).
 
 ## 2026-11-27 — Complete notes (branch `notes-complete`)
 
