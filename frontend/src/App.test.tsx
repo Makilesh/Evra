@@ -245,3 +245,28 @@ it("asks about the open meeting and shows the answer when it arrives", async () 
   expect(screen.getByRole("status")).toHaveTextContent("Answer ready");
   expect(screen.getByRole("textbox", { name: "Ask about this meeting" })).toBeEnabled();
 });
+
+it("drops the Ask tab's refusal once the note job it waits for ends", async () => {
+  const ask_meeting = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: false, reason: "note" })
+    .mockResolvedValueOnce({ ok: false, reason: "recording" });
+  setApiForTests(makeFakeApi({ ask_meeting }));
+  render(<App />);
+  await screen.findByText("Launch moves to October 14.");
+  await userEvent.click(screen.getByRole("tab", { name: "Ask" }));
+  // another meeting's note is being written: a question waits for it
+  act(() => emit("note.stage", { meeting_id: "m2", stage: "writing" }));
+  await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
+  expect(await screen.findByText("You can ask once the note is written.")).toBeInTheDocument();
+  act(() => emit("note.ready", { meeting_id: "m2" }));
+  expect(screen.queryByText("You can ask once the note is written.")).toBeNull();
+  // refused for a recording: its note job ends without a note, and the wait with it
+  await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
+  expect(await screen.findByText("You can ask once the recording ends.")).toBeInTheDocument();
+  act(() => emit("note.stage", { meeting_id: "m2", stage: "writing" }));
+  expect(screen.getByText("You can ask once the recording ends.")).toBeInTheDocument();
+  act(() => emit("note.failed", { meeting_id: "m2", reason: "ollama_down" }));
+  expect(screen.queryByText("You can ask once the recording ends.")).toBeNull();
+  expect(screen.getByRole("tab", { name: "Ask", selected: true })).toBeInTheDocument(); // the tab stayed open
+});

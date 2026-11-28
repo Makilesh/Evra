@@ -9,6 +9,8 @@ interface AskViewProps {
   questions: Question[];
   utterances: Utterance[];
   isLive: boolean;
+  /** Some meeting's note is being written: Python refuses a question until that job ends. */
+  noteWriting?: boolean;
   onAsk: (text: string) => Promise<AskRefusal | null>;
   onPrepare: () => void;
   onCite: (utteranceId: string) => void;
@@ -19,11 +21,19 @@ const MAX_QUESTION = 500;
 // Ask: the meeting's questions as a thread on the note sheet, each answer a cited point beside
 // the lines it came from, and the form fixed under the thread. One question at a time, and
 // none while the meeting is being recorded.
-export function AskView({ questions, utterances, isLive, onAsk, onPrepare, onCite }: AskViewProps) {
+export function AskView({ questions, utterances, isLive, noteWriting = false, onAsk, onPrepare, onCite }: AskViewProps) {
   const byId = useMemo(() => new Map(utterances.map((u) => [u.id, u])), [utterances]);
   const [draft, setDraft] = useState("");
   const [refusal, setRefusal] = useState<AskRefusal | null>(null);
   const [announced, setAnnounced] = useState("");
+
+  // A question refused while a recording or a note ran can be asked once the note job ends, with
+  // its note or without (RC14, as on a person's page), so its refusal goes then.
+  const [wasWriting, setWasWriting] = useState(noteWriting);
+  if (noteWriting !== wasWriting) {
+    setWasWriting(noteWriting);
+    if (!noteWriting && (refusal === "recording" || refusal === "note")) setRefusal(null);
+  }
   const busy = isLive || questions.some((q) => q.state === "asking");
   const newestAsking = questions.at(-1)?.state === "asking";
   const box = useRef<HTMLInputElement>(null);

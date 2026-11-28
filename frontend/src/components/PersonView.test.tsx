@@ -153,6 +153,61 @@ it("says why there is no brief to show", async () => {
   expect(write_brief).toHaveBeenCalledTimes(7);
 });
 
+/** Priya's page again, from the People page. */
+async function reopenPriya() {
+  await userEvent.click(screen.getByRole("button", { name: "People" }));
+  await userEvent.click(await screen.findByRole("button", { name: /^Priya/ }));
+  await screen.findByRole("region", { name: "Catch me up" });
+}
+
+it("drops a refusal once the person's page opens again", async () => {
+  const write_brief = vi.fn().mockResolvedValueOnce({ ok: false, reason: "note" }).mockResolvedValue({ ok: true });
+  await openPriya(peopleApi({ write_brief }));
+  await userEvent.click(within(region("Catch me up")).getByRole("button", { name: "Write a brief" }));
+  expect(region("Catch me up")).toHaveTextContent("You can write a brief once the note is written.");
+  await reopenPriya();
+  expect(region("Catch me up")).not.toHaveTextContent("once the note is written");
+  expect(within(region("Catch me up")).getByRole("button", { name: "Write a brief" })).toBeEnabled();
+});
+
+it("drops a refusal that waits for a note job once it ends, with the page left open", async () => {
+  const write_brief = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: false, reason: "note" })
+    .mockResolvedValueOnce({ ok: false, reason: "recording" })
+    .mockResolvedValue({ ok: true });
+  await openPriya(peopleApi({ write_brief }));
+  const catchUp = region("Catch me up");
+  await userEvent.click(within(catchUp).getByRole("button", { name: "Write a brief" }));
+  expect(catchUp).toHaveTextContent("You can write a brief once the note is written.");
+  act(() => emit("note.ready", { meeting_id: "m9" }));
+  expect(region("Catch me up")).not.toHaveTextContent("once the note is written");
+  // a recording's note job that ends without a note ends the wait too
+  await userEvent.click(within(region("Catch me up")).getByRole("button", { name: "Write a brief" }));
+  expect(region("Catch me up")).toHaveTextContent("You can write a brief once the recording ends.");
+  act(() => emit("note.failed", { meeting_id: "m9", reason: "ollama_down" }));
+  expect(region("Catch me up")).not.toHaveTextContent("once the recording ends");
+});
+
+it("drops a busy refusal once any brief ends, someone else's too", async () => {
+  const write_brief = vi.fn().mockResolvedValueOnce({ ok: false, reason: "busy" }).mockResolvedValue({ ok: true });
+  await openPriya(peopleApi({ write_brief }));
+  const catchUp = region("Catch me up");
+  await userEvent.click(within(catchUp).getByRole("button", { name: "Write a brief" }));
+  expect(catchUp).toHaveTextContent("Evra is busy answering a question or writing a brief.");
+  act(() => emit("brief.updated", { person_id: "p2", state: "unchecked" })); // Sam's brief ended
+  expect(catchUp).not.toHaveTextContent("Evra is busy");
+});
+
+it("keeps a failed brief's reason when the person's page opens again", async () => {
+  await openPriya();
+  await userEvent.click(within(region("Catch me up")).getByRole("button", { name: "Write a brief" }));
+  act(() => emit("brief.updated", { person_id: "p1", state: "failed", reason: "ollama_down" }));
+  expect(within(region("Catch me up")).getByRole("alert")).toHaveTextContent("Ollama isn't running");
+  await reopenPriya();
+  expect(within(region("Catch me up")).getByRole("alert")).toHaveTextContent("Ollama isn't running");
+});
+
 it("renames a person", async () => {
   const api = peopleApi();
   const rename = api.rename_person;

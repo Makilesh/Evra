@@ -225,6 +225,7 @@ export default function App() {
             onSetPerson={(name) => setMeetingPerson(detail.meeting.id, name)}
             openAt={opened?.meetingId === detail.meeting.id ? opened.utteranceId : null}
             focusTab={opened?.meetingId === detail.meeting.id}
+            noteWriting={writingIds.length > 0}
           />
         ) : state.ready && state.meetings.length === 0 ? (
           <Welcome />

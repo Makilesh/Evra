@@ -14,9 +14,11 @@ import {
 } from "@/bridge";
 import type { RenameRefusal } from "@/usePeople";
 
-/** How the last brief asked for this session went, until the next is asked for: being written,
- *  none of its points could be checked, it failed, or Python didn't start it ("failed" when it
- *  couldn't be asked). A brief written lands on the page instead. */
+/** How the last brief asked for this session went: being written, none of its points could be
+ *  checked, or it failed, each until the next is asked for; or Python didn't start it ("failed"
+ *  when it couldn't be asked), until the person's page opens again or the cause ends (RC14): a
+ *  note job for "recording" and "note", any brief for "busy". A brief written lands on the page
+ *  instead. */
 export type BriefStatus =
   | { state: "writing" }
   | { state: "unchecked" }
@@ -27,6 +29,15 @@ function without<T>(map: Record<string, T>, key: string): Record<string, T> {
   const rest = { ...map };
   delete rest[key];
   return rest;
+}
+
+/** Everyone's statuses but the refusals for these reasons; the same map when there are none. */
+function withoutRefusals(
+  briefs: Record<string, BriefStatus>,
+  reasons: (BriefRefusal | "failed")[],
+): Record<string, BriefStatus> {
+  const kept = Object.entries(briefs).filter(([, b]) => b.state !== "refused" || !reasons.includes(b.reason));
+  return kept.length === Object.keys(briefs).length ? briefs : Object.fromEntries(kept);
 }
 
 export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromises: () => Promise<void>) {
@@ -47,12 +58,15 @@ export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromise
     if (read === reads.current && open.current === personId) setPersonPage(page);
   }, []);
 
-  // The window shows this person's page now (null: no one's), read afresh.
+  // The window shows this person's page now (null: no one's), read afresh. Opened again, it no
+  // longer says why the last press was refused.
   const openPersonPage = useCallback(
     (personId: string | null) => {
       if (open.current !== personId) setPersonPage(null);
       open.current = personId;
-      if (personId) void loadPersonPage(personId);
+      if (!personId) return;
+      setBriefs((s) => (s[personId]?.state === "refused" ? without(s, personId) : s));
+      void loadPersonPage(personId);
     },
     [loadPersonPage],
   );
@@ -61,11 +75,15 @@ export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromise
     const reload = () => {
       if (open.current) void loadPersonPage(open.current);
     };
+    // A note job ended, with its note or without: a brief that waited for it can be asked for.
+    const noteJobEnded = () => setBriefs((s) => withoutRefusals(s, ["recording", "note"]));
     const offs = [
-      // A brief ended. It may beat write_brief's own reply; that reply then changes nothing.
+      // A brief ended, so the slot is free again. It may beat write_brief's own reply; that reply
+      // then changes nothing.
       onEvent("brief.updated", (payload) => {
         const { person_id, state, reason, brief } = payload as BriefUpdated;
-        setBriefs((s) => {
+        setBriefs((before) => {
+          const s = withoutRefusals(before, ["busy"]);
           if (state === "written") return without(s, person_id);
           const status: BriefStatus = state === "failed" ? { state, reason: reason ?? "llm_error" } : { state };
           return { ...s, [person_id]: status };
@@ -74,7 +92,11 @@ export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromise
           setPersonPage((page) => (page?.person.id === person_id ? { ...page, brief } : page));
         }
       }),
-      onEvent("note.ready", reload), // a 1:1 of theirs may have its note now: last time, the list
+      onEvent("note.ready", () => {
+        noteJobEnded();
+        reload(); // a 1:1 of theirs may have its note now: last time, the list
+      }),
+      onEvent("note.failed", noteJobEnded),
       onEvent("meeting.renamed", reload), // the page names their meetings
     ];
     return () => offs.forEach((off) => off());

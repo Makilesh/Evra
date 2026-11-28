@@ -47,6 +47,8 @@ interface MeetingViewProps {
   openAt?: string | null;
   /** Opened from another page: the open tab takes the focus, so the keyboard lands here. */
   focusTab?: boolean;
+  /** Some meeting's note is being written (the Ask tab's refusals wait for it). */
+  noteWriting?: boolean;
 }
 
 type Tab = "note" | "transcript" | "ask" | "notes";
@@ -71,6 +73,7 @@ export function MeetingView({
   onSetPerson,
   openAt = null,
   focusTab = false,
+  noteWriting = false,
 }: MeetingViewProps) {
   const tabs = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -185,6 +188,7 @@ export function MeetingView({
             questions={detail.questions}
             utterances={utterances}
             isLive={isLive}
+            noteWriting={noteWriting}
             onAsk={onAsk}
             onPrepare={onPrepareAsk}
             onCite={cite}
