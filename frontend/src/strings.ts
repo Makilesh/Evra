@@ -105,7 +105,7 @@ export const strings = {
   briefAfterNote: "You can write a brief once the note is written.",
   briefBusy: "Evra is busy answering a question or writing a brief. Try again when it's done.",
   forgetPerson: "Forget this person",
-  forgetConfirm: (name: string) => `Forget ${name}? Their meetings say “Them” again, and their brief is deleted.`,
+  forgetConfirm: (name: string) => `Forget ${name}? Their brief is deleted and their meetings say “Them” again. Notes that already use the name keep it.`,
   forgetYes: "Forget",
   forgetNo: "Keep",
   forgetFailed: "Evra couldn't forget them. Try again.",

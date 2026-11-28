@@ -302,7 +302,7 @@ it("renames a person", async () => {
 it("forgets a person", async () => {
   const api = await openPriya();
   await userEvent.click(screen.getByRole("button", { name: "Forget this person" }));
-  const sure = "Forget Priya? Their meetings say “Them” again, and their brief is deleted.";
+  const sure = "Forget Priya? Their brief is deleted and their meetings say “Them” again. Notes that already use the name keep it.";
   const keep = within(screen.getByRole("group", { name: sure })).getByRole("button", { name: "Keep" });
   expect(keep).toHaveFocus(); // the safe choice first
   await userEvent.click(keep);
