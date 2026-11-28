@@ -72,8 +72,9 @@ def build_app(paths: AppPaths, *, debug: bool) -> App:
         return service.state()["state"] in ("loading", "recording", "stopping")
 
     def note_busy() -> bool:
-        """The note job runs (speakers, linking, the note, its lists, its title): a question or a
-        brief waits for it, as diarization and the model never share the GPU (BUILD.md §8.3)."""
+        """The note job runs (speakers, linking, the note, its lists): a question or a brief
+        waits for it, as diarization and the model never share the GPU (BUILD.md §8.3). The
+        title call after the note does not count, since the note is on screen by then."""
         state: str = service.state()["state"]
         return state == "processing"
 

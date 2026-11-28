@@ -679,5 +679,5 @@ One entry per decision. Format: context · evidence · decision · consequences.
 - **Evidence:** the real window (2026-11-28). Write note on the hour, then, while it was written, Write a brief on the person's page (+10.6 s) and a one-click question on the other meeting's Ask tab (+11.1 s). Each showed its sentence, with the focus kept on its button. The note showed at +115.8 s. Afterwards the database held no question and no brief, and the log no `brief_started` or question line.
 - **Consequences:**
   - A question or a brief waits up to a note's length: about two minutes after an hour's call.
-  - The title call (A8) runs after the job has returned to idle, so a question or a brief can start while the title is written: two short calls to Ollama at once.
+  - The title call (A8) runs after the job has returned to idle, so a question or a brief can start while the title is written: two short calls to Ollama at once. This stays so (RC15): the note is shown when the title call starts, so "once the note is written" would be false during it, and the title is one short call, made after the speakers step has let go of the GPU.
   - The reverse is not covered: Write note or Retry while a question or a brief runs starts the note job beside that call (BACKLOG).

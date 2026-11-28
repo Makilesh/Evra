@@ -27,9 +27,21 @@ Nothing leaves your computer. Speech recognition runs on the CPU, the note model
 - **My notes.** Type notes during the call, one line each. Every line is stamped with the time
   you typed it and linked to what was being said, and the note expands the topics you noted. A
   point taken from your notes quotes your line.
+- **Ask a meeting.** The Ask tab answers a typed question, or a one-click one such as "What did I
+  promise?", from that meeting's transcript. The answer comes as cited points, each checked like
+  the note's, or as "Not discussed in this meeting." when the call didn't cover it.
+- **Who a 1:1 was with.** Say who the other person was on the meeting's date line, and the
+  transcript, the note and their tasks use their name instead of "Them".
+- **Promises.** One page lists every open promise across your meetings, both ways: what you
+  promised and what they promised. Tick one Done, Undo it, or set it aside as Not a promise.
+- **People.** Everyone you have named is on the People page. Each has a page of their own, with
+  your open promises both ways and a prep brief for your next 1:1 from your recent notes with
+  them, each point citing the meeting it came from.
 - **Main window.** Record and stop, pick a mic (remembered by name), browse past meetings,
   rename them, and click a citation to jump to that transcript line.
-- **Command line.** Everything the window does is also available as `evra` commands.
+- **Command line.** Recording, notes and asking also work as `evra` commands. Promises, people
+  and the brief are in the window only for now, as are saying who a 1:1 was with, ticking action
+  items, typing your own notes, and browsing or renaming meetings.
 
 Best results today: a 1:1 call on headphones or earbuds. On laptop speakers your mic also hears
 the other person, until echo cancellation lands.
