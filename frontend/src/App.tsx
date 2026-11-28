@@ -31,6 +31,7 @@ export default function App() {
     refreshPromises,
     personPage,
     openPersonPage,
+    clearBriefRefusal,
     briefs,
     writeBrief,
     renamePerson,
@@ -93,8 +94,10 @@ export default function App() {
   const closeSettings = useCallback(() => {
     setPage(beforeSettings.current);
     readFor(beforeSettings.current);
+    // back on a person's page, it opens again: the last press's refusal goes, nothing else
+    if (beforeSettings.current === "people" && personId !== null) clearBriefRefusal(personId);
     settingsButton.current?.focus();
-  }, [readFor]);
+  }, [readFor, personId, clearBriefRefusal]);
 
   // A promise's meeting, on its note, or on its transcript at the line the promise came from.
   const openMeeting = useCallback(

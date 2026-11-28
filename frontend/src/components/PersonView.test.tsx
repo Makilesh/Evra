@@ -199,6 +199,41 @@ it("drops a busy refusal once any brief ends, someone else's too", async () => {
   expect(catchUp).not.toHaveTextContent("Evra is busy");
 });
 
+it("drops a busy refusal once a question ends", async () => {
+  const write_brief = vi.fn().mockResolvedValueOnce({ ok: false, reason: "busy" }).mockResolvedValue({ ok: true });
+  await openPriya(peopleApi({ write_brief }));
+  const catchUp = region("Catch me up");
+  await userEvent.click(within(catchUp).getByRole("button", { name: "Write a brief" }));
+  expect(catchUp).toHaveTextContent("Evra is busy answering a question or writing a brief.");
+  const answered = { id: "q1", text: "What did I promise?", asked_at: 1, state: "not_found", points: [], excerpt: false };
+  act(() => emit("question.updated", { meeting_id: "m2", question: answered })); // the slot is free again
+  expect(catchUp).not.toHaveTextContent("Evra is busy");
+});
+
+it("drops a refusal once Settings closes back to the person's page", async () => {
+  const write_brief = vi.fn().mockResolvedValueOnce({ ok: false, reason: "note" }).mockResolvedValue({ ok: true });
+  const api = await openPriya(peopleApi({ write_brief }));
+  await userEvent.click(within(region("Catch me up")).getByRole("button", { name: "Write a brief" }));
+  expect(region("Catch me up")).toHaveTextContent("You can write a brief once the note is written.");
+  const reads = vi.mocked(api.person_page).mock.calls.length;
+  await userEvent.keyboard("{Control>},{/Control}");
+  expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(await screen.findByRole("heading", { level: 1, name: "Priya" })).toBeInTheDocument();
+  expect(region("Catch me up")).not.toHaveTextContent("once the note is written");
+  expect(api.person_page).toHaveBeenCalledTimes(reads); // only the refusal goes: the page isn't read again
+});
+
+it("keeps a failed brief's reason through a trip to Settings", async () => {
+  await openPriya();
+  await userEvent.click(within(region("Catch me up")).getByRole("button", { name: "Write a brief" }));
+  act(() => emit("brief.updated", { person_id: "p1", state: "failed", reason: "ollama_down" }));
+  await userEvent.keyboard("{Control>},{/Control}");
+  await userEvent.keyboard("{Escape}");
+  expect(await screen.findByRole("heading", { level: 1, name: "Priya" })).toBeInTheDocument();
+  expect(within(region("Catch me up")).getByRole("alert")).toHaveTextContent("Ollama isn't running");
+});
+
 it("keeps a failed brief's reason when the person's page opens again", async () => {
   await openPriya();
   await userEvent.click(within(region("Catch me up")).getByRole("button", { name: "Write a brief" }));

@@ -16,9 +16,9 @@ import type { RenameRefusal } from "@/usePeople";
 
 /** How the last brief asked for this session went: being written, none of its points could be
  *  checked, or it failed, each until the next is asked for; or Python didn't start it ("failed"
- *  when it couldn't be asked), until the person's page opens again or the cause ends (RC14): a
- *  note job for "recording" and "note", any brief for "busy". A brief written lands on the page
- *  instead. */
+ *  when it couldn't be asked), until the person's page opens again (Settings closed back to it
+ *  counts) or the cause ends (RC14): a note job for "recording" and "note", any brief or question
+ *  for "busy". A brief written lands on the page instead. */
 export type BriefStatus =
   | { state: "writing" }
   | { state: "unchecked" }
@@ -58,17 +58,21 @@ export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromise
     if (read === reads.current && open.current === personId) setPersonPage(page);
   }, []);
 
-  // The window shows this person's page now (null: no one's), read afresh. Opened again, it no
-  // longer says why the last press was refused.
+  // The person's page opens again: it no longer says why the last press was refused.
+  const clearBriefRefusal = useCallback((personId: string) => {
+    setBriefs((s) => (s[personId]?.state === "refused" ? without(s, personId) : s));
+  }, []);
+
+  // The window shows this person's page now (null: no one's), read afresh.
   const openPersonPage = useCallback(
     (personId: string | null) => {
       if (open.current !== personId) setPersonPage(null);
       open.current = personId;
       if (!personId) return;
-      setBriefs((s) => (s[personId]?.state === "refused" ? without(s, personId) : s));
+      clearBriefRefusal(personId);
       void loadPersonPage(personId);
     },
-    [loadPersonPage],
+    [loadPersonPage, clearBriefRefusal],
   );
 
   useEffect(() => {
@@ -97,6 +101,8 @@ export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromise
         reload(); // a 1:1 of theirs may have its note now: last time, the list
       }),
       onEvent("note.failed", noteJobEnded),
+      // A question ended, after giving the slot back: a brief refused as busy can be asked for.
+      onEvent("question.updated", () => setBriefs((s) => withoutRefusals(s, ["busy"]))),
       onEvent("meeting.renamed", reload), // the page names their meetings
     ];
     return () => offs.forEach((off) => off());
@@ -160,6 +166,8 @@ export function usePersonPage(refreshPeople: () => Promise<void>, refreshPromise
     /** The open person's page as Python read it; null while it is read. */
     personPage,
     openPersonPage,
+    /** The person's page shows again without opening afresh (back from Settings). */
+    clearBriefRefusal,
     /** Each person's last brief asked for, while it runs or if it didn't land. */
     briefs,
     writeBrief,
