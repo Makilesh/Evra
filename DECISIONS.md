@@ -712,6 +712,6 @@ One entry per decision. Format: context · evidence · decision · consequences.
     - what changed between the meetings;
     - the open questions.
 - **Consequences:**
-  - "Oct. 14", with a full stop, is not read as the month: the rule covers a short form right beside its number.
+  - The short form may carry its full stop ("Oct. 14"), which goes with it (RC19b).
   - A name that is also a month's short form, written right before a number ("Jun 12 people"), is read as the month. The same rule applies to the line it cites, so it still matches a line that says the same.
   - A13 is unchanged: with both points kept, what the brief still does is list the owner's promises in one long point (BACKLOG "A brief that picks the promises worth raising").

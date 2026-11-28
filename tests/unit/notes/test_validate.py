@@ -269,6 +269,17 @@ def test_a_short_month_with_no_number_beside_it_is_a_name() -> None:
     assert note.drop_reasons == {"name_not_cited": 1}
 
 
+def test_a_short_month_may_carry_its_full_stop() -> None:
+    """RC19b: "Oct. 14" is October 14 too; the stop goes with the short form."""
+    line = ["the launch date is moved to October 14"]
+    assert check_lines(line, b("Moved to Oct. 14", "u:1")).kept == 1
+
+
+def test_a_short_month_with_its_full_stop_is_still_checked_as_that_month() -> None:
+    note = check_lines(["The launch moved to November 14."], b("Moved to Oct. 14", "u:1"))
+    assert note.drop_reasons == {"name_not_cited": 1}
+
+
 TICKETS = ["Support got two tickets and I answered them."]
 
 
