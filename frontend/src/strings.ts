@@ -245,7 +245,7 @@ export function briefFailureText(reason: BriefFailureReason | undefined): string
 
 const ASK_REFUSALS: Record<AskRefusal, string> = {
   invalid: "Type a question of up to 500 characters.",
-  busy: "Evra is still answering the last question.",
+  busy: "Evra is busy answering a question or writing a brief. Ask again when it's done.",
   recording: strings.askAfterRecording,
   note: strings.askAfterNote,
   no_transcript: "There's no transcript to ask about yet.",

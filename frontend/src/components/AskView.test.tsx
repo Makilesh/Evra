@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import type { Question, Utterance } from "@/bridge";
+import { emit, type Question, type Utterance } from "@/bridge";
 import { AskView } from "@/components/AskView";
 
 type Props = Parameters<typeof AskView>[0];
@@ -163,7 +163,16 @@ it("prepares the meeting once on open", () => {
 it("shows a refusal", async () => {
   view({ onAsk: vi.fn(async () => "busy" as const) });
   await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
-  expect(await screen.findByText("Evra is still answering the last question.")).toBeInTheDocument();
+  expect(await screen.findByText("Evra is busy answering a question or writing a brief. Ask again when it's done.")).toBeInTheDocument();
+});
+
+it.each(["brief.updated", "question.updated"])("drops a busy refusal when %s arrives", async (event) => {
+  view({ onAsk: vi.fn(async () => "busy" as const) });
+  await userEvent.click(screen.getByRole("button", { name: "What did I promise?" }));
+  const sentence = "Evra is busy answering a question or writing a brief. Ask again when it's done.";
+  expect(await screen.findByText(sentence)).toBeInTheDocument();
+  act(() => emit(event, { person_id: "p1", state: "written" }));
+  expect(screen.queryByText(sentence)).toBeNull();
 });
 
 it("says a question waits for the note being written", async () => {

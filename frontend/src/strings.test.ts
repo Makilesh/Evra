@@ -57,7 +57,7 @@ describe("asking", () => {
 
   it("says why a question was not asked", () => {
     expect(askRefusalText("invalid")).toBe("Type a question of up to 500 characters.");
-    expect(askRefusalText("busy")).toBe("Evra is still answering the last question.");
+    expect(askRefusalText("busy")).toBe("Evra is busy answering a question or writing a brief. Ask again when it's done.");
     expect(askRefusalText("recording")).toBe("You can ask once the recording ends.");
     expect(askRefusalText("note")).toBe("You can ask once the note is written.");
     expect(askRefusalText("no_transcript")).toBe("There's no transcript to ask about yet.");

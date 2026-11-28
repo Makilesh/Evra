@@ -1,5 +1,5 @@
 import { type FormEvent, type Ref, useEffect, useMemo, useRef, useState } from "react";
-import type { AskRefusal, Question, Utterance } from "@/bridge";
+import { type AskRefusal, onEvent, type Question, type Utterance } from "@/bridge";
 import { PointRow } from "@/components/PointRow";
 import { cn } from "@/lib/utils";
 import { noteQuotes } from "@/note";
@@ -34,6 +34,12 @@ export function AskView({ questions, utterances, isLive, noteWriting = false, on
     setWasWriting(noteWriting);
     if (!noteWriting && (refusal === "recording" || refusal === "note")) setRefusal(null);
   }
+  // One slot serves questions and briefs, so a busy refusal is stale once either ends.
+  useEffect(() => {
+    const clear = () => setRefusal((r) => (r === "busy" ? null : r));
+    const offs = [onEvent("question.updated", clear), onEvent("brief.updated", clear)];
+    return () => offs.forEach((off) => off());
+  }, []);
   const busy = isLive || questions.some((q) => q.state === "asking");
   const newestAsking = questions.at(-1)?.state === "asking";
   const box = useRef<HTMLInputElement>(null);
