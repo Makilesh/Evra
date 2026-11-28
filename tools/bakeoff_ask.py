@@ -226,7 +226,7 @@ def ask_one(
         excerpt=False,
         open=probe.open,
     )
-    started = time.monotonic()
+    started = time.perf_counter()
     try:
         result = ask_meeting(
             provider,
@@ -239,7 +239,7 @@ def ask_one(
         )
     except (LlmError, NoteError) as exc:
         return replace(failed, error=type(exc).__name__)
-    total = time.monotonic() - started
+    total = time.perf_counter() - started
     # ask_meeting used the last reply: the first, or its repair when that was not valid JSON
     # (none when a long call had no part to read)
     raw = parse_reply(MeetingAnswer, provider.replies[-1])[0] if provider.replies else None
