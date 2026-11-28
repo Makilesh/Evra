@@ -667,6 +667,18 @@ One entry per decision. Format: context · evidence · decision · consequences.
 
   - In the window the brief had three points: the owner's 14 open tasks from the hour in one point (most of them records the note's own points don't mention: the postmortem, the expense reminders, the monitoring quote), the two from the week before, and the open questions of both meetings. It left out the other person's five promises and what changed between the meetings.
   - The log had `brief_started` (meetings, open items) and `brief_written` (state, counts, reasons, seconds) only.
+  - **A13 v2, measured and not kept (RC18, 2026-11-28).** v2 changed rules 1 and 4 only. Rule 1 asked for points on what each of them still owes the other, saying who, what they would come back to, and what changed since the meeting before. Rule 4 named both directions (`You:` the owner's promises, `{name}:` the person's) and said the owner sees every open promise beside the brief, so a point names the ones worth raising. It was to be kept only if it passed five tests over three runs. The runs used the same data (21 open promises) and the app's own `write_brief`, with the default settings and `OllamaProvider`, gemma4:12b loaded after one warm-up call that was not counted. v1 and v2 alternated, three runs each. v2 missed one test, so it had its one allowed adjustment (rule 4: a point names "at most four of them") and ran three times more, each after an uncounted v1 call, against the same v1 numbers.
+
+    | test (over three runs) | v1 | v2 | v2, adjusted |
+    | --- | --- | --- | --- |
+    | (a) every brief has a point on what the other person owes | no: that point was dropped | yes | yes |
+    | (b) every brief has a point on what changed since the meeting before | no: that point was dropped | yes | no |
+    | (c) points dropped, no more than v1's | 6 | 0 | 0 |
+    | (d) no point lists more than four promises | no: 14 in one point | no: 14 in one point | yes: 3 at most |
+    | (e) median seconds, at most 1.2 × v1's (10.85) | 9.04 (8.31, 9.06, 9.04) | 10.28 (10.28, 10.28, 10.06) | 8.55 (8.55, 8.55, 8.51) |
+
+    - v1 wrote both missing points in every run, and the check dropped them: each said "Oct 14" where the notes say "October 14", and the name check reads "Oct" as a name the notes don't hold (`name_not_cited`). The window kept the same three points and dropped two as `name_not_cited`, so these were very likely its two. The check is unchanged.
+    - v2 named the other person's promises and what changed, but kept the owner's 14 open tasks from the hour in one point. Adjusted, it named at most three promises a point, but spent all six points on promises and said nothing of what changed. So v1 stays (BACKLOG "What the brief leaves out").
 - **Consequences:**
   - The prompt is bounded: at most three notes of 4,000 + 4,000 characters, about 9,000 tokens.
   - A brief's points cite meetings by id in a JSON list, with no foreign key, so deleting a meeting (not built yet) must also delete or rewrite the briefs that cite it (BACKLOG). Until then the page drops a missing meeting's link, and the point's text stays.
