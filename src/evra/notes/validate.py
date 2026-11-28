@@ -20,6 +20,7 @@ import structlog
 
 from evra.llm.provider import LlmError
 from evra.llm.schemas import NoteBullet, NoteDraft
+from evra.notes.months import months_written_out
 from evra.notes.semantic import SemanticCheck
 from evra.notes.templates import Template
 
@@ -49,14 +50,6 @@ _NAME_FOLLOWERS = re.compile(
 )
 _AMBIGUOUS = {"one", "first", "second"}  # alone they are rarely numbers ("the one thing")
 _NOT_NAMES = {"you", "them", "i"}
-# A month's short form right beside a day or a year is that month (RC19): "Oct 14", "Oct 14th",
-# "14 Oct", "Oct 2026". Without a number it may be a name ("Jan said..."). May has no short form.
-_MONTH_NAMES = "january february march april june july august september october november december"
-_MONTHS = {name[:3]: name for name in _MONTH_NAMES.split()} | {"sept": "september"}
-_SHORT_MONTH = "|".join(sorted(_MONTHS, key=len, reverse=True))  # "sept" before "sep"
-_DAY = r"(?:3[01]|[12]\d|0?[1-9])(?:st|nd|rd|th)?"
-_MONTH_THEN_NUMBER = re.compile(rf"\b({_SHORT_MONTH})(?=\s+(?:{_DAY}|\d{{4}})\b)", re.IGNORECASE)
-_DAY_THEN_MONTH = re.compile(rf"(\b{_DAY}\s+)({_SHORT_MONTH})\b", re.IGNORECASE)
 
 
 def _wordlist(text: str) -> list[str]:
@@ -195,25 +188,12 @@ def _vocabulary(texts: Iterable[str], people: Iterable[str] = ()) -> _Vocabulary
     return _Vocabulary(frozenset(lower), frozenset(said), known)
 
 
-def _spelled(short: str) -> str:
-    month = _MONTHS[short.lower()]
-    return month.capitalize() if short[0].isupper() else month
-
-
-def _months_written_out(text: str) -> str:
-    """The text with each month's short form that stands beside a day or a year written out
-    ("Oct 14" → "October 14", "14 sept" → "14 september"), for the name check: on both sides,
-    "Oct 14" and "October 14" are one date (RC19)."""
-    text = _MONTH_THEN_NUMBER.sub(lambda m: _spelled(m.group(1)), text)
-    return _DAY_THEN_MONTH.sub(lambda m: m.group(1) + _spelled(m.group(2)), text)
-
-
 def _names(text: str, vocabulary: _Vocabulary) -> set[str]:
     """Capitalised words that must come from the transcript. At a sentence start a capital
     means nothing, so there a word counts only if the meeting never uses it in lowercase
     (a name it said, like "Priya") or it is unknown and reads like a name ("Marcus will").
     A month's short form beside a day or a year is read as the month."""
-    text = _months_written_out(text)
+    text = months_written_out(text)
     label = _LEADING_LABEL.match(text)
     found: set[str] = set()
     for match in _CAPITALISED.finditer(text):
@@ -352,7 +332,7 @@ def _facts(source: str, *, lone_ambiguous: bool = True) -> tuple[set[str], set[s
     words = _WORD.findall(source)
     numbers = {_norm_number(n) for n in _NUMBER.findall(source)}
     numbers |= _spoken_numbers([w.lower() for w in words], lone_ambiguous=lone_ambiguous)
-    written_out = _WORD.findall(_months_written_out(source))
+    written_out = _WORD.findall(months_written_out(source))
     return numbers, {_base(w) for w in [*words, *written_out]}
 
 
